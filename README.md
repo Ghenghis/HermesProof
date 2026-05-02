@@ -5,10 +5,13 @@
 <br/>
 
 [![Truth Gates](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml/badge.svg)](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml)
+[![Pages](https://github.com/Ghenghis/HermesProof/actions/workflows/pages.yml/badge.svg)](https://ghenghis.github.io/HermesProof/)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-a855f7?style=flat-square)](https://modelcontextprotocol.io)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-06b6d4?style=flat-square)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](./LICENSE)
 [![Inspired by](https://img.shields.io/badge/inspired%20by-Hermes%20Agent-ec4899?style=flat-square)](https://hermes-agent.nousresearch.com/)
+
+**🌐 Live site → [ghenghis.github.io/HermesProof](https://ghenghis.github.io/HermesProof/)**
 
 **HermesProof** is the verifiable file-lock and proof layer that lets **Claude · Codex · Windsurf · Cascade** coordinate edits on the **same repository** — without clobbering each other.
 
@@ -47,17 +50,17 @@ The proof harness — `npm run truth-gates` — runs nine independent verificati
 <img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running nine gates sequentially" width="100%"/>
 </div>
 
-| # | Gate | What it proves |
-| - | --- | --- |
-| 01 | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift |
-| 02 | `deps.parity` | `package.json` declared deps match the installed ones in `node_modules/` |
-| 03 | `tests.unit` | All 12 unit tests pass via direct `node --test` (npm pipe-routing bypassed) |
-| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 15 tools |
-| 05 | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace |
-| 06 | `e2e.multi_agent_flow` | 14-step real stdio probe: claim → lock → block → handoff → gate → release |
-| 07 | `workspace.integrity` | No probe files leaked, no unexpected tracked changes in the workspace |
-| 08 | `clients.config_presence` | Claude Desktop, Claude Code, Codex, Windsurf all have `hermes3d-locks` wired |
-| 09 | `clients.claude_code_live` | `claude mcp list` reports `hermes3d-locks: ✓ Connected` (round-trip live) |
+| #   | Gate                        | What it proves                                                                 |
+| --- | --------------------------- | ------------------------------------------------------------------------------ |
+| 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift     |
+| 02  | `deps.parity`               | `package.json` declared deps match the installed ones in `node_modules/`       |
+| 03  | `tests.unit`                | All 12 unit tests pass via direct `node --test` (npm pipe-routing bypassed)    |
+| 04  | `server.stdio_handshake`    | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 15 tools |
+| 05  | `doctor.hermes3d`           | `hermes_doctor` returns `ok: true` against the live workspace                  |
+| 06  | `e2e.multi_agent_flow`      | 14-step real stdio probe: claim → lock → block → handoff → gate → release      |
+| 07  | `workspace.integrity`       | No probe files leaked, no unexpected tracked changes in the workspace          |
+| 08  | `clients.config_presence`   | Claude Desktop, Claude Code, Codex, Windsurf all have `hermes3d-locks` wired   |
+| 09  | `clients.claude_code_live`  | `claude mcp list` reports `hermes3d-locks: ✓ Connected` (round-trip live)      |
 
 Outputs:
 
@@ -136,12 +139,12 @@ HermesProof is intentionally narrow: it is the **governance layer**. It coexists
 <img src="docs/diagrams/mcp-composition.svg" alt="HermesProof composes with filesystem MCP and Codex bridges as peer servers, all sharing the same workspace" width="100%"/>
 </div>
 
-| Concern | Server | Status |
-| --- | --- | --- |
-| Per-file ownership / locking / handoffs / evidence | **HermesProof** (this repo) | shipped here |
-| Read / write / list files | [`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers) | external — coexists |
-| Claude → Codex bridge | [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) · [`cexll/codex-mcp-server`](https://github.com/cexll/codex-mcp-server) | external — coexists |
-| Multi-agent spawning / routing | [`ruvnet/claude-flow`](https://github.com/ruvnet/claude-flow) | external — runs above |
+| Concern                                            | Server                                                                                                                                        | Status                |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Per-file ownership / locking / handoffs / evidence | **HermesProof** (this repo)                                                                                                                   | shipped here          |
+| Read / write / list files                          | [`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers)                                                  | external — coexists   |
+| Claude → Codex bridge                              | [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) · [`cexll/codex-mcp-server`](https://github.com/cexll/codex-mcp-server) | external — coexists   |
+| Multi-agent spawning / routing                     | [`ruvnet/claude-flow`](https://github.com/ruvnet/claude-flow)                                                                                 | external — runs above |
 
 See [`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md) for full composition recipes.
 
@@ -246,12 +249,12 @@ tool_timeout_sec = 60
 
 ## ✦ Environment
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `MCP_LOCK_WORKSPACE` | `cwd()` | Absolute path of the workspace HermesProof governs |
-| `HERMES3D_WORKSPACE` | — | Legacy alias for `MCP_LOCK_WORKSPACE` (still honored) |
-| `MCP_LOCK_STATE_DIR` | `.hermes3d_orchestrator` | Name of the state dir inside the workspace; rejects slashes / `..` |
-| `MCP_LOCK_SERVER_NAME` | `hermes3d-locks` | Name surfaced to MCP clients (only used by `print-configs`) |
+| Variable               | Default                  | Purpose                                                            |
+| ---------------------- | ------------------------ | ------------------------------------------------------------------ |
+| `MCP_LOCK_WORKSPACE`   | `cwd()`                  | Absolute path of the workspace HermesProof governs                 |
+| `HERMES3D_WORKSPACE`   | —                        | Legacy alias for `MCP_LOCK_WORKSPACE` (still honored)              |
+| `MCP_LOCK_STATE_DIR`   | `.hermes3d_orchestrator` | Name of the state dir inside the workspace; rejects slashes / `..` |
+| `MCP_LOCK_SERVER_NAME` | `hermes3d-locks`         | Name surfaced to MCP clients (only used by `print-configs`)        |
 
 ---
 
