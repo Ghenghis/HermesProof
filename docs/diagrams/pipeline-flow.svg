@@ -166,7 +166,7 @@
     <g transform="translate(580 0)">
       <rect width="270" height="80" rx="10" fill="#1a1f3a" stroke="#a855f7" stroke-width="1"/>
       <text x="20" y="28" font-size="12" font-weight="700" fill="#a855f7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PROOF/latest.json</text>
-      <text x="20" y="48" font-size="11" fill="#94a3b8">9-gate truth bundle, machine-readable</text>
+      <text x="20" y="48" font-size="11" fill="#94a3b8">12-gate truth bundle, machine-readable</text>
       <text x="20" y="64" font-size="11" fill="#94a3b8">refreshed automatically by CI on push</text>
     </g>
     <g transform="translate(870 0)">

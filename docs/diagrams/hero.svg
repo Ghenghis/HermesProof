@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="HermesProof — verifiable multi-agent coordination over MCP" aria-labelledby="hero-title hero-desc">
   <title id="hero-title">HermesProof</title>
-  <desc id="hero-desc">HermesProof banner: verifiable multi-agent coordination over MCP. A winged Hermes monogram, animated title gradient, and live status pills showing 9/9 truth-gates, 15 MCP tools, CI auto-attestation, and SHA-256 source manifest.</desc>
+  <desc id="hero-desc">HermesProof banner: verifiable multi-agent coordination over MCP. A winged Hermes monogram, animated title gradient, and live status pills showing 12 truth-gates, 16 MCP tools, Sigstore-signed proof, and SHA-256 source manifest.</desc>
   <defs>
     <style>@media (prefers-reduced-motion: reduce){*{animation:none!important;animation-duration:0.001s!important}animate,animateTransform,animateMotion{display:none}}</style>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -80,7 +80,7 @@
       <circle cx="22" cy="18" r="6" fill="#a855f7">
         <animate attributeName="opacity" values="0.3;1;0.3" dur="2.4s" repeatCount="indefinite"/>
       </circle>
-      <text x="40" y="22" fill="#e0e7ff">15 MCP tools · stdio</text>
+      <text x="40" y="22" fill="#e0e7ff">16 MCP tools · stdio</text>
     </g>
     <g transform="translate(0 100)">
       <rect x="0" y="0" width="240" height="36" rx="18" fill="#1a1f3a" stroke="#06b6d4" stroke-width="1.2"/>

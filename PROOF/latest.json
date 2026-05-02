@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-05-02T22-54-13-831Z",
-  "ts_utc": "2026-05-02T22:54:13.831Z",
-  "duration_ms": 1403,
+  "run_id": "truth_2026-05-02T22-59-10-617Z",
+  "ts_utc": "2026-05-02T22:59:10.617Z",
+  "duration_ms": 1374,
   "ok": true,
   "pass_count": 8,
   "fail_count": 0,
@@ -16,7 +16,7 @@
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 6,
+      "duration_ms": 8,
       "evidence": {
         "file_count": 13,
         "manifest_sha256": "881ac841b81849948f537d5d29efb3700ea3fe2e1f48529f8e2dc5f6346f8920"
@@ -27,7 +27,7 @@
       "id": "deps.parity",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 2,
       "evidence": {
         "declared": {
           "@modelcontextprotocol/sdk": "^1.29.0",
@@ -45,12 +45,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 383,
+      "duration_ms": 295,
       "evidence": {
         "exit_code": 0,
         "pass_count": 12,
         "fail_count": 0,
-        "stdout_tail": "✔ Claude and Codex cannot edit the same file without handoff approval (61.4153ms)\n✔ path escape attempts are rejected with workspace-relative error (16.0305ms)\n✔ owner can refresh its own existing lock without conflict (18.1858ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (9.5753ms)\n✔ heartbeat extends expiry of held locks (31.8897ms)\n✔ stale lock recovery archives metadata and clears the lock (16.8514ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.6202ms)\n✔ gate runner rejects cwd that escapes the workspace (1.7841ms)\n✔ doctor() reports errors when workspace_root does not exist (2.5858ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (7.0418ms)\n✔ custom state dir name is honored end-to-end (6.3752ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.6778ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 204.6527\n",
+        "stdout_tail": "✔ Claude and Codex cannot edit the same file without handoff approval (59.5049ms)\n✔ path escape attempts are rejected with workspace-relative error (14.7542ms)\n✔ owner can refresh its own existing lock without conflict (14.4458ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (11.8184ms)\n✔ heartbeat extends expiry of held locks (38.3924ms)\n✔ stale lock recovery archives metadata and clears the lock (22.5076ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.9648ms)\n✔ gate runner rejects cwd that escapes the workspace (1.5869ms)\n✔ doctor() reports errors when workspace_root does not exist (1.9297ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (8.206ms)\n✔ custom state dir name is honored end-to-end (7.014ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.5427ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 226.5015\n",
         "stderr_tail": ""
       },
       "details": "pass=12, fail=0, exit=0"
@@ -59,7 +59,7 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 327,
+      "duration_ms": 296,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -100,9 +100,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 665,
+      "duration_ms": 761,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-R0SJM7",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-HyIOjZ",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -212,7 +212,7 @@
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 11,
+      "duration_ms": 6,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -241,7 +241,7 @@
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 4,
+      "duration_ms": 2,
       "evidence": {
         "required_count": 10,
         "findings": [

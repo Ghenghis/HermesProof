@@ -1,8 +1,8 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-05-02T22-54-13-831Z`
-- **Timestamp (UTC)**: 2026-05-02T22:54:13.831Z
-- **Duration**: 1.40s
+- **Run id**: `truth_2026-05-02T22-59-10-617Z`
+- **Timestamp (UTC)**: 2026-05-02T22:59:10.617Z
+- **Duration**: 1.37s
 - **Hermes3D workspace**: `G:\Github\Hermes3D`
 - **Node**: v25.8.2 on win32
 - **Result**: ✅ ALL REQUIRED GATES PASS
@@ -13,18 +13,18 @@ Pass / Fail / Warn / Skip: **8 / 0 / 0 / 4**
 
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| `source.integrity_manifest` | required | ✅ pass | 6 ms | 13 files hashed |
-| `deps.parity` | required | ✅ pass | 1 ms | all 2 deps installed |
-| `tests.unit` | required | ✅ pass | 383 ms | pass=12, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 327 ms | 16 tools |
+| `source.integrity_manifest` | required | ✅ pass | 8 ms | 13 files hashed |
+| `deps.parity` | required | ✅ pass | 2 ms | all 2 deps installed |
+| `tests.unit` | required | ✅ pass | 295 ms | pass=12, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 296 ms | 16 tools |
 | `doctor.hermes3d` | skipped | ✅ pass | 0 ms | skipped |
-| `e2e.multi_agent_flow` | required | ✅ pass | 665 ms | 14/14 checks; 3 ledger, 11 events |
+| `e2e.multi_agent_flow` | required | ✅ pass | 761 ms | 14/14 checks; 3 ledger, 11 events |
 | `workspace.integrity` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.config_presence` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.claude_code_live` | skipped | ✅ pass | 0 ms | skipped |
 | `server.tool_description_hygiene` | required | ✅ pass | 1 ms | 0 suspicious patterns |
-| `evidence.hash_chain_valid` | required | ✅ pass | 11 ms | positive=true, negative_detected_at_idx_1=true |
-| `docs.master_prompt_deliverables_present` | required | ✅ pass | 4 ms | 10/10 deliverables present |
+| `evidence.hash_chain_valid` | required | ✅ pass | 6 ms | positive=true, negative_detected_at_idx_1=true |
+| `docs.master_prompt_deliverables_present` | required | ✅ pass | 2 ms | 10/10 deliverables present |
 
 ## Machine-readable report
 
