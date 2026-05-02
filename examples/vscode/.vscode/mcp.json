@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "hermes3d-locks": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/../HermesProof/src/server.mjs"],
+      "env": { "MCP_LOCK_WORKSPACE": "${workspaceFolder}" }
+    }
+  }
+}
