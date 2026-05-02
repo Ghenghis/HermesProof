@@ -1,0 +1,268 @@
+{
+  "run_id": "truth_2026-05-02T20-37-43-610Z",
+  "ts_utc": "2026-05-02T20:37:43.610Z",
+  "duration_ms": 12813,
+  "ok": true,
+  "pass_count": 9,
+  "fail_count": 0,
+  "warn_count": 0,
+  "skip_count": 0,
+  "hermes3d_workspace": "G:\\Github\\Hermes3D",
+  "node_version": "v25.8.2",
+  "platform": "win32",
+  "repo_root": "G:\\Github\\hermes3d-mcp-lock-orchestrator",
+  "gates": [
+    {
+      "id": "source.integrity_manifest",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 6,
+      "evidence": {
+        "file_count": 13,
+        "manifest_sha256": "09bc1ef7073bc7ad340db4fada4fec770124689fb2dfa8bb3a3fc5c3b373daff"
+      },
+      "details": "13 files hashed"
+    },
+    {
+      "id": "deps.parity",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 1,
+      "evidence": {
+        "declared": {
+          "@modelcontextprotocol/sdk": "^1.19.0",
+          "zod": "^3.24.1"
+        },
+        "installed": {
+          "@modelcontextprotocol/sdk": "1.29.0",
+          "zod": "3.25.76"
+        },
+        "missing": []
+      },
+      "details": "all 2 deps installed"
+    },
+    {
+      "id": "tests.unit",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 228,
+      "evidence": {
+        "exit_code": 0,
+        "pass_count": 12,
+        "fail_count": 0,
+        "stdout_tail": "✔ Claude and Codex cannot edit the same file without handoff approval (51.7016ms)\n✔ path escape attempts are rejected with workspace-relative error (11.651ms)\n✔ owner can refresh its own existing lock without conflict (11.0898ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (7.5555ms)\n✔ heartbeat extends expiry of held locks (32.9692ms)\n✔ stale lock recovery archives metadata and clears the lock (18.8469ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.5429ms)\n✔ gate runner rejects cwd that escapes the workspace (1.2294ms)\n✔ doctor() reports errors when workspace_root does not exist (1.7415ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (5.0323ms)\n✔ custom state dir name is honored end-to-end (5.8117ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.1521ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 176.3196\n",
+        "stderr_tail": ""
+      },
+      "details": "pass=12, fail=0, exit=0"
+    },
+    {
+      "id": "server.stdio_handshake",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 227,
+      "evidence": {
+        "protocol_version": "2024-11-05",
+        "server_name": "hermes3d-lock-orchestrator",
+        "server_version": "0.1.0",
+        "tool_count": 15,
+        "tools": [
+          "hermes_append_evidence",
+          "hermes_approve_handoff",
+          "hermes_claim_task",
+          "hermes_doctor",
+          "hermes_get_state",
+          "hermes_heartbeat",
+          "hermes_list_gates",
+          "hermes_list_locks",
+          "hermes_lock_files",
+          "hermes_read_policy",
+          "hermes_recover_stale_locks",
+          "hermes_release_files",
+          "hermes_release_task",
+          "hermes_request_handoff",
+          "hermes_run_gate"
+        ]
+      },
+      "details": "15 tools"
+    },
+    {
+      "id": "doctor.hermes3d",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 4,
+      "evidence": {
+        "ok": true,
+        "workspace_root": "G:\\Github\\Hermes3D",
+        "state_dir": "G:\\Github\\Hermes3D\\.hermes3d_orchestrator",
+        "state_dir_name": ".hermes3d_orchestrator",
+        "node_version": "v25.8.2",
+        "platform": "win32",
+        "checks": [
+          {
+            "id": "workspace_exists",
+            "ok": true
+          },
+          {
+            "id": "workspace_writable",
+            "ok": true
+          },
+          {
+            "id": "env_workspace_set",
+            "ok": true
+          },
+          {
+            "id": "git_repo",
+            "ok": true
+          },
+          {
+            "id": "node_version",
+            "ok": true
+          }
+        ],
+        "findings": []
+      },
+      "details": "ok=true, 0 finding(s)"
+    },
+    {
+      "id": "e2e.multi_agent_flow",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 558,
+      "evidence": {
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-yxVLtU",
+        "checks": [
+          {
+            "id": "policy.workspace_root",
+            "ok": true
+          },
+          {
+            "id": "task.claim",
+            "ok": true
+          },
+          {
+            "id": "lock.docs",
+            "ok": true
+          },
+          {
+            "id": "lock.code",
+            "ok": true
+          },
+          {
+            "id": "lock.blocked_by_codex",
+            "ok": true
+          },
+          {
+            "id": "handoff.requested",
+            "ok": true
+          },
+          {
+            "id": "handoff.approved",
+            "ok": true
+          },
+          {
+            "id": "handoff.codex_cannot_silently_recapture",
+            "ok": true
+          },
+          {
+            "id": "gate.git_status",
+            "ok": true
+          },
+          {
+            "id": "gate.git_diff_check",
+            "ok": true
+          },
+          {
+            "id": "gate.unknown_rejected",
+            "ok": true
+          },
+          {
+            "id": "gate.escaped_cwd_rejected",
+            "ok": true
+          },
+          {
+            "id": "evidence.appended",
+            "ok": true
+          },
+          {
+            "id": "final.zero_locks",
+            "ok": true
+          }
+        ],
+        "ledger_entries": 3,
+        "event_entries": 11
+      },
+      "details": "14/14 checks; 3 ledger, 11 events"
+    },
+    {
+      "id": "workspace.integrity",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 79,
+      "evidence": {
+        "state_dir_name": ".hermes3d_orchestrator",
+        "hermes3d_state_dir_present": true,
+        "probe_files_left": 0,
+        "tracked_modifications": [
+          {
+            "status": " M",
+            "path": ".gitignore"
+          }
+        ],
+        "install_related_modifications": [
+          {
+            "status": " M",
+            "path": ".gitignore",
+            "kind": "install_marker",
+            "added_lines": 4
+          }
+        ],
+        "unexpected_modifications": [],
+        "untracked_paths": [],
+        "unexpected_untracked": []
+      },
+      "details": "probes=0, install_mods=1, unexpected_mods=0, unexpected_untracked=0"
+    },
+    {
+      "id": "clients.config_presence",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 2,
+      "evidence": {
+        "claude_desktop": {
+          "path": "C:\\Users\\Admin\\AppData\\Roaming\\Claude\\claude_desktop_config.json",
+          "exists": true,
+          "present": true,
+          "server_count": 2
+        },
+        "windsurf": {
+          "path": "C:\\Users\\Admin\\.codeium\\windsurf\\mcp_config.json",
+          "exists": true,
+          "present": true,
+          "server_count": 10
+        },
+        "codex": {
+          "path": "C:\\Users\\Admin\\.codex\\config.toml",
+          "exists": true,
+          "present": true
+        },
+        "claude_code": {
+          "path": "C:\\Users\\Admin\\.claude.json",
+          "exists": true,
+          "present": true
+        }
+      },
+      "details": "all 4 present"
+    },
+    {
+      "id": "clients.claude_code_live",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 11704,
+      "evidence": {
+        "exit_code": 0,
+        "matched_line": "hermes3d-locks: node G:\\Github\\hermes3d-mcp-lock-orchestrator\\src\\server.mjs - ✓ Connected"
+      },
+      "details": "Connected"
+    }
+  ]
+}

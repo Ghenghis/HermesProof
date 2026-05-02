@@ -1,0 +1,31 @@
+{
+  "name": "hermes3d-mcp-lock-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local MCP server for Hermes3D agent coordination, file locking, handoffs, gates, and evidence ledgers.",
+  "bin": {
+    "hermes3d-mcp-locks": "src/server.mjs"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "mcp:dev": "node src/server.mjs",
+    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs",
+    "smoke": "node --test scripts/coordination-smoke-test.mjs",
+    "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
+    "init-project": "node scripts/init-project.mjs",
+    "install-clients": "node scripts/install-clients.mjs",
+    "truth-gates": "node scripts/truth-gates.mjs",
+    "proof": "node scripts/truth-gates.mjs",
+    "print-configs": "node scripts/print-configs.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "reset-demo-state": "node scripts/reset-demo-state.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.19.0",
+    "zod": "^3.24.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

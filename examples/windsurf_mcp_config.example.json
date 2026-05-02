@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "hermes3d-locks": {
+      "command": "node",
+      "args": [
+        "G:\\Github\\Hermes3D\\tools\\hermes3d-mcp-lock-orchestrator\\src\\server.mjs"
+      ],
+      "env": {
+        "MCP_LOCK_WORKSPACE": "G:\\Github\\Hermes3D"
+      }
+    }
+  }
+}

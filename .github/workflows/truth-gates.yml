@@ -1,0 +1,76 @@
+name: Truth Gates
+
+# Runs the orchestrator's full truth-gate harness in CI.
+# Skips local-machine gates (Claude/Codex/Windsurf config presence,
+# Hermes3D workspace integrity) which are inherently host-specific;
+# everything else — source manifest, deps parity, unit tests, MCP stdio
+# handshake, and the end-to-end multi-agent flow — runs against a fresh
+# git-initialized sandbox the harness creates internally.
+#
+# On every successful push to main, the resulting PROOF/latest.json
+# and PROOF_E2E_REPORT.md are committed back to the repo so the latest
+# attestation lives at HEAD. CI loop is broken via [skip ci].
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  truth-gates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need full history so the bot commit can land cleanly.
+          fetch-depth: 0
+          # Use the default GITHUB_TOKEN with write perms (granted above).
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run truth gates (CI mode)
+        run: node scripts/truth-gates.mjs --ci
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-${{ github.sha }}
+          path: |
+            PROOF/latest.json
+            PROOF_E2E_REPORT.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Commit updated proof to main
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success()
+        run: |
+          set -e
+          git config user.name "hermes-truth-gate-bot"
+          git config user.email "bot@hermes3d.local"
+          if [ -n "$(git status --porcelain PROOF/latest.json PROOF_E2E_REPORT.md)" ]; then
+            git add PROOF/latest.json PROOF_E2E_REPORT.md
+            git commit -m "ci: refresh truth-gate proof for ${GITHUB_SHA::7} [skip ci]" \
+                       -m "Run id: ${{ github.run_id }}" \
+                       -m "Workflow: ${{ github.workflow }}"
+            git push origin HEAD:main
+            echo "PROOF refreshed."
+          else
+            echo "PROOF unchanged; nothing to commit."
+          fi
