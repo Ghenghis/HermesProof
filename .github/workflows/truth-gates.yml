@@ -17,15 +17,25 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   truth-gates:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     timeout-minutes: 10
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
+        with:
+          egress-policy: audit
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Need full history so the bot commit can land cleanly.
           fetch-depth: 0
@@ -33,7 +43,7 @@ jobs:
           persist-credentials: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # TODO: SHA-pin (latest v4.x.x as of 2026-05-02)
         with:
           node-version: '20'
           cache: 'npm'
@@ -46,7 +56,7 @@ jobs:
 
       - name: Upload proof artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # TODO: SHA-pin (latest v4.x.x as of 2026-05-02)
         with:
           name: proof-${{ github.sha }}
           path: |
@@ -54,6 +64,43 @@ jobs:
             PROOF_E2E_REPORT.md
           if-no-files-found: error
           retention-days: 90
+
+      - name: Attest build provenance
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success()
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
+        with:
+          subject-path: 'PROOF/latest.json'
+
+      - name: Install cosign
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success()
+        uses: sigstore/cosign-installer@v3 # TODO: SHA-pin (latest v3.x.x as of 2026-05-02)
+
+      - name: Sign PROOF/latest.json with cosign (keyless)
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success()
+        run: |
+          cosign sign-blob --yes --bundle PROOF/latest.json.cosign.bundle PROOF/latest.json
+
+      - name: Verify cosign signature (informational)
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success()
+        continue-on-error: true
+        run: |
+          cosign verify-blob \
+            --certificate-identity-regexp 'https://github.com/Ghenghis/HermesProof' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --bundle PROOF/latest.json.cosign.bundle \
+            PROOF/latest.json
 
       - name: Commit updated proof to main
         if: |
@@ -64,8 +111,8 @@ jobs:
           set -e
           git config user.name "hermes-truth-gate-bot"
           git config user.email "bot@hermes3d.local"
-          if [ -n "$(git status --porcelain PROOF/latest.json PROOF_E2E_REPORT.md)" ]; then
-            git add PROOF/latest.json PROOF_E2E_REPORT.md
+          if [ -n "$(git status --porcelain PROOF/latest.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle)" ]; then
+            git add PROOF/latest.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle
             git commit -m "ci: refresh truth-gate proof for ${GITHUB_SHA::7} [skip ci]" \
                        -m "Run id: ${{ github.run_id }}" \
                        -m "Workflow: ${{ github.workflow }}"

@@ -18,10 +18,16 @@ await manager.init();
 
 const server = new McpServer({
   name: "hermes3d-lock-orchestrator",
-  version: "0.1.0"
+  version: "0.3.0"
 });
 
-const Owner = z.string().min(2).describe("Unique agent/session owner, e.g. claude-lead, codex-impl-01, windsurf-cascade.");
+// Tightened owner regex: lowercase + digits + hyphen, must start with a letter,
+// 2-64 chars. Rejects whitespace, control chars, prompt-injection markers.
+const Owner = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{1,63}$/, "owner must match ^[a-z][a-z0-9-]{1,63}$")
+  .describe("Unique agent/session owner, e.g. claude-lead, codex-impl-01, windsurf-cascade.");
+
 const Files = z.array(z.string().min(1)).min(1).describe("Workspace-relative file paths to lock, release, or hand off.");
 const JsonObject = z.record(z.any()).optional().default({});
 
@@ -35,183 +41,278 @@ function toolError(err) {
   return toolResult({ ok: false, status: "error", message: err?.message || String(err) });
 }
 
-server.tool(
+// Tool registration helper. Uses registerTool when available so we can declare
+// annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint)
+// per MCP spec 2025-11-25; falls back to legacy server.tool() shape if not.
+function registerTool(name, { title, description, inputSchema, annotations }, handler) {
+  if (typeof server.registerTool === "function") {
+    server.registerTool(
+      name,
+      {
+        title,
+        description,
+        inputSchema,
+        annotations
+      },
+      handler
+    );
+  } else {
+    server.tool(name, description, inputSchema || {}, handler);
+  }
+}
+
+registerTool(
   "hermes_get_state",
-  "Read current Hermes3D coordination state: locks, tasks, handoffs, evidence location.",
-  {},
-  async () => toolResult(await manager.getStateSummary())
+  {
+    title: "Get coordination state",
+    description: "Read current coordination state: locks, tasks, handoffs, evidence location.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
+  async () => {
+    try { return toolResult(await manager.getStateSummary()); } catch (err) { return toolError(err); }
+  }
 );
 
-server.tool(
+registerTool(
   "hermes_claim_task",
-  "Claim a task before editing. Use this before locking files.",
   {
-    owner: Owner,
-    role: z.string().default("agent"),
-    taskId: z.string().optional().describe("Stable task id, e.g. CP-UX-A-CODEX."),
-    title: z.string().default(""),
-    files: z.array(z.string()).default([]),
-    reason: z.string().default("")
+    title: "Claim a task",
+    description: "Claim a task before editing. Use this before locking files.",
+    inputSchema: {
+      owner: Owner,
+      role: z.string().default("agent"),
+      taskId: z.string().optional().describe("Stable task id, e.g. CP-UX-A-CODEX."),
+      title: z.string().default(""),
+      files: z.array(z.string()).default([]),
+      reason: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try { return toolResult(await manager.claimTask(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_release_task",
-  "Release a task after all locked files have been released and evidence appended.",
   {
-    owner: Owner,
-    taskId: z.string().min(1),
-    note: z.string().default("")
+    title: "Release a task",
+    description: "Release a task after all locked files have been released and evidence appended.",
+    inputSchema: {
+      owner: Owner,
+      taskId: z.string().min(1),
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try { return toolResult(await manager.releaseTask(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_lock_files",
-  "Atomically lock files before editing. If any file is locked by another owner, the whole lock request is rolled back and you must request a handoff.",
   {
-    owner: Owner,
-    role: z.string().default("agent"),
-    taskId: z.string().default(""),
-    files: Files,
-    reason: z.string().default(""),
-    ttlMinutes: z.number().int().min(5).max(720).default(90)
+    title: "Lock files atomically",
+    description: "Atomically lock files before editing. If any file is locked by another owner, the whole request is rolled back; the caller should request a handoff instead.",
+    inputSchema: {
+      owner: Owner,
+      role: z.string().default("agent"),
+      taskId: z.string().default(""),
+      files: Files,
+      reason: z.string().default(""),
+      ttlMinutes: z.number().int().min(5).max(720).default(90)
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }
   },
   async (args) => {
     try { return toolResult(await manager.lockFiles(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_release_files",
-  "Release files when finished. Only the owning agent can release its locks unless stale recovery is used.",
   {
-    owner: Owner,
-    files: Files,
-    note: z.string().default("")
+    title: "Release locked files",
+    description: "Release files when finished. Only the owning agent can release its locks unless stale recovery is used.",
+    inputSchema: {
+      owner: Owner,
+      files: Files,
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: true }
   },
   async (args) => {
     try { return toolResult(await manager.releaseFiles(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_heartbeat",
-  "Refresh locks for a running task/session so other agents know the owner is still active.",
   {
-    owner: Owner,
-    taskId: z.string().default("")
+    title: "Heartbeat owned locks",
+    description: "Refresh locks for a running task/session so other agents know the owner is still active.",
+    inputSchema: {
+      owner: Owner,
+      taskId: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try { return toolResult(await manager.heartbeat(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_list_locks",
-  "List all active file locks with owner, task, heartbeat, expiry, and stale status.",
-  {},
+  {
+    title: "List active locks",
+    description: "List all active file locks with owner, task, heartbeat, expiry, and stale status.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
   async () => {
     try { return toolResult(await manager.listLocks()); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_request_handoff",
-  "Ask the current owner for permission to take over locked files. Use when hermes_lock_files returns blocked.",
   {
-    requester: Owner,
-    currentOwner: Owner,
-    files: Files,
-    reason: z.string().default(""),
-    taskId: z.string().default("")
+    title: "Request lock handoff",
+    description: "Ask the current owner for permission to take over locked files. Use when hermes_lock_files returns blocked.",
+    inputSchema: {
+      requester: Owner,
+      currentOwner: Owner,
+      files: Files,
+      reason: z.string().default(""),
+      taskId: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try { return toolResult(await manager.requestHandoff(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_approve_handoff",
-  "Approve or deny a handoff request. Only the current lock owner can approve. Approval transfers lock ownership; denial keeps the lock.",
   {
-    owner: Owner,
-    requestId: z.string().min(1),
-    decision: z.enum(["approve", "deny"]).default("approve"),
-    note: z.string().default("")
+    title: "Approve or deny handoff",
+    description: "Approve or deny a handoff request. Only the current lock owner can approve. Approval transfers lock ownership; denial keeps the lock.",
+    inputSchema: {
+      owner: Owner,
+      requestId: z.string().min(1),
+      decision: z.enum(["approve", "deny"]).default("approve"),
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }
   },
   async (args) => {
     try { return toolResult(await manager.approveHandoff(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_recover_stale_locks",
-  "Recover locks whose TTL expired. This is the only safe override path and should be used with evidence.",
   {
-    owner: Owner,
-    files: z.array(z.string()).default([]),
-    note: z.string().default("")
+    title: "Recover stale locks",
+    description: "Recover locks whose TTL expired. This is the only safe override path and should be used with evidence.",
+    inputSchema: {
+      owner: Owner,
+      files: z.array(z.string()).default([]),
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: true }
   },
   async (args) => {
     try { return toolResult(await manager.recoverStaleLocks(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_append_evidence",
-  "Append an evidence entry to the Hermes3D ledger. Use after locks, tests, screenshots, commits, and handoffs.",
   {
-    owner: Owner,
-    taskId: z.string().default(""),
-    kind: z.string().default("note"),
-    summary: z.string().min(1),
-    data: JsonObject
+    title: "Append evidence record",
+    description: "Append a hash-chained evidence entry to the ledger. Use after locks, tests, screenshots, commits, and handoffs.",
+    inputSchema: {
+      owner: Owner,
+      taskId: z.string().default(""),
+      kind: z.string().default("note"),
+      summary: z.string().min(1),
+      data: JsonObject
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }
   },
   async (args) => {
     try { return toolResult(await manager.appendEvidence(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
+  "hermes_verify_evidence",
+  {
+    title: "Verify evidence hash chain",
+    description: "Walk the append-only evidence ledger and verify every entry's prev_hash and entry_hash. Reports first break, total entries, chained vs unchained counts.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
+  async () => {
+    try { return toolResult(await manager.verifyEvidence()); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_list_gates",
-  "List allowed gates. This server does not run arbitrary shell commands.",
-  {},
+  {
+    title: "List allowlisted gates",
+    description: "List allowed gates. This server does not run arbitrary shell commands.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
   async () => toolResult({ ok: true, gates: gates.listGates() })
 );
 
-server.tool(
+registerTool(
   "hermes_run_gate",
-  "Run one allowlisted gate and store the result in the evidence ledger. Unknown commands are rejected.",
   {
-    owner: Owner,
-    gateId: z.string().min(1),
-    cwd: z.string().default("."),
-    env: z.record(z.any()).default({})
+    title: "Run an allowlisted gate",
+    description: "Run one allowlisted gate and store the result in the evidence ledger. Unknown commands are rejected.",
+    inputSchema: {
+      owner: Owner,
+      gateId: z.string().min(1),
+      cwd: z.string().default("."),
+      env: z.record(z.any()).default({})
+    },
+    annotations: { readOnlyHint: false, openWorldHint: true, idempotentHint: false }
   },
   async (args) => {
     try { return toolResult(await gates.runGate(args)); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_read_policy",
-  "Read-only view of orchestrator policy: workspace root, state dir, default TTL, env-var resolution, and safety guarantees.",
-  {},
+  {
+    title: "Read policy",
+    description: "Read-only view of orchestrator policy: workspace root, state dir, default TTL, env-var resolution, and safety guarantees.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
   async () => {
     try { return toolResult(manager.getPolicy()); } catch (err) { return toolError(err); }
   }
 );
 
-server.tool(
+registerTool(
   "hermes_doctor",
-  "Run non-destructive pre-flight checks: workspace exists, state dir is writable, env vars set, git presence, Node version. Returns findings with suggested fixes.",
-  {},
+  {
+    title: "Doctor (pre-flight checks)",
+    description: "Run non-destructive pre-flight checks: workspace exists, state dir is writable, env vars set, git presence, Node version. Returns findings with suggested fixes.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
   async () => {
     try { return toolResult(await manager.doctor()); } catch (err) { return toolError(err); }
   }

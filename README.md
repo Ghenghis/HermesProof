@@ -6,7 +6,7 @@
 
 [![Truth Gates](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml/badge.svg)](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml)
 [![Pages](https://github.com/Ghenghis/HermesProof/actions/workflows/pages.yml/badge.svg)](https://ghenghis.github.io/HermesProof/)
-[![MCP](https://img.shields.io/badge/MCP-2024--11--05-a855f7?style=flat-square)](https://modelcontextprotocol.io)
+[![MCP](https://img.shields.io/badge/MCP-2025--11--25-a855f7?style=flat-square)](https://modelcontextprotocol.io)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-06b6d4?style=flat-square)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](./LICENSE)
 [![Inspired by](https://img.shields.io/badge/inspired%20by-Hermes%20Agent-ec4899?style=flat-square)](https://hermes-agent.nousresearch.com/)
@@ -38,35 +38,40 @@ Every edit flows through six gates, leaving an immutable trail behind.
 06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Every push to `main` re-proves the entire chain through 9 truth gates and commits the refreshed proof bundle back to the repo automatically.
+Every push to `main` re-proves the entire chain through 12 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
 
 ---
 
 ## ✦ Truth gates
 
-The proof harness — `npm run truth-gates` — runs nine independent verifications in sequence, capturing structured evidence at every step.
+The proof harness — `npm run truth-gates` — runs twelve independent verifications in sequence, capturing structured evidence at every step.
 
 <div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running nine gates sequentially" width="100%"/>
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running twelve gates sequentially" width="100%"/>
 </div>
 
-| #   | Gate                        | What it proves                                                                 |
-| --- | --------------------------- | ------------------------------------------------------------------------------ |
-| 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift     |
-| 02  | `deps.parity`               | `package.json` declared deps match the installed ones in `node_modules/`       |
-| 03  | `tests.unit`                | All 12 unit tests pass via direct `node --test` (npm pipe-routing bypassed)    |
-| 04  | `server.stdio_handshake`    | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 15 tools |
-| 05  | `doctor.hermes3d`           | `hermes_doctor` returns `ok: true` against the live workspace                  |
-| 06  | `e2e.multi_agent_flow`      | 14-step real stdio probe: claim → lock → block → handoff → gate → release      |
-| 07  | `workspace.integrity`       | No probe files leaked, no unexpected tracked changes in the workspace          |
-| 08  | `clients.config_presence`   | Claude Desktop, Claude Code, Codex, Windsurf all have `hermes3d-locks` wired   |
-| 09  | `clients.claude_code_live`  | `claude mcp list` reports `hermes3d-locks: ✓ Connected` (round-trip live)      |
+| #   | Gate                                      | What it proves                                                                       |
+| --- | ----------------------------------------- | ------------------------------------------------------------------------------------ |
+| 01  | `source.integrity_manifest`               | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift           |
+| 02  | `deps.parity`                             | `package.json` declared deps match the installed ones in `node_modules/`             |
+| 03  | `tests.unit`                              | All 12 unit tests pass via direct `node --test` (npm pipe-routing bypassed)          |
+| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 16 tools       |
+| 05  | `doctor.hermes3d`                         | `hermes_doctor` returns `ok: true` against the live workspace                        |
+| 06  | `e2e.multi_agent_flow`                    | 14-step real stdio probe: claim → lock → block → handoff → gate → release            |
+| 07  | `workspace.integrity`                     | No probe files leaked, no unexpected tracked changes in the workspace                |
+| 08  | `clients.config_presence`                 | Claude Desktop, Claude Code, Codex, Windsurf all have `hermes3d-locks` wired         |
+| 09  | `clients.claude_code_live`                | `claude mcp list` reports `hermes3d-locks: ✓ Connected` (round-trip live)            |
+| 10  | `server.tool_description_hygiene`         | Tool descriptions free of prompt-injection markers (OWASP MCP tool poisoning)        |
+| 11  | `evidence.hash_chain_valid`               | Round-trips append + verify, including detection of mid-chain tamper at right index  |
+| 12  | `docs.master_prompt_deliverables_present` | All 10 master-prompt design / handoff documents exist, non-empty, with H1 headings   |
 
 Outputs:
 
 - `PROOF/latest.json` — machine-readable evidence (gate-by-gate JSON, manifest hashes, config snapshots)
+- `PROOF/latest.json.cosign.bundle` — Sigstore keyless signature published to Rekor on every `main` push
 - `PROOF_E2E_REPORT.md` — human-readable summary table at the repo root
 - GitHub Actions artifact `proof-<sha>` — 90-day retention
+- GitHub native build-provenance attestation — verifiable with `gh attestation verify PROOF/latest.json --repo Ghenghis/HermesProof`
 
 > Run locally: `npm run truth-gates` · Run CI-only subset: `npm run truth-gates -- --ci` · Read latest: [`PROOF_E2E_REPORT.md`](./PROOF_E2E_REPORT.md)
 
@@ -80,19 +85,21 @@ Single stdio process per workspace, four MCP clients, two persistence surfaces.
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **15 MCP tools** for coordination, gates, and diagnostics:
+The server exposes **16 MCP tools** for coordination, gates, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
 LOCK            lock_files          release_files       heartbeat
 HANDOFF         request_handoff     approve_handoff
 GATE            run_gate            list_gates
-EVIDENCE        append_evidence
+EVIDENCE        append_evidence     verify_evidence
 DIAGNOSTICS     get_state           list_locks          recover_stale_locks
                 doctor              read_policy
 ```
 
-State lives in `<workspace>/.hermes3d_orchestrator/`:
+Each tool ships with MCP `2025-11-25` annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients can render approval prompts that match the actual blast radius — read-only listing tools auto-allow, destructive recovery tools always confirm.
+
+Evidence is hash-chained: every entry binds to the previous via `prev_hash` + canonical-JSON `entry_hash` (sha256), so any after-the-fact rewrite is detected by `hermes_verify_evidence`. State lives in `<workspace>/.hermes3d_orchestrator/`:
 
 ```text
 .hermes3d_orchestrator/

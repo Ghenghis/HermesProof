@@ -1,9 +1,9 @@
 {
-  "run_id": "truth_2026-05-02T22-41-21-775Z",
-  "ts_utc": "2026-05-02T22:41:21.775Z",
-  "duration_ms": 1055,
+  "run_id": "truth_2026-05-02T22-54-13-831Z",
+  "ts_utc": "2026-05-02T22:54:13.831Z",
+  "duration_ms": 1403,
   "ok": true,
-  "pass_count": 6,
+  "pass_count": 8,
   "fail_count": 0,
   "warn_count": 0,
   "skip_count": 4,
@@ -19,7 +19,7 @@
       "duration_ms": 6,
       "evidence": {
         "file_count": 13,
-        "manifest_sha256": "a8b54a4c70fde6b3193a7340f4dbe4731c5756d7b5a7e1b9d7e31f3e94eb5b16"
+        "manifest_sha256": "881ac841b81849948f537d5d29efb3700ea3fe2e1f48529f8e2dc5f6346f8920"
       },
       "details": "13 files hashed"
     },
@@ -30,7 +30,7 @@
       "duration_ms": 1,
       "evidence": {
         "declared": {
-          "@modelcontextprotocol/sdk": "^1.19.0",
+          "@modelcontextprotocol/sdk": "^1.29.0",
           "zod": "^3.24.1"
         },
         "installed": {
@@ -45,12 +45,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 245,
+      "duration_ms": 383,
       "evidence": {
         "exit_code": 0,
         "pass_count": 12,
         "fail_count": 0,
-        "stdout_tail": "✔ Claude and Codex cannot edit the same file without handoff approval (50.7685ms)\n✔ path escape attempts are rejected with workspace-relative error (13.4838ms)\n✔ owner can refresh its own existing lock without conflict (12.5467ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (8.3639ms)\n✔ heartbeat extends expiry of held locks (26.4476ms)\n✔ stale lock recovery archives metadata and clears the lock (16.9846ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.5585ms)\n✔ gate runner rejects cwd that escapes the workspace (1.5361ms)\n✔ doctor() reports errors when workspace_root does not exist (2.2758ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (6.3302ms)\n✔ custom state dir name is honored end-to-end (5.3447ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.3294ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 186.157\n",
+        "stdout_tail": "✔ Claude and Codex cannot edit the same file without handoff approval (61.4153ms)\n✔ path escape attempts are rejected with workspace-relative error (16.0305ms)\n✔ owner can refresh its own existing lock without conflict (18.1858ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (9.5753ms)\n✔ heartbeat extends expiry of held locks (31.8897ms)\n✔ stale lock recovery archives metadata and clears the lock (16.8514ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.6202ms)\n✔ gate runner rejects cwd that escapes the workspace (1.7841ms)\n✔ doctor() reports errors when workspace_root does not exist (2.5858ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (7.0418ms)\n✔ custom state dir name is honored end-to-end (6.3752ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.6778ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 204.6527\n",
         "stderr_tail": ""
       },
       "details": "pass=12, fail=0, exit=0"
@@ -59,12 +59,12 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 244,
+      "duration_ms": 327,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
-        "server_version": "0.1.0",
-        "tool_count": 15,
+        "server_version": "0.3.0",
+        "tool_count": 16,
         "tools": [
           "hermes_append_evidence",
           "hermes_approve_handoff",
@@ -80,10 +80,11 @@
           "hermes_release_files",
           "hermes_release_task",
           "hermes_request_handoff",
-          "hermes_run_gate"
+          "hermes_run_gate",
+          "hermes_verify_evidence"
         ]
       },
-      "details": "15 tools"
+      "details": "16 tools"
     },
     {
       "id": "doctor.hermes3d",
@@ -99,9 +100,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 553,
+      "duration_ms": 665,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-tJ9Zbb",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-R0SJM7",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -196,10 +197,51 @@
       "details": "skipped"
     },
     {
+      "id": "server.tool_description_hygiene",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 1,
+      "evidence": {
+        "findings": [],
+        "file": "src/server.mjs",
+        "bytes": 10876
+      },
+      "details": "0 suspicious patterns"
+    },
+    {
+      "id": "evidence.hash_chain_valid",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 11,
+      "evidence": {
+        "positive": true,
+        "negative": true,
+        "verifyClean": {
+          "ok": true,
+          "total": 3,
+          "chained": 3,
+          "unchained": 0,
+          "first_break": null
+        },
+        "verifyTampered": {
+          "ok": false,
+          "total": 3,
+          "chained": 1,
+          "unchained": 0,
+          "first_break": {
+            "index": 1,
+            "reason": "entry_hash mismatch",
+            "id": "e2"
+          }
+        }
+      },
+      "details": "positive=true, negative_detected_at_idx_1=true"
+    },
+    {
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 3,
+      "duration_ms": 4,
       "evidence": {
         "required_count": 10,
         "findings": [
