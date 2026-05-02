@@ -1,6 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="HermesProof composes with other MCP servers">
-  <title>MCP composition</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="HermesProof composes with other MCP servers" aria-labelledby="mcp-composition-title mcp-composition-desc">
+  <title id="mcp-composition-title">MCP composition</title>
+  <desc id="mcp-composition-desc">HermesProof composes with filesystem MCP and Codex bridges as peer servers, all sharing the same workspace. One agent client connects to three MCP servers — HermesProof governs, filesystem transports, Codex bridge augments — over the shared state directory.</desc>
   <defs>
+    <style>@media (prefers-reduced-motion: reduce){*{animation:none!important;animation-duration:0.001s!important}animate,animateTransform,animateMotion{display:none}}</style>
     <linearGradient id="bgC" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#0a0e27"/>
       <stop offset="100%" stop-color="#13183a"/>

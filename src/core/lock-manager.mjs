@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   addMinutesIso,
+  appendChainedJsonLine,
   appendJsonLine,
   initStateDirs,
   isExpired,
@@ -14,6 +15,7 @@ import {
   shaId,
   statePaths,
   utcNow,
+  verifyChainedLog,
   writeJsonAtomic
 } from "./fs-utils.mjs";
 
@@ -406,9 +408,20 @@ export class HermesLockManager {
       summary,
       data
     };
-    await appendJsonLine(this.paths.evidenceFile, entry);
-    await this.event("evidence.appended", { owner, task_id: taskId || null, evidence_id: entry.id, kind, summary });
-    return { ok: true, status: "recorded", evidence: entry };
+    const chained = await appendChainedJsonLine(this.paths.evidenceFile, entry);
+    await this.event("evidence.appended", {
+      owner,
+      task_id: taskId || null,
+      evidence_id: entry.id,
+      entry_hash: chained.entry_hash,
+      kind,
+      summary
+    });
+    return { ok: true, status: "recorded", evidence: chained };
+  }
+
+  async verifyEvidence() {
+    return await verifyChainedLog(this.paths.evidenceFile);
   }
 
   async getStateSummary() {

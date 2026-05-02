@@ -63,6 +63,105 @@ export async function appendJsonLine(file, value) {
   await fs.appendFile(file, JSON.stringify(value) + "\n", "utf8");
 }
 
+// Deterministic, key-sorted JSON for hash pre-image. Matches the canonical
+// encoding rule used by Hermes3D's PROOF_PROTOCOL.md (UTF-8, sorted keys, no
+// whitespace) so HermesProof attestations interop with Hermes3D ones.
+export function canonicalJSON(obj) {
+  if (obj === null || typeof obj !== "object") return JSON.stringify(obj);
+  if (Array.isArray(obj)) return "[" + obj.map(canonicalJSON).join(",") + "]";
+  const keys = Object.keys(obj).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJSON(obj[k])).join(",") + "}";
+}
+
+// Append a hash-chained entry to an NDJSON log. Each entry includes
+// `prev_hash` (sha256 of the previous chained entry's `entry_hash`, or null
+// for the first chained entry) and `entry_hash` (sha256 of the canonical
+// pre-image including `prev_hash` but excluding `entry_hash` itself).
+//
+// Tampering with any entry (or splicing out a middle entry) breaks the chain
+// and is detected by verifyChainedLog.
+//
+// Note: this assumes a single-process appender (which the MCP server is).
+// Concurrent independent appenders on the same file would race; that is the
+// same coordination problem HermesProof itself solves at the file-lock layer.
+export async function appendChainedJsonLine(file, value) {
+  await ensureDir(path.dirname(file));
+  let prevHash = null;
+  let prevId = null;
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const lines = raw.split("\n").filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const last = JSON.parse(lines[i]);
+        if (last && typeof last.entry_hash === "string") {
+          prevHash = last.entry_hash;
+          prevId = last.id || null;
+          break;
+        }
+      } catch { /* skip malformed */ }
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+  const withChain = { ...value, prev_entry_id: prevId, prev_hash: prevHash };
+  const entryHash = crypto.createHash("sha256").update(canonicalJSON(withChain)).digest("hex");
+  const final = { ...withChain, entry_hash: entryHash };
+  await fs.appendFile(file, JSON.stringify(final) + "\n", "utf8");
+  return final;
+}
+
+// Walk an NDJSON log, validate each entry's hash matches its canonical
+// pre-image, and verify each `prev_hash` links to the previous chained
+// entry. Pre-chain entries (those lacking `entry_hash`) are tolerated and
+// counted as `unchained` — useful when migrating an existing ledger.
+export async function verifyChainedLog(file) {
+  let raw;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return { ok: true, total: 0, chained: 0, unchained: 0, first_break: null };
+    throw err;
+  }
+  const lines = raw.split("\n").filter(Boolean);
+  let chained = 0;
+  let unchained = 0;
+  let lastHash = null;
+  let firstBreak = null;
+  for (let i = 0; i < lines.length; i++) {
+    let entry;
+    try {
+      entry = JSON.parse(lines[i]);
+    } catch (err) {
+      if (firstBreak === null) firstBreak = { index: i, reason: `parse error: ${err.message}` };
+      continue;
+    }
+    if (!entry || typeof entry.entry_hash !== "string" || !("prev_hash" in entry)) {
+      unchained++;
+      continue;
+    }
+    const { entry_hash: stored, ...preimage } = entry;
+    const computed = crypto.createHash("sha256").update(canonicalJSON(preimage)).digest("hex");
+    if (computed !== stored) {
+      if (firstBreak === null) firstBreak = { index: i, reason: "entry_hash mismatch", id: entry.id || null };
+      continue;
+    }
+    if (lastHash !== null && entry.prev_hash !== lastHash) {
+      if (firstBreak === null) firstBreak = { index: i, reason: "prev_hash does not link to previous chained entry", id: entry.id || null };
+      continue;
+    }
+    chained++;
+    lastHash = stored;
+  }
+  return {
+    ok: firstBreak === null,
+    total: lines.length,
+    chained,
+    unchained,
+    first_break: firstBreak
+  };
+}
+
 export function shaId(input, len = 24) {
   return crypto.createHash("sha256").update(input).digest("hex").slice(0, len);
 }
@@ -93,6 +192,17 @@ export function normalizeWorkspacePath(workspaceRoot, requestedPath) {
   }
   const trimmed = requestedPath.trim().replace(/\\/g, "/");
   if (trimmed.includes("\0")) throw new Error("file path contains null byte");
+  if (/[\x01-\x1f\x7f]/.test(trimmed)) throw new Error("file path contains control characters");
+  if (trimmed.includes("~")) throw new Error("file path may not contain '~'");
+
+  // Reject NTFS Alternate Data Stream syntax (filename:stream). The drive
+  // letter case (e.g. `C:/foo`) is handled by `path.isAbsolute` and the
+  // workspace-escape check below — here we look for `:` AFTER the leading
+  // path component, which on POSIX is also nonsense.
+  const afterDrive = trimmed.replace(/^[A-Za-z]:/, "");
+  if (afterDrive.includes(":")) {
+    throw new Error(`file path contains ':' (NTFS ADS or invalid POSIX): ${requestedPath}`);
+  }
 
   const absolute = path.isAbsolute(trimmed)
     ? path.resolve(trimmed)

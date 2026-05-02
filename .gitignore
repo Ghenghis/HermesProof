@@ -12,6 +12,11 @@ Thumbs.db
 .kilo/
 .idea/
 .vscode/
+.claude/
+
+# Sample VS Code config inside examples/ is intentional — track it.
+!examples/**/.vscode/
+!examples/**/.vscode/*
 *.log
 *.tmp
 *.swp

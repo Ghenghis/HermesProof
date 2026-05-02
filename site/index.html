@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="x-ua-compatible" content="ie=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>HermesProof — verifiable multi-agent coordination over MCP</title>
+<meta name="description" content="HermesProof is the file-lock and proof layer that lets Claude, Codex, Windsurf and Cascade collaborate on the same repository without clobbering each other. Per-file locks, atomic handoffs, allowlisted gates, append-only evidence ledger, and a 9-gate truth bundle re-attested on every push." />
+<meta name="theme-color" content="#0a0e27" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="HermesProof — verifiable multi-agent coordination over MCP" />
+<meta property="og:description" content="Per-file locks, atomic handoffs, and an attested proof bundle for Claude · Codex · Windsurf working on the same repository." />
+<meta property="og:image" content="https://github.com/Ghenghis/HermesProof/raw/main/docs/diagrams/hero.svg" />
+<meta property="og:url" content="https://ghenghis.github.io/HermesProof/" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%23a855f7'/><stop offset='100%25' stop-color='%2306b6d4'/></linearGradient></defs><polygon points='32,4 56,18 56,46 32,60 8,46 8,18' fill='none' stroke='url(%23g)' stroke-width='3'/><path d='M22 22 L22 42 M42 22 L42 42 M22 32 L42 32' stroke='%23e0e7ff' stroke-width='3' stroke-linecap='round'/></svg>" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+<!-- ============================================================ NAV -->
+<nav class="nav" aria-label="Primary">
+  <div class="nav__inner">
+    <a class="nav__brand" href="#top" aria-label="HermesProof home">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id="navg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#a855f7"><animate attributeName="stop-color" values="#a855f7;#06b6d4;#ec4899;#a855f7" dur="6s" repeatCount="indefinite"/></stop>
+            <stop offset="100%" stop-color="#06b6d4"><animate attributeName="stop-color" values="#06b6d4;#ec4899;#a855f7;#06b6d4" dur="6s" repeatCount="indefinite"/></stop>
+          </linearGradient>
+        </defs>
+        <polygon points="32,4 56,18 56,46 32,60 8,46 8,18" fill="none" stroke="url(#navg)" stroke-width="3"/>
+        <path d="M22 22 L22 42 M42 22 L42 42 M22 32 L42 32" stroke="#e0e7ff" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      HermesProof
+    </a>
+    <div class="nav__links">
+      <a href="#pipeline">Pipeline</a>
+      <a href="#gates">Truth Gates</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#agents">Agents</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="https://github.com/Ghenghis/HermesProof" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav__cta" href="#quickstart">Install</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+
+<!-- ============================================================ HERO -->
+<section class="hero container">
+  <div class="hero__pills reveal">
+    <span class="pill pill--green"><span class="dot"></span>truth-gates 9 / 9 PASS</span>
+    <span class="pill pill--purple"><span class="dot"></span>15 MCP tools</span>
+    <span class="pill pill--cyan"><span class="dot"></span>4 clients wired</span>
+    <span class="pill pill--pink"><span class="dot"></span>SHA-256 attested</span>
+  </div>
+  <h1 class="hero__title reveal">
+    <span class="gradient-text">Verifiable</span><br/>
+    multi-agent coordination<br/>
+    over <span class="gradient-text">MCP</span>.
+  </h1>
+  <p class="hero__sub reveal">
+    Per-file locks, atomic handoffs, and an attested proof bundle for
+    <strong>Claude · Codex · Windsurf · Cascade</strong> editing the same repository — without
+    stepping on each other.
+  </p>
+  <div class="hero__cta reveal">
+    <a class="btn btn--primary" href="#quickstart">Install in 60 seconds →</a>
+    <a class="btn btn--ghost" href="https://github.com/Ghenghis/HermesProof" target="_blank" rel="noopener">View on GitHub</a>
+    <a class="btn btn--ghost" href="https://github.com/Ghenghis/HermesProof/blob/main/PROOF_E2E_REPORT.md" target="_blank" rel="noopener">Read the proof</a>
+  </div>
+  <div class="diagram hero__diagram reveal">
+    <img src="./diagrams/hero.svg" alt="Animated HermesProof banner — verifiable multi-agent coordination" />
+  </div>
+</section>
+
+<!-- ============================================================ PROBLEM -->
+<section id="problem" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">The problem</span>
+    <h2>Three agents. One repository. Zero coordination.</h2>
+    <p class="lead">
+      You've wired Claude, Codex and Windsurf into the same workspace. They're powerful — but they don't know about each other.
+      The first time two of them touch the same file at the same time, things break silently.
+    </p>
+  </div>
+  <div class="grid grid-3">
+    <div class="card card--pink reveal">
+      <div class="card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+      <h3>Race conditions</h3>
+      <p>Two agents save the same file within milliseconds. The second write silently overwrites the first. No warning, no log, no recovery.</p>
+    </div>
+    <div class="card card--amber reveal">
+      <div class="card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></div>
+      <h3>No audit trail</h3>
+      <p>Who edited what, when, and on whose authority? Standard MCP servers don't say. You're left reading <code>git log</code> and guessing.</p>
+    </div>
+    <div class="card card--cyan reveal">
+      <div class="card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg></div>
+      <h3>Coordination chaos</h3>
+      <p>"Hand this off to Codex" is a vibe, not a protocol. Without explicit ownership, agents over-edit each other or freeze waiting for permission that never comes.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ SOLUTION -->
+<section id="solution" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">The solution</span>
+    <h2>One MCP server. Three guarantees. Every push re-proven.</h2>
+  </div>
+  <div class="grid grid-3">
+    <div class="card card--green reveal">
+      <div class="card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+      <h3>Atomic per-file locks</h3>
+      <p>Acquired via <code>mkdir(EEXIST)</code> on a content-hashed directory. Two agents racing for the same file: one wins, the other gets a structured "blocked" with the current owner. Always.</p>
+    </div>
+    <div class="card card--purple reveal">
+      <div class="card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></div>
+      <h3>Append-only evidence</h3>
+      <p>Every state change — lock acquired, handoff requested, gate run — appended to two NDJSON ledgers with stable IDs and timestamps. You can replay the entire session.</p>
+    </div>
+    <div class="card card--pink reveal">
+      <div class="card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+      <h3>Truth-gate proof bundle</h3>
+      <p>Nine independent verifications run on every push. If any required gate fails, CI fails. If all pass, a fresh <code>PROOF/latest.json</code> is committed back. The repo proves itself.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ PIPELINE -->
+<section id="pipeline" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">End-to-end</span>
+    <h2>Six stages. Immutable evidence at every one.</h2>
+    <p>An edit travels from <em>intent</em> to <em>attestation</em> through six logical stages. Each writes append-only evidence; nothing is silently mutated.</p>
+  </div>
+  <div class="diagram reveal">
+    <img src="./diagrams/pipeline-flow.svg" alt="Animated end-to-end pipeline diagram with six stages: intent, claim, work, handoff, verify, attest" />
+  </div>
+  <div class="stage-strip reveal">
+    <div class="stage"><span>01 INTENT</span><strong>Agent</strong>"I want to edit X"</div>
+    <div class="stage"><span>02 CLAIM</span><strong>lock_files</strong>atomic mkdir EEXIST</div>
+    <div class="stage"><span>03 WORK</span><strong>edit + heartbeat</strong>others see "blocked"</div>
+    <div class="stage"><span>04 HANDOFF</span><strong>request + approve</strong>explicit consent</div>
+    <div class="stage"><span>05 VERIFY</span><strong>run_gate</strong>allowlisted only</div>
+    <div class="stage"><span>06 ATTEST</span><strong>evidence + release</strong>append-only ledger</div>
+  </div>
+  <div class="grid grid-2" style="margin-top: 32px;">
+    <div class="reveal">
+      <h3>Persisted artifacts</h3>
+      <p>Two NDJSON ledgers in the workspace, plus a regenerated proof bundle on every push.</p>
+      <ul style="font-family: var(--mono); font-size: 13px; color: var(--text-dim); list-style: none; padding: 0;">
+        <li><span style="color: var(--green-2);">events.ndjson</span> — every state change appended</li>
+        <li><span style="color: var(--green-2);">evidence/ledger.ndjson</span> — gates · attestations · timestamps</li>
+        <li><span style="color: var(--purple-2);">PROOF/latest.json</span> — 9-gate truth bundle</li>
+        <li><span style="color: var(--cyan-2);">PROOF_E2E_REPORT.md</span> — human-readable summary</li>
+      </ul>
+    </div>
+    <div class="terminal reveal">
+      <div class="terminal__head"><div class="terminal__dots"><span></span><span></span><span></span></div><span class="terminal__title">events.ndjson</span></div>
+      <div class="terminal__body"><span class="c-dim">{"ts":"2026-05-02T20:34:11.812Z","type":</span><span class="c-purple">"task.claimed"</span><span class="c-dim">,"task":"CP-UX-A","owner":"codex-impl-01"}
+{"ts":"2026-05-02T20:34:12.044Z","type":</span><span class="c-purple">"lock.acquired"</span><span class="c-dim">,"path":"src/tabs/Dashboard.tsx","owner":"codex-impl-01"}
+{"ts":"2026-05-02T20:35:08.901Z","type":</span><span class="c-warn">"lock.blocked"</span><span class="c-dim">,"path":"src/tabs/Dashboard.tsx","requester":"claude-reviewer-ux"}
+{"ts":"2026-05-02T20:35:14.220Z","type":</span><span class="c-pink">"handoff.requested"</span><span class="c-dim">,"id":"h-7f3a","from":"claude-reviewer-ux","to":"codex-impl-01"}
+{"ts":"2026-05-02T20:36:02.611Z","type":</span><span class="c-ok">"handoff.approved"</span><span class="c-dim">,"id":"h-7f3a"}
+{"ts":"2026-05-02T20:36:02.612Z","type":</span><span class="c-ok">"lock.transferred"</span><span class="c-dim">,"path":"src/tabs/Dashboard.tsx","new_owner":"claude-reviewer-ux"}
+{"ts":"2026-05-02T20:38:41.103Z","type":</span><span class="c-purple">"gate.run"</span><span class="c-dim">,"gate":"git-diff-check","exit":0}
+{"ts":"2026-05-02T20:38:41.580Z","type":</span><span class="c-ok">"evidence.appended"</span><span class="c-dim">,"summary":"Dashboard.tsx review complete"}
+{"ts":"2026-05-02T20:38:41.612Z","type":</span><span class="c-ok">"lock.released"</span><span class="c-dim">,"path":"src/tabs/Dashboard.tsx"}</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ TRUTH GATES -->
+<section id="gates" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Truth gates</span>
+    <h2>Nine independent attestations. One exit code.</h2>
+    <p><code>npm run truth-gates</code> runs nine verifications in sequence. <strong>Exit 0 only when every required gate passes.</strong> Output is structured (<code>PROOF/latest.json</code>) and human-readable (<code>PROOF_E2E_REPORT.md</code>).</p>
+  </div>
+  <div class="diagram reveal">
+    <img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline animation showing nine gates running sequentially" />
+  </div>
+
+  <div class="gates" style="margin-top: 32px;">
+    <div class="gate reveal">
+      <div class="gate__num">01</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>source.integrity_manifest</h4>
+      <p>SHA-256 manifest of every file under <code>src/</code> and <code>scripts/</code>. Tampering surfaces as a manifest-hash drift.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">02</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>deps.parity</h4>
+      <p>Every dep in <code>package.json</code> is installed in <code>node_modules/</code>. Drift between declared and installed = fail.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">03</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>tests.unit</h4>
+      <p>All 12 unit tests pass via direct <code>node --test</code>. We bypass <code>npm test</code> so reporter output isn't lost in pipe routing.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">04</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>server.stdio_handshake</h4>
+      <p>Real <code>node src/server.mjs</code> spawns. Performs MCP <code>initialize</code> and <code>tools/list</code>. Returns 15 named tools.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">05</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>doctor.hermes3d</h4>
+      <p>Non-destructive workspace probe: env vars, git presence, Node version, state-dir writability. Must report <code>ok: true</code>.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">06</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>e2e.multi_agent_flow</h4>
+      <p>14-step real stdio probe in a temp git sandbox: claim → lock → block → handoff → gate → release. Each step asserted.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">07</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>workspace.integrity</h4>
+      <p>After all probes, <code>git status --porcelain</code> shows no leaked files and no unexpected modifications.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">08</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>clients.config_presence</h4>
+      <p>Claude Desktop, Claude Code, Codex, and Windsurf all have the <code>hermes3d-locks</code> server wired with the right workspace.</p>
+    </div>
+    <div class="gate reveal">
+      <div class="gate__num">09</div>
+      <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h4>clients.claude_code_live</h4>
+      <p><code>claude mcp list</code> reports <code>hermes3d-locks: ✓ Connected</code> — round-trip server reachability.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ ARCHITECTURE -->
+<section id="architecture" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Architecture</span>
+    <h2>One stdio process. Fifteen tools. Two persistence surfaces.</h2>
+    <p>HermesProof is intentionally small — a single Node process per workspace that speaks JSON-RPC over stdio. Its only side effects are inside one hidden directory.</p>
+  </div>
+  <div class="diagram reveal">
+    <img src="./diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" />
+  </div>
+
+  <div class="tools-grid">
+    <div class="tool-group reveal">
+      <h4>CLAIM / RELEASE</h4>
+      <ul><li>hermes_claim_task</li><li>hermes_release_task</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>LOCK</h4>
+      <ul><li>hermes_lock_files</li><li>hermes_release_files</li><li>hermes_heartbeat</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>HANDOFF</h4>
+      <ul><li>hermes_request_handoff</li><li>hermes_approve_handoff</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>GATES</h4>
+      <ul><li>hermes_run_gate</li><li>hermes_list_gates</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>EVIDENCE</h4>
+      <ul><li>hermes_append_evidence</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>DIAGNOSTICS</h4>
+      <ul><li>hermes_get_state</li><li>hermes_list_locks</li><li>hermes_recover_stale_locks</li><li>hermes_doctor</li><li>hermes_read_policy</li></ul>
+    </div>
+  </div>
+
+  <div style="margin-top: 40px;" class="reveal">
+    <h3 style="text-align: center;">Workspace state directory</h3>
+    <p style="text-align: center; max-width: 640px; margin: 0 auto 20px;">A single hidden directory inside your workspace. Self-contained, append-only where it matters, atomic where it counts.</p>
+    <div class="codeblock"><pre>.hermes3d_orchestrator/
+├── locks/                      <span style="color: var(--text-faint)">one directory per locked file (mkdir EEXIST = atomic acquire)</span>
+│   └── &lt;sha256-of-path&gt;/
+│       └── metadata.json       <span style="color: var(--text-faint)">{ owner, role, ttl, claimedAt, lastHeartbeat }</span>
+├── tasks/                      <span style="color: var(--text-faint)">active task records by id</span>
+├── handoffs/                   <span style="color: var(--text-faint)">pending + decided handoff requests</span>
+├── evidence/
+│   └── ledger.ndjson           <span style="color: var(--text-faint)">append-only attestation log</span>
+└── events.ndjson               <span style="color: var(--text-faint)">append-only event stream</span></pre></div>
+  </div>
+</section>
+
+<!-- ============================================================ AGENTS -->
+<section id="agents" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Multi-agent coordination</span>
+    <h2>Four roles. One contract.</h2>
+    <p>The reference deployment splits work across three agent personas plus the server. Ownership is enforced — not by convention, by the server.</p>
+  </div>
+  <div class="diagram reveal">
+    <img src="./diagrams/multi-agent-flow.svg" alt="Multi-agent sequence diagram showing Claude lead, Codex implementer, Claude reviewer, and HermesProof server coordinating an edit with handoff" />
+  </div>
+  <div class="personas">
+    <div class="persona persona--lead reveal">
+      <div class="persona__avatar">CL</div>
+      <h3>Claude Lead</h3>
+      <small>ARCHITECT</small>
+      <ul>
+        <li>Owns docs, contracts, scope locks</li>
+        <li>Writes review prompts</li>
+        <li>Drafts evidence summaries</li>
+        <li>Reads code (read-only)</li>
+      </ul>
+    </div>
+    <div class="persona persona--impl reveal">
+      <div class="persona__avatar">CX</div>
+      <h3>Codex Impl</h3>
+      <small>EXECUTION</small>
+      <ul>
+        <li>Owns code (.tsx / .ts / .py / .mjs)</li>
+        <li>Runs gates (git, npm, npx)</li>
+        <li>Reads docs (read-only)</li>
+        <li>Approves / denies handoffs</li>
+      </ul>
+    </div>
+    <div class="persona persona--review reveal">
+      <div class="persona__avatar">CR</div>
+      <h3>Claude Reviewer</h3>
+      <small>AUDIT</small>
+      <ul>
+        <li>Owns correction packets</li>
+        <li>Surgical patches via handoff</li>
+        <li>Writes review notes</li>
+        <li>Read-only by default</li>
+      </ul>
+    </div>
+    <div class="persona persona--server reveal">
+      <div class="persona__avatar">HP</div>
+      <h3>HermesProof</h3>
+      <small>GOVERNANCE</small>
+      <ul>
+        <li>Atomic per-file locks</li>
+        <li>Mediates handoffs</li>
+        <li>Runs allowlisted gates</li>
+        <li>Writes the evidence ledger</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ LIFECYCLE -->
+<section id="lifecycle" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Lock lifecycle</span>
+    <h2>A four-state machine, deliberately minimal.</h2>
+    <p>Each tracked file is in exactly one of four states. Transitions are atomic, observable, and — except for stale recovery — require explicit consent.</p>
+  </div>
+  <div class="diagram reveal">
+    <img src="./diagrams/lock-lifecycle.svg" alt="Lock lifecycle states: unlocked, held by A, handoff pending, held by B" />
+  </div>
+  <div class="grid grid-2" style="margin-top: 24px;">
+    <div class="reveal">
+      <h3>State transitions</h3>
+      <ul style="list-style: none; padding: 0; margin: 0;">
+        <li style="padding: 8px 0; border-bottom: 1px solid var(--line);"><strong style="color: var(--text-dim); font-family: var(--mono); font-size: 12px;">UNLOCKED → HELD(A)</strong> &nbsp;<span style="color: var(--text-dim);"><code>lock_files</code> wins via <code>mkdir EEXIST</code></span></li>
+        <li style="padding: 8px 0; border-bottom: 1px solid var(--line);"><strong style="color: var(--text-dim); font-family: var(--mono); font-size: 12px;">HELD(A) → HELD(A)</strong> &nbsp;<span style="color: var(--text-dim);"><code>heartbeat</code> extends TTL while work continues</span></li>
+        <li style="padding: 8px 0; border-bottom: 1px solid var(--line);"><strong style="color: var(--text-dim); font-family: var(--mono); font-size: 12px;">HELD(A) → HANDOFF_PENDING</strong> &nbsp;<span style="color: var(--text-dim);">B calls <code>request_handoff</code></span></li>
+        <li style="padding: 8px 0; border-bottom: 1px solid var(--line);"><strong style="color: var(--text-dim); font-family: var(--mono); font-size: 12px;">HANDOFF_PENDING → HELD(B)</strong> &nbsp;<span style="color: var(--text-dim);">A calls <code>approve_handoff(approve)</code></span></li>
+        <li style="padding: 8px 0; border-bottom: 1px solid var(--line);"><strong style="color: var(--text-dim); font-family: var(--mono); font-size: 12px;">HANDOFF_PENDING → HELD(A)</strong> &nbsp;<span style="color: var(--text-dim);">A calls <code>approve_handoff(deny)</code></span></li>
+        <li style="padding: 8px 0;"><strong style="color: var(--text-dim); font-family: var(--mono); font-size: 12px;">HELD(*) → UNLOCKED</strong> &nbsp;<span style="color: var(--text-dim);"><code>release_files</code> by owner, or <code>recover_stale_locks</code> after TTL</span></li>
+      </ul>
+    </div>
+    <div class="reveal">
+      <h3>Why so few states?</h3>
+      <p>Every additional state is a place for a bug to hide. HermesProof has exactly the states required to prove the safety properties:</p>
+      <ul style="color: var(--text-dim); font-size: 14.5px; padding-left: 22px;">
+        <li><strong style="color: var(--green-2);">Mutual exclusion</strong> — at most one holder at any time.</li>
+        <li><strong style="color: var(--green-2);">Explicit transfer</strong> — ownership moves only via approved handoff.</li>
+        <li><strong style="color: var(--green-2);">No silent override</strong> — recovery requires a TTL expiry plus an explicit call, both logged.</li>
+        <li><strong style="color: var(--green-2);">Auditability</strong> — every transition is a line in <code>events.ndjson</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ COMPOSITION -->
+<section id="composition" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Composition</span>
+    <h2>HermesProof governs. It doesn't replace.</h2>
+    <p>Run it alongside the MCP servers you already have. HermesProof is intentionally narrow — it owns coordination state and nothing else.</p>
+  </div>
+  <div class="diagram reveal">
+    <img src="./diagrams/mcp-composition.svg" alt="HermesProof composes with filesystem MCP and Codex bridges as peer servers, all sharing the same workspace" />
+  </div>
+  <table class="compare reveal">
+    <thead>
+      <tr><th>Concern</th><th>Server</th><th>Provided here</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Per-file locks · handoffs · evidence</td><td><code>hermesproof</code></td><td class="yes">✓ this repo</td></tr>
+      <tr><td>Read / write / list files</td><td><code>@modelcontextprotocol/server-filesystem</code></td><td class="no">external — coexists</td></tr>
+      <tr><td>Claude → Codex bridge</td><td><code>openai/codex-plugin-cc</code> · <code>cexll/codex-mcp-server</code></td><td class="no">external — coexists</td></tr>
+      <tr><td>Multi-agent spawning / routing</td><td><code>ruvnet/claude-flow</code></td><td class="no">external — runs above</td></tr>
+      <tr><td>Spawning · model selection · prompt routing</td><td>—</td><td class="no">deliberately out of scope</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ LIVE DEMO -->
+<section id="demo" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Live demo</span>
+    <h2>What <code>npm run truth-gates</code> looks like.</h2>
+    <p>Real output from the harness. This runs locally in ~14 seconds and on every push.</p>
+  </div>
+  <div class="terminal reveal" style="max-width: 880px; margin: 0 auto;">
+    <div class="terminal__head"><div class="terminal__dots"><span></span><span></span><span></span></div><span class="terminal__title">truth-gates · live</span></div>
+    <div class="terminal__body" data-terminal></div>
+  </div>
+</section>
+
+<!-- ============================================================ QUICKSTART -->
+<section id="quickstart" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Quickstart</span>
+    <h2>Five commands. Sixty seconds.</h2>
+    <p>Copy, paste, you're wired. The installer writes timestamped backups before touching any client config.</p>
+  </div>
+  <div data-tabs class="reveal" style="max-width: 920px; margin: 0 auto;">
+    <div class="tabs__bar">
+      <button class="tab is-active" data-target="win">WINDOWS · POWERSHELL</button>
+      <button class="tab" data-target="mac">MACOS · BASH/ZSH</button>
+      <button class="tab" data-target="lin">LINUX · BASH</button>
+    </div>
+    <div class="tab-panel is-active" data-panel="win">
+      <div class="codeblock"><pre>git clone https://github.com/Ghenghis/HermesProof.git
+cd HermesProof
+npm install
+
+npm run truth-gates                                                # 9/9 gates against your machine
+npm test                                                           # 12 unit tests
+npm run doctor -- --workspace G:\Github\Hermes3D                   # readiness probe (read-only)
+
+npm run init-project    -- --workspace G:\Github\Hermes3D
+npm run install-clients -- --workspace G:\Github\Hermes3D
+
+claude mcp list                                                    # expect "hermes3d-locks: ✓ Connected"</pre></div>
+    </div>
+    <div class="tab-panel" data-panel="mac">
+      <div class="codeblock"><pre>git clone https://github.com/Ghenghis/HermesProof.git
+cd HermesProof
+npm install
+
+npm run truth-gates                                                # 9/9 gates against your machine
+npm test                                                           # 12 unit tests
+npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
+
+npm run init-project    -- --workspace ~/projects/your-repo
+npm run install-clients -- --workspace ~/projects/your-repo
+
+claude mcp list                                                    # expect "hermes3d-locks: ✓ Connected"</pre></div>
+    </div>
+    <div class="tab-panel" data-panel="lin">
+      <div class="codeblock"><pre>git clone https://github.com/Ghenghis/HermesProof.git
+cd HermesProof
+npm install
+
+npm run truth-gates                                                # 9/9 gates against your machine
+npm test                                                           # 12 unit tests
+npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
+
+npm run init-project    -- --workspace ~/projects/your-repo
+npm run install-clients -- --workspace ~/projects/your-repo
+
+claude mcp list                                                    # expect "hermes3d-locks: ✓ Connected"</pre></div>
+    </div>
+  </div>
+  <p class="reveal" style="text-align: center; margin-top: 24px; color: var(--text-dim);">After step 4, restart Claude Desktop and Codex; refresh MCP servers in Cascade. Project-agnostic — point <code>--workspace</code> anywhere.</p>
+</section>
+
+<!-- ============================================================ CLIENTS -->
+<section id="clients" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Client matrix</span>
+    <h2>Four clients. One config command.</h2>
+    <p><code>npm run install-clients</code> writes all of them with timestamped backups. Manual JSON shown for reference.</p>
+  </div>
+  <div class="clients">
+    <div class="client reveal">
+      <div class="client__head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/></svg>
+        <div><h3>Claude Desktop</h3><small>%APPDATA%\Claude\claude_desktop_config.json</small></div>
+      </div>
+      <div class="codeblock"><pre>{
+  "mcpServers": {
+    "hermes3d-locks": {
+      "command": "node",
+      "args": ["G:\\Github\\HermesProof\\src\\server.mjs"],
+      "env": { "MCP_LOCK_WORKSPACE": "G:\\Github\\Hermes3D" }
+    }
+  }
+}</pre></div>
+    </div>
+    <div class="client reveal">
+      <div class="client__head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <div><h3>Claude Code</h3><small>CLI</small></div>
+      </div>
+      <div class="codeblock"><pre>claude mcp add --transport stdio hermes3d-locks --scope user `
+  --env MCP_LOCK_WORKSPACE="G:\Github\Hermes3D" `
+  -- node "G:\Github\HermesProof\src\server.mjs"</pre></div>
+    </div>
+    <div class="client reveal">
+      <div class="client__head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+        <div><h3>Codex</h3><small>~/.codex/config.toml</small></div>
+      </div>
+      <div class="codeblock"><pre>[mcp_servers.hermes3d-locks]
+command = "node"
+args = ["G:\\Github\\HermesProof\\src\\server.mjs"]
+env = { MCP_LOCK_WORKSPACE = "G:\\Github\\Hermes3D" }
+enabled = true
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+# keep serialized — do not enable parallel tool calls</pre></div>
+    </div>
+    <div class="client reveal">
+      <div class="client__head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        <div><h3>Windsurf · Cascade</h3><small>~/.codeium/windsurf/mcp_config.json</small></div>
+      </div>
+      <div class="codeblock"><pre>{
+  "mcpServers": {
+    "hermes3d-locks": {
+      "command": "node",
+      "args": ["G:\\Github\\HermesProof\\src\\server.mjs"],
+      "env": { "MCP_LOCK_WORKSPACE": "G:\\Github\\Hermes3D" }
+    }
+  }
+}</pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ STATS -->
+<section id="stats" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">By the numbers</span>
+    <h2>Small surface. Strong guarantees.</h2>
+  </div>
+  <div class="stats">
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="9">0</span></div><div class="stat__label">Truth gates</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="15">0</span></div><div class="stat__label">MCP tools</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="4">0</span></div><div class="stat__label">Clients wired</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="14.2" data-decimals="1" data-suffix="s">0</span></div><div class="stat__label">Full proof time</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="12">0</span></div><div class="stat__label">Unit tests</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="14">0</span></div><div class="stat__label">E2E assertions</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="90" data-suffix="m">0</span></div><div class="stat__label">Default lock TTL</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="0">0</span></div><div class="stat__label">Shell injections</div></div>
+  </div>
+</section>
+
+<!-- ============================================================ FAQ -->
+<section id="faq" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">FAQ</span>
+    <h2>Questions you'd actually ask.</h2>
+  </div>
+  <div class="faq reveal">
+    <details>
+      <summary>Why not just use file system locks (<code>flock</code>, <code>LockFileEx</code>)?</summary>
+      <div>
+        <p>Filesystem locks are tied to a process and are <em>advisory</em> on every major OS. An agent that crashes leaves a stuck lock; an agent that doesn't check the lock just walks past it. HermesProof keeps the lock state in a separate, observable directory with TTL metadata, so any agent can list locks at any moment and know exactly who owns what.</p>
+        <p>You also can't <em>audit</em> a kernel lock. Every HermesProof transition is a line in <code>events.ndjson</code> — replayable, diffable, attestable.</p>
+      </div>
+    </details>
+    <details>
+      <summary>Does this slow agents down?</summary>
+      <div><p>No. The hot path is one <code>mkdir</code> + one <code>writeFileSync</code> on the agent's own machine. Sub-millisecond. The slow part of multi-agent work was always coordination overhead — the time wasted re-doing each other's edits, fixing merge conflicts, asking "are you done?". HermesProof removes that.</p></div>
+    </details>
+    <details>
+      <summary>What happens if an agent crashes mid-edit?</summary>
+      <div><p>The lock metadata stays on disk. Other agents see it via <code>list_locks</code>, including its <code>expires_utc</code>. Once the TTL passes (default 90 minutes), any agent can call <code>recover_stale_locks</code>. The recovery itself is logged. There is no silent override path.</p></div>
+    </details>
+    <details>
+      <summary>Can it run arbitrary shell commands?</summary>
+      <div><p>No. <code>hermes_run_gate</code> only accepts gate IDs from a hardcoded allowlist (<code>git-status</code>, <code>npm-test</code>, <code>npm-audit</code>, etc.). The actual command + args are constants in source. <code>spawn</code> is called with <code>shell: false</code>. There is no path for user-supplied commands or arguments to reach <code>spawn</code>.</p></div>
+    </details>
+    <details>
+      <summary>Is it project-specific?</summary>
+      <div><p>Despite the name, no. The deployed MCP server name is <code>hermes3d-locks</code> (preserved for already-wired clients), but the package itself works against any workspace. Just point <code>MCP_LOCK_WORKSPACE</code> at the repo you want to govern. See <a href="https://github.com/Ghenghis/HermesProof/blob/main/docs/SETUP_GENERIC_PROJECT.md" target="_blank" rel="noopener">SETUP_GENERIC_PROJECT.md</a>.</p></div>
+    </details>
+    <details>
+      <summary>How is it different from Hermes Agent (Nous Research)?</summary>
+      <div><p>Hermes Agent <em>reasons and acts</em>. HermesProof <em>governs and attests</em>. Where Nous's hermes-agent uses tool-calling to drive an autonomous workflow, HermesProof is the layer that lets multiple Hermes-class agents <strong>cooperate on a real codebase</strong> without overwriting each other's work. Same lineage, different rung of the stack.</p></div>
+    </details>
+    <details>
+      <summary>Why is the GitHub server name <code>hermes3d-locks</code> instead of <code>hermesproof</code>?</summary>
+      <div><p>The MCP server name is what every connected client (Claude Desktop, Claude Code, Codex, Windsurf) recorded in its config the first time it was wired. Renaming would break all four installs. The package binary is <code>hermesproof</code>; the over-the-wire server name stays <code>hermes3d-locks</code> for backwards compatibility. New servers may want to start fresh.</p></div>
+    </details>
+    <details>
+      <summary>What's the license?</summary>
+      <div><p>MIT. Use it however you like; credit appreciated, not required.</p></div>
+    </details>
+  </div>
+</section>
+
+<!-- ============================================================ CTA -->
+<section id="cta" class="container" style="text-align: center;">
+  <div class="reveal">
+    <h2>Wire it in. Run the proof. Trust the bundle.</h2>
+    <p style="margin: 0 auto 28px; font-size: 1.1rem;">Every push to your repo re-attests the full chain. The proof is committed back as a normal file. No external service, no signing keys, no tokens to rotate.</p>
+    <div class="hero__cta">
+      <a class="btn btn--primary" href="https://github.com/Ghenghis/HermesProof" target="_blank" rel="noopener">Star on GitHub</a>
+      <a class="btn btn--ghost" href="https://github.com/Ghenghis/HermesProof/blob/main/PROOF/latest.json" target="_blank" rel="noopener">View latest proof</a>
+      <a class="btn btn--ghost" href="https://github.com/Ghenghis/HermesProof/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">Read the architecture</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============================================================ FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__brand">HermesProof</div>
+    <p>Verifiable multi-agent coordination over MCP.</p>
+    <div class="footer__links">
+      <a href="https://github.com/Ghenghis/HermesProof" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Ghenghis/HermesProof/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">Architecture</a>
+      <a href="https://github.com/Ghenghis/HermesProof/blob/main/docs/LOCK_PROTOCOL.md" target="_blank" rel="noopener">Lock Protocol</a>
+      <a href="https://github.com/Ghenghis/HermesProof/blob/main/docs/TOOL_REFERENCE.md" target="_blank" rel="noopener">Tool Reference</a>
+      <a href="https://github.com/Ghenghis/HermesProof/blob/main/docs/SECURITY_POLICY.md" target="_blank" rel="noopener">Security</a>
+      <a href="https://github.com/Ghenghis/HermesProof/blob/main/PROOF_E2E_REPORT.md" target="_blank" rel="noopener">Latest Proof</a>
+    </div>
+    <p class="footer__credit">
+      Inspired by the <a href="https://hermes-agent.nousresearch.com/" target="_blank" rel="noopener">Hermes Agent</a> lineage from <a href="https://nousresearch.com/" target="_blank" rel="noopener">Nous Research</a> · MIT licensed
+    </p>
+  </div>
+</footer>
+
+<script src="./app.js"></script>
+</body>
+</html>

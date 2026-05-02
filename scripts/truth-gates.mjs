@@ -241,7 +241,8 @@ const expectedTools = [
   "hermes_release_files",
   "hermes_release_task",
   "hermes_request_handoff",
-  "hermes_run_gate"
+  "hermes_run_gate",
+  "hermes_verify_evidence"
 ];
 
 // ----------------------------------------------------------------------------
@@ -611,6 +612,143 @@ if (!shouldSkip("clients.claude_code_live")) {
       exit_code: result.status,
       matched_line: line
     }, connected ? "Connected" : `not connected (line: ${line || "<missing>"})`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 10: tool description hygiene — lints src/server.mjs for prompt-injection
+// markers in tool descriptions/titles (ignore previous, you must, base64
+// blobs, zero-width chars, HTML tags). OWASP MCP "tool poisoning" defense.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("server.tool_description_hygiene")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const src = await fs.readFile(path.join(repoRoot, "src", "server.mjs"), "utf8");
+    const patterns = [
+      { name: "ignore_previous", re: /ignore\s+(all\s+)?previous/i },
+      { name: "you_must", re: /\byou\s+must\b/i },
+      { name: "always_directive", re: /\byou\s+(should\s+)?always\b/i },
+      { name: "long_base64", re: /[A-Za-z0-9+/=]{60,}/ },
+      { name: "zero_width", re: /[​‌‍⁠﻿]/ },
+      { name: "html_executable", re: /<\s*(script|iframe|object|embed)\b/i }
+    ];
+    const findings = [];
+    for (const p of patterns) {
+      const m = src.match(p.re);
+      if (m) findings.push({ pattern: p.name, sample: m[0].slice(0, 80) });
+    }
+    return { findings, file: "src/server.mjs", bytes: Buffer.byteLength(src, "utf8") };
+  });
+  if (error) {
+    record("server.tool_description_hygiene", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = result.findings.length === 0;
+    record("server.tool_description_hygiene", "required", ok, result,
+      ok ? "0 suspicious patterns" : `${result.findings.length} pattern(s): ${result.findings.map((f) => f.pattern).join(", ")}`,
+      durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 11: evidence hash-chain validity — round-trips appendChainedJsonLine
+// and verifyChainedLog through a positive case (3 valid entries) and a
+// negative case (mid-chain tamper detected at the right index).
+// ----------------------------------------------------------------------------
+if (!shouldSkip("evidence.hash_chain_valid")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const { appendChainedJsonLine, verifyChainedLog } = await import("../src/core/fs-utils.mjs");
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hp-chain-"));
+    const ledger = path.join(tmpDir, "ledger.ndjson");
+    try {
+      await appendChainedJsonLine(ledger, { id: "e1", note: "first" });
+      await appendChainedJsonLine(ledger, { id: "e2", note: "second" });
+      await appendChainedJsonLine(ledger, { id: "e3", note: "third" });
+
+      const verifyClean = await verifyChainedLog(ledger);
+      const positive =
+        verifyClean.ok === true &&
+        verifyClean.chained === 3 &&
+        verifyClean.unchained === 0 &&
+        verifyClean.first_break === null;
+
+      // Tamper: rewrite middle entry's note (entry_hash will no longer match canonical)
+      const raw = await fs.readFile(ledger, "utf8");
+      const lines = raw.split("\n").filter(Boolean);
+      const middle = JSON.parse(lines[1]);
+      middle.note = "FORGED";
+      lines[1] = JSON.stringify(middle);
+      await fs.writeFile(ledger, lines.join("\n") + "\n", "utf8");
+
+      const verifyTampered = await verifyChainedLog(ledger);
+      const negative =
+        verifyTampered.ok === false &&
+        verifyTampered.first_break !== null &&
+        verifyTampered.first_break.index === 1;
+
+      return { positive, negative, verifyClean, verifyTampered };
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+  if (error) {
+    record("evidence.hash_chain_valid", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = result.positive && result.negative;
+    record("evidence.hash_chain_valid", "required", ok, result,
+      `positive=${result.positive}, negative_detected_at_idx_1=${result.negative}`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 12: master-prompt deliverables present
+//
+// The master prompt (hermesproof_claude20_codex_handoff_master_prompt.md §3)
+// requires 10 deliverable files before Codex starts implementation. This gate
+// verifies they exist and are non-empty, so the design contract cannot silently
+// rot away from the artifact it justifies.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("docs.master_prompt_deliverables_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const required = [
+      "docs/README_MASTER_SPEC.md",
+      "docs/README_COVERAGE_MATRIX.md",
+      "docs/VISUAL_ASSET_SPEC.md",
+      "docs/SVG_ANIMATION_SPEC.md",
+      "docs/HERMES3D_SOURCE_AUDIT.md",
+      "docs/HERMESPROOF_SETUP_AUDIT.md",
+      "docs/CODEX_IMPLEMENTATION_HANDOFF.md",
+      "docs/CLAUDE_REVIEW_TEAM_PROMPT.md",
+      "docs/ACCEPTANCE_GATES.md",
+      "handoffs/HANDOFF_TO_CODEX_README_VISUALS.md"
+    ];
+    const minBytes = 256; // anything shorter is a placeholder, not a deliverable
+    const findings = [];
+    for (const rel of required) {
+      const full = path.join(repoRoot, rel);
+      try {
+        const buf = await fs.readFile(full, "utf8");
+        const size = Buffer.byteLength(buf, "utf8");
+        const hasH1 = /^# \S/m.test(buf);
+        findings.push({
+          path: rel,
+          ok: size >= minBytes && hasH1,
+          size_bytes: size,
+          has_h1: hasH1
+        });
+      } catch (err) {
+        findings.push({ path: rel, ok: false, error: err.code || err.message });
+      }
+    }
+    return { required_count: required.length, findings };
+  });
+  if (error) {
+    record("docs.master_prompt_deliverables_present", "required", false, {}, error.message, durationMs);
+  } else {
+    const failed = result.findings.filter((f) => !f.ok);
+    record("docs.master_prompt_deliverables_present", "required", failed.length === 0, result,
+      failed.length === 0
+        ? `${result.required_count}/${result.required_count} deliverables present`
+        : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
+      durationMs);
   }
 }
 

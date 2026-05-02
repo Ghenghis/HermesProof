@@ -43,7 +43,7 @@
     "reset-demo-state": "node scripts/reset-demo-state.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.19.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.24.1"
   },
   "engines": {

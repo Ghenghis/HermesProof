@@ -45,6 +45,15 @@ if (args.help) {
 Usage:
   node scripts/install-clients.mjs --workspace <path> [--server-name <id>] [--targets <list>]
 
+Available targets:
+  claude-desktop      ~/AppData/Roaming/Claude/claude_desktop_config.json (or platform equiv)
+  claude-code         ~/.claude.json via 'claude mcp add'
+  claude-code-hooks   ~/.claude/settings.hermesproof.hooks.json + project .claude/skills/hermesproof/SKILL.md
+  codex               ~/.codex/config.toml
+  windsurf            ~/.codeium/windsurf/mcp_config.json
+  cursor              <project>/.cursor/mcp.json + <project>/.cursor/rules/hermesproof.mdc
+  vscode-copilot      <project>/.vscode/mcp.json (prints copilot-instructions snippet)
+
 --targets defaults to: claude-desktop,codex,windsurf,claude-code`);
   process.exit(0);
 }
@@ -64,6 +73,7 @@ const targets = (args.targets || "claude-desktop,codex,windsurf,claude-code")
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const serverEntry = path.join(repoRoot, "src", "server.mjs");
+const examplesDir = path.join(repoRoot, "examples");
 
 const home = os.homedir();
 const platform = process.platform;
@@ -75,6 +85,14 @@ const claudeDesktopPath =
       : path.join(home, ".config", "Claude", "claude_desktop_config.json");
 const windsurfPath = path.join(home, ".codeium", "windsurf", "mcp_config.json");
 const codexPath = path.join(home, ".codex", "config.toml");
+const claudeUserDir = path.join(home, ".claude");
+const claudeUserSettings = path.join(claudeUserDir, "settings.json");
+const claudeUserHooksSidecar = path.join(claudeUserDir, "settings.hermesproof.hooks.json");
+const projectClaudeSkillDir = path.join(workspace, ".claude", "skills", "hermesproof");
+const projectClaudeSkillFile = path.join(projectClaudeSkillDir, "SKILL.md");
+const projectCursorDir = path.join(workspace, ".cursor");
+const projectCursorRulesDir = path.join(projectCursorDir, "rules");
+const projectVscodeDir = path.join(workspace, ".vscode");
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 
@@ -173,6 +191,87 @@ async function upsertCodexToml() {
   return { changed: true, existed, backup: bak };
 }
 
+async function copyFile(src, dest) {
+  await ensureDir(dest);
+  await fs.copyFile(src, dest);
+}
+
+async function installClaudeCodeHooks() {
+  const hooksSrc = path.join(examplesDir, "claude_code", "settings.hooks.json");
+  const skillSrc = path.join(examplesDir, "claude_code", "skills", "hermesproof", "SKILL.md");
+
+  // Bundle the hooks file as a sidecar — merging into existing settings.json is risky
+  // because settings.json may contain unrelated keys we must not clobber.
+  await ensureDir(claudeUserHooksSidecar);
+  const sidecarBak = await backup(claudeUserHooksSidecar);
+  await fs.copyFile(hooksSrc, claudeUserHooksSidecar);
+  describe(
+    "write",
+    claudeUserHooksSidecar,
+    sidecarBak ? `backup: ${path.basename(sidecarBak)}` : "(created new)"
+  );
+
+  // Skill bundle goes into the project so it's per-workspace.
+  await copyFile(skillSrc, projectClaudeSkillFile);
+  describe("write", projectClaudeSkillFile, "(skill installed)");
+
+  console.log("");
+  console.log("[next]  Merge hooks into ~/.claude/settings.json under the 'hooks' key:");
+  console.log(`        Source: ${claudeUserHooksSidecar}`);
+  console.log(`        Target: ${claudeUserSettings}`);
+  console.log("        (auto-merge skipped to avoid clobbering unrelated keys)");
+
+  return { changed: true, existed: true, backup: sidecarBak };
+}
+
+async function installCursor() {
+  const mcpSrc = path.join(examplesDir, "cursor", ".cursor", "mcp.json");
+  const ruleSrc = path.join(examplesDir, "cursor", ".cursor", "rules", "hermesproof.mdc");
+  const mcpDest = path.join(projectCursorDir, "mcp.json");
+  const ruleDest = path.join(projectCursorRulesDir, "hermesproof.mdc");
+
+  let changed = false;
+  let lastBak = null;
+
+  for (const [src, dest] of [[mcpSrc, mcpDest], [ruleSrc, ruleDest]]) {
+    await ensureDir(dest);
+    const bak = await backup(dest);
+    await fs.copyFile(src, dest);
+    describe("write", dest, bak ? `backup: ${path.basename(bak)}` : "(created new)");
+    changed = true;
+    if (bak) lastBak = bak;
+  }
+
+  return { changed, existed: lastBak !== null, backup: lastBak };
+}
+
+async function installVscodeCopilot() {
+  const mcpSrc = path.join(examplesDir, "vscode", ".vscode", "mcp.json");
+  const snippetSrc = path.join(examplesDir, "vscode", "copilot-instructions.snippet.md");
+  const mcpDest = path.join(projectVscodeDir, "mcp.json");
+
+  await ensureDir(mcpDest);
+  const bak = await backup(mcpDest);
+  await fs.copyFile(mcpSrc, mcpDest);
+  describe("write", mcpDest, bak ? `backup: ${path.basename(bak)}` : "(created new)");
+
+  // Don't auto-modify .github/copilot-instructions.md — it may not exist and
+  // the user may want to control where the snippet lands.
+  console.log("");
+  console.log("[next]  Paste the following snippet into .github/copilot-instructions.md:");
+  console.log(`        Source: ${snippetSrc}`);
+  try {
+    const snippet = await fs.readFile(snippetSrc, "utf8");
+    console.log("--- begin snippet ---");
+    console.log(snippet.trimEnd());
+    console.log("--- end snippet ---");
+  } catch (err) {
+    console.log(`        (could not read snippet: ${err.message})`);
+  }
+
+  return { changed: true, existed: bak !== null, backup: bak };
+}
+
 function runClaudeMcpAdd() {
   // Look up the claude binary on PATH (Windows uses .exe).
   const claudeCmd = process.platform === "win32" ? "claude.exe" : "claude";
@@ -240,6 +339,39 @@ if (targets.includes("claude-code")) {
   } catch (err) {
     console.error(`claude-code wiring failed: ${err.message}`);
     results["claude-code"] = { changed: false, error: err.message };
+  }
+  console.log("");
+}
+
+if (targets.includes("claude-code-hooks")) {
+  console.log("--- Claude Code (hooks + skill) ---");
+  try {
+    results["claude-code-hooks"] = await installClaudeCodeHooks();
+  } catch (err) {
+    console.error(`claude-code-hooks wiring failed: ${err.message}`);
+    results["claude-code-hooks"] = { changed: false, error: err.message };
+  }
+  console.log("");
+}
+
+if (targets.includes("cursor")) {
+  console.log("--- Cursor ---");
+  try {
+    results["cursor"] = await installCursor();
+  } catch (err) {
+    console.error(`cursor wiring failed: ${err.message}`);
+    results["cursor"] = { changed: false, error: err.message };
+  }
+  console.log("");
+}
+
+if (targets.includes("vscode-copilot")) {
+  console.log("--- VS Code Copilot ---");
+  try {
+    results["vscode-copilot"] = await installVscodeCopilot();
+  } catch (err) {
+    console.error(`vscode-copilot wiring failed: ${err.message}`);
+    results["vscode-copilot"] = { changed: false, error: err.message };
   }
   console.log("");
 }
