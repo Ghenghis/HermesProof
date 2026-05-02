@@ -1,27 +1,28 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-05-02T21-02-44-031Z`
-- **Timestamp (UTC)**: 2026-05-02T21:02:44.031Z
-- **Duration**: 0.67s
-- **Hermes3D workspace**: `/home/runner/work/HermesProof/HermesProof`
-- **Node**: v20.20.2 on linux
+- **Run id**: `truth_2026-05-02T22-41-21-775Z`
+- **Timestamp (UTC)**: 2026-05-02T22:41:21.775Z
+- **Duration**: 1.05s
+- **Hermes3D workspace**: `G:\Github\Hermes3D`
+- **Node**: v25.8.2 on win32
 - **Result**: ✅ ALL REQUIRED GATES PASS
 
-Pass / Fail / Warn / Skip: **5 / 0 / 0 / 4**
+Pass / Fail / Warn / Skip: **6 / 0 / 0 / 4**
 
 ## Gate results
 
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| `source.integrity_manifest` | required | ✅ pass | 5 ms | 13 files hashed |
+| `source.integrity_manifest` | required | ✅ pass | 6 ms | 13 files hashed |
 | `deps.parity` | required | ✅ pass | 1 ms | all 2 deps installed |
-| `tests.unit` | required | ✅ pass | 180 ms | pass=12, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 205 ms | 15 tools |
+| `tests.unit` | required | ✅ pass | 245 ms | pass=12, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 244 ms | 15 tools |
 | `doctor.hermes3d` | skipped | ✅ pass | 0 ms | skipped |
-| `e2e.multi_agent_flow` | required | ✅ pass | 276 ms | 14/14 checks; 3 ledger, 11 events |
+| `e2e.multi_agent_flow` | required | ✅ pass | 553 ms | 14/14 checks; 3 ledger, 11 events |
 | `workspace.integrity` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.config_presence` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.claude_code_live` | skipped | ✅ pass | 0 ms | skipped |
+| `docs.master_prompt_deliverables_present` | required | ✅ pass | 3 ms | 10/10 deliverables present |
 
 ## Machine-readable report
 
@@ -32,9 +33,9 @@ Full evidence including evidence ledgers, tool call shapes, manifest hashes, and
 ## Reproduce
 
 ```powershell
-cd /home/runner/work/HermesProof/HermesProof
+cd G:\\Github\\hermes3d-mcp-lock-orchestrator
 npm install
-node scripts/truth-gates.mjs --workspace "/home/runner/work/HermesProof/HermesProof"
+node scripts/truth-gates.mjs --workspace "G:\Github\Hermes3D"
 ```
 
 Exit code 0 means every required gate passed; non-zero means at least one required gate failed.

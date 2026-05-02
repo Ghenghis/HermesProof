@@ -1,25 +1,25 @@
 {
-  "run_id": "truth_2026-05-02T21-02-44-031Z",
-  "ts_utc": "2026-05-02T21:02:44.031Z",
-  "duration_ms": 670,
+  "run_id": "truth_2026-05-02T22-41-21-775Z",
+  "ts_utc": "2026-05-02T22:41:21.775Z",
+  "duration_ms": 1055,
   "ok": true,
-  "pass_count": 5,
+  "pass_count": 6,
   "fail_count": 0,
   "warn_count": 0,
   "skip_count": 4,
-  "hermes3d_workspace": "/home/runner/work/HermesProof/HermesProof",
-  "node_version": "v20.20.2",
-  "platform": "linux",
-  "repo_root": "/home/runner/work/HermesProof/HermesProof",
+  "hermes3d_workspace": "G:\\Github\\Hermes3D",
+  "node_version": "v25.8.2",
+  "platform": "win32",
+  "repo_root": "G:\\Github\\hermes3d-mcp-lock-orchestrator",
   "gates": [
     {
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 5,
+      "duration_ms": 6,
       "evidence": {
         "file_count": 13,
-        "manifest_sha256": "09bc1ef7073bc7ad340db4fada4fec770124689fb2dfa8bb3a3fc5c3b373daff"
+        "manifest_sha256": "a8b54a4c70fde6b3193a7340f4dbe4731c5756d7b5a7e1b9d7e31f3e94eb5b16"
       },
       "details": "13 files hashed"
     },
@@ -45,12 +45,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 180,
+      "duration_ms": 245,
       "evidence": {
         "exit_code": 0,
         "pass_count": 12,
         "fail_count": 0,
-        "stdout_tail": "d Codex cannot edit the same file without handoff approval\n  ---\n  duration_ms: 44.90297\n  ...\n# Subtest: path escape attempts are rejected with workspace-relative error\nok 2 - path escape attempts are rejected with workspace-relative error\n  ---\n  duration_ms: 12.148146\n  ...\n# Subtest: owner can refresh its own existing lock without conflict\nok 3 - owner can refresh its own existing lock without conflict\n  ---\n  duration_ms: 8.296337\n  ...\n# Subtest: releaseFiles by wrong owner is blocked, not silently allowed\nok 4 - releaseFiles by wrong owner is blocked, not silently allowed\n  ---\n  duration_ms: 6.336407\n  ...\n# Subtest: heartbeat extends expiry of held locks\nok 5 - heartbeat extends expiry of held locks\n  ---\n  duration_ms: 21.26561\n  ...\n# Subtest: stale lock recovery archives metadata and clears the lock\nok 6 - stale lock recovery archives metadata and clears the lock\n  ---\n  duration_ms: 15.186452\n  ...\n# Subtest: gate runner rejects unknown gateId without spawning anything\nok 7 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 3.451332\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 8 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 1.286211\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 9 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 1.678052\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 10 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 3.137888\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 11 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 3.16059\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 12 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 3.251601\n  ...\n1..12\n# tests 12\n# suites 0\n# pass 12\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 146.099709\n",
+        "stdout_tail": "✔ Claude and Codex cannot edit the same file without handoff approval (50.7685ms)\n✔ path escape attempts are rejected with workspace-relative error (13.4838ms)\n✔ owner can refresh its own existing lock without conflict (12.5467ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (8.3639ms)\n✔ heartbeat extends expiry of held locks (26.4476ms)\n✔ stale lock recovery archives metadata and clears the lock (16.9846ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.5585ms)\n✔ gate runner rejects cwd that escapes the workspace (1.5361ms)\n✔ doctor() reports errors when workspace_root does not exist (2.2758ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (6.3302ms)\n✔ custom state dir name is honored end-to-end (5.3447ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.3294ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 186.157\n",
         "stderr_tail": ""
       },
       "details": "pass=12, fail=0, exit=0"
@@ -59,7 +59,7 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 205,
+      "duration_ms": 244,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -99,9 +99,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 276,
+      "duration_ms": 553,
       "evidence": {
-        "sandbox": "/tmp/truth-gate-sandbox-ox43yT",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-tJ9Zbb",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -194,6 +194,78 @@
         "reason": "explicitly skipped via --skip or --ci"
       },
       "details": "skipped"
+    },
+    {
+      "id": "docs.master_prompt_deliverables_present",
+      "level": "required",
+      "ok": true,
+      "duration_ms": 3,
+      "evidence": {
+        "required_count": 10,
+        "findings": [
+          {
+            "path": "docs/README_MASTER_SPEC.md",
+            "ok": true,
+            "size_bytes": 5172,
+            "has_h1": true
+          },
+          {
+            "path": "docs/README_COVERAGE_MATRIX.md",
+            "ok": true,
+            "size_bytes": 6412,
+            "has_h1": true
+          },
+          {
+            "path": "docs/VISUAL_ASSET_SPEC.md",
+            "ok": true,
+            "size_bytes": 5632,
+            "has_h1": true
+          },
+          {
+            "path": "docs/SVG_ANIMATION_SPEC.md",
+            "ok": true,
+            "size_bytes": 5147,
+            "has_h1": true
+          },
+          {
+            "path": "docs/HERMES3D_SOURCE_AUDIT.md",
+            "ok": true,
+            "size_bytes": 9352,
+            "has_h1": true
+          },
+          {
+            "path": "docs/HERMESPROOF_SETUP_AUDIT.md",
+            "ok": true,
+            "size_bytes": 8595,
+            "has_h1": true
+          },
+          {
+            "path": "docs/CODEX_IMPLEMENTATION_HANDOFF.md",
+            "ok": true,
+            "size_bytes": 6934,
+            "has_h1": true
+          },
+          {
+            "path": "docs/CLAUDE_REVIEW_TEAM_PROMPT.md",
+            "ok": true,
+            "size_bytes": 6986,
+            "has_h1": true
+          },
+          {
+            "path": "docs/ACCEPTANCE_GATES.md",
+            "ok": true,
+            "size_bytes": 5970,
+            "has_h1": true
+          },
+          {
+            "path": "handoffs/HANDOFF_TO_CODEX_README_VISUALS.md",
+            "ok": true,
+            "size_bytes": 6128,
+            "has_h1": true
+          }
+        ]
+      },
+      "details": "10/10 deliverables present"
     }
   ]
 }

@@ -615,6 +615,60 @@ if (!shouldSkip("clients.claude_code_live")) {
 }
 
 // ----------------------------------------------------------------------------
+// Gate 10: master-prompt deliverables present
+//
+// The master prompt (hermesproof_claude20_codex_handoff_master_prompt.md §3)
+// requires 10 deliverable files before Codex starts implementation. This gate
+// verifies they exist and are non-empty, so the design contract cannot silently
+// rot away from the artifact it justifies.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("docs.master_prompt_deliverables_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const required = [
+      "docs/README_MASTER_SPEC.md",
+      "docs/README_COVERAGE_MATRIX.md",
+      "docs/VISUAL_ASSET_SPEC.md",
+      "docs/SVG_ANIMATION_SPEC.md",
+      "docs/HERMES3D_SOURCE_AUDIT.md",
+      "docs/HERMESPROOF_SETUP_AUDIT.md",
+      "docs/CODEX_IMPLEMENTATION_HANDOFF.md",
+      "docs/CLAUDE_REVIEW_TEAM_PROMPT.md",
+      "docs/ACCEPTANCE_GATES.md",
+      "handoffs/HANDOFF_TO_CODEX_README_VISUALS.md"
+    ];
+    const minBytes = 256; // anything shorter is a placeholder, not a deliverable
+    const findings = [];
+    for (const rel of required) {
+      const full = path.join(repoRoot, rel);
+      try {
+        const buf = await fs.readFile(full, "utf8");
+        const size = Buffer.byteLength(buf, "utf8");
+        const hasH1 = /^# \S/m.test(buf);
+        findings.push({
+          path: rel,
+          ok: size >= minBytes && hasH1,
+          size_bytes: size,
+          has_h1: hasH1
+        });
+      } catch (err) {
+        findings.push({ path: rel, ok: false, error: err.code || err.message });
+      }
+    }
+    return { required_count: required.length, findings };
+  });
+  if (error) {
+    record("docs.master_prompt_deliverables_present", "required", false, {}, error.message, durationMs);
+  } else {
+    const failed = result.findings.filter((f) => !f.ok);
+    record("docs.master_prompt_deliverables_present", "required", failed.length === 0, result,
+      failed.length === 0
+        ? `${result.required_count}/${result.required_count} deliverables present`
+        : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
+      durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Helper: spawn the MCP server, perform initialize, and optionally make tool calls.
 // ----------------------------------------------------------------------------
 async function stdioHandshake(extraEnv, withCalls) {
