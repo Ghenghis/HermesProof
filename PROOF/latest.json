@@ -1,22 +1,22 @@
 {
-  "run_id": "truth_2026-05-02T22-59-10-617Z",
-  "ts_utc": "2026-05-02T22:59:10.617Z",
-  "duration_ms": 1374,
+  "run_id": "truth_2026-05-02T23-08-46-853Z",
+  "ts_utc": "2026-05-02T23:08:46.853Z",
+  "duration_ms": 605,
   "ok": true,
   "pass_count": 8,
   "fail_count": 0,
   "warn_count": 0,
   "skip_count": 4,
-  "hermes3d_workspace": "G:\\Github\\Hermes3D",
-  "node_version": "v25.8.2",
-  "platform": "win32",
-  "repo_root": "G:\\Github\\hermes3d-mcp-lock-orchestrator",
+  "hermes3d_workspace": "/home/runner/work/HermesProof/HermesProof",
+  "node_version": "v20.20.2",
+  "platform": "linux",
+  "repo_root": "/home/runner/work/HermesProof/HermesProof",
   "gates": [
     {
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 8,
+      "duration_ms": 4,
       "evidence": {
         "file_count": 13,
         "manifest_sha256": "881ac841b81849948f537d5d29efb3700ea3fe2e1f48529f8e2dc5f6346f8920"
@@ -27,7 +27,7 @@
       "id": "deps.parity",
       "level": "required",
       "ok": true,
-      "duration_ms": 2,
+      "duration_ms": 1,
       "evidence": {
         "declared": {
           "@modelcontextprotocol/sdk": "^1.29.0",
@@ -45,12 +45,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 295,
+      "duration_ms": 151,
       "evidence": {
         "exit_code": 0,
         "pass_count": 12,
         "fail_count": 0,
-        "stdout_tail": "✔ Claude and Codex cannot edit the same file without handoff approval (59.5049ms)\n✔ path escape attempts are rejected with workspace-relative error (14.7542ms)\n✔ owner can refresh its own existing lock without conflict (14.4458ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (11.8184ms)\n✔ heartbeat extends expiry of held locks (38.3924ms)\n✔ stale lock recovery archives metadata and clears the lock (22.5076ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.9648ms)\n✔ gate runner rejects cwd that escapes the workspace (1.5869ms)\n✔ doctor() reports errors when workspace_root does not exist (1.9297ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (8.206ms)\n✔ custom state dir name is honored end-to-end (7.014ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.5427ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 226.5015\n",
+        "stdout_tail": "d Codex cannot edit the same file without handoff approval\n  ---\n  duration_ms: 39.000772\n  ...\n# Subtest: path escape attempts are rejected with workspace-relative error\nok 2 - path escape attempts are rejected with workspace-relative error\n  ---\n  duration_ms: 9.04153\n  ...\n# Subtest: owner can refresh its own existing lock without conflict\nok 3 - owner can refresh its own existing lock without conflict\n  ---\n  duration_ms: 7.308888\n  ...\n# Subtest: releaseFiles by wrong owner is blocked, not silently allowed\nok 4 - releaseFiles by wrong owner is blocked, not silently allowed\n  ---\n  duration_ms: 8.946927\n  ...\n# Subtest: heartbeat extends expiry of held locks\nok 5 - heartbeat extends expiry of held locks\n  ---\n  duration_ms: 18.158303\n  ...\n# Subtest: stale lock recovery archives metadata and clears the lock\nok 6 - stale lock recovery archives metadata and clears the lock\n  ---\n  duration_ms: 12.912669\n  ...\n# Subtest: gate runner rejects unknown gateId without spawning anything\nok 7 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 1.183847\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 8 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 1.092339\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 9 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 3.541626\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 10 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 2.035202\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 11 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 2.04728\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 12 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 0.884906\n  ...\n1..12\n# tests 12\n# suites 0\n# pass 12\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 122.251816\n",
         "stderr_tail": ""
       },
       "details": "pass=12, fail=0, exit=0"
@@ -59,7 +59,7 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 296,
+      "duration_ms": 174,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -100,9 +100,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 761,
+      "duration_ms": 265,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-HyIOjZ",
+        "sandbox": "/tmp/truth-gate-sandbox-sJ8rsC",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -200,7 +200,7 @@
       "id": "server.tool_description_hygiene",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 0,
       "evidence": {
         "findings": [],
         "file": "src/server.mjs",
@@ -212,7 +212,7 @@
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 6,
+      "duration_ms": 4,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -241,7 +241,7 @@
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 2,
+      "duration_ms": 3,
       "evidence": {
         "required_count": 10,
         "findings": [
