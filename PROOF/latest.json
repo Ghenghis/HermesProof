@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-05-02T23-16-51-610Z",
-  "ts_utc": "2026-05-02T23:16:51.610Z",
-  "duration_ms": 712,
+  "run_id": "truth_2026-05-02T23-25-45-462Z",
+  "ts_utc": "2026-05-02T23:25:45.462Z",
+  "duration_ms": 741,
   "ok": true,
   "pass_count": 8,
   "fail_count": 0,
@@ -16,7 +16,7 @@
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 5,
+      "duration_ms": 4,
       "evidence": {
         "file_count": 13,
         "manifest_sha256": "881ac841b81849948f537d5d29efb3700ea3fe2e1f48529f8e2dc5f6346f8920"
@@ -27,7 +27,7 @@
       "id": "deps.parity",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 2,
       "evidence": {
         "declared": {
           "@modelcontextprotocol/sdk": "^1.29.0",
@@ -45,12 +45,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 195,
+      "duration_ms": 200,
       "evidence": {
         "exit_code": 0,
         "pass_count": 12,
         "fail_count": 0,
-        "stdout_tail": "Codex cannot edit the same file without handoff approval\n  ---\n  duration_ms: 50.496283\n  ...\n# Subtest: path escape attempts are rejected with workspace-relative error\nok 2 - path escape attempts are rejected with workspace-relative error\n  ---\n  duration_ms: 12.70486\n  ...\n# Subtest: owner can refresh its own existing lock without conflict\nok 3 - owner can refresh its own existing lock without conflict\n  ---\n  duration_ms: 8.761272\n  ...\n# Subtest: releaseFiles by wrong owner is blocked, not silently allowed\nok 4 - releaseFiles by wrong owner is blocked, not silently allowed\n  ---\n  duration_ms: 11.590862\n  ...\n# Subtest: heartbeat extends expiry of held locks\nok 5 - heartbeat extends expiry of held locks\n  ---\n  duration_ms: 19.758781\n  ...\n# Subtest: stale lock recovery archives metadata and clears the lock\nok 6 - stale lock recovery archives metadata and clears the lock\n  ---\n  duration_ms: 18.503715\n  ...\n# Subtest: gate runner rejects unknown gateId without spawning anything\nok 7 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 2.696654\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 8 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 1.489875\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 9 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 3.758111\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 10 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 3.16684\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 11 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 3.307169\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 12 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 2.219996\n  ...\n1..12\n# tests 12\n# suites 0\n# pass 12\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 162.334458\n",
+        "stdout_tail": "Codex cannot edit the same file without handoff approval\n  ---\n  duration_ms: 46.64135\n  ...\n# Subtest: path escape attempts are rejected with workspace-relative error\nok 2 - path escape attempts are rejected with workspace-relative error\n  ---\n  duration_ms: 13.403548\n  ...\n# Subtest: owner can refresh its own existing lock without conflict\nok 3 - owner can refresh its own existing lock without conflict\n  ---\n  duration_ms: 9.846111\n  ...\n# Subtest: releaseFiles by wrong owner is blocked, not silently allowed\nok 4 - releaseFiles by wrong owner is blocked, not silently allowed\n  ---\n  duration_ms: 8.804776\n  ...\n# Subtest: heartbeat extends expiry of held locks\nok 5 - heartbeat extends expiry of held locks\n  ---\n  duration_ms: 25.323652\n  ...\n# Subtest: stale lock recovery archives metadata and clears the lock\nok 6 - stale lock recovery archives metadata and clears the lock\n  ---\n  duration_ms: 21.026927\n  ...\n# Subtest: gate runner rejects unknown gateId without spawning anything\nok 7 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 1.631191\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 8 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 1.478536\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 9 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 4.393832\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 10 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 3.334324\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 11 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 3.558394\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 12 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 2.330696\n  ...\n1..12\n# tests 12\n# suites 0\n# pass 12\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 164.291143\n",
         "stderr_tail": ""
       },
       "details": "pass=12, fail=0, exit=0"
@@ -59,7 +59,7 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 214,
+      "duration_ms": 228,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -100,9 +100,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 286,
+      "duration_ms": 293,
       "evidence": {
-        "sandbox": "/tmp/truth-gate-sandbox-OnUCpy",
+        "sandbox": "/tmp/truth-gate-sandbox-ksTRXF",
         "checks": [
           {
             "id": "policy.workspace_root",
