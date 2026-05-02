@@ -43,7 +43,7 @@ jobs:
           persist-credentials: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4 # TODO: SHA-pin (latest v4.x.x as of 2026-05-02)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload proof artifacts
         if: always()
-        uses: actions/upload-artifact@v4 # TODO: SHA-pin (latest v4.x.x as of 2026-05-02)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: proof-${{ github.sha }}
           path: |
@@ -79,7 +79,7 @@ jobs:
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
           success()
-        uses: sigstore/cosign-installer@v3 # TODO: SHA-pin (latest v3.x.x as of 2026-05-02)
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
 
       - name: Sign PROOF/latest.json with cosign (keyless)
         if: |
