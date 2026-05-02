@@ -1,4 +1,4 @@
-# Setup: Windsurf / Cascade
+# HermesProof Setup — Windsurf / Cascade
 
 Windsurf Cascade supports MCP servers through `mcp_config.json`.
 

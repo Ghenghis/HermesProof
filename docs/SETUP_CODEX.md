@@ -1,4 +1,4 @@
-# Setup: Codex CLI / Codex IDE
+# HermesProof Setup — Codex CLI / Codex IDE
 
 Add this to `~/.codex/config.toml`:
 

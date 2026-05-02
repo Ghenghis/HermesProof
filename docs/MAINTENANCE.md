@@ -1,6 +1,12 @@
-# Maintenance & Best Practices
+# HermesProof — Maintenance & Best Practices
 
-This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend the orchestrator without weakening its safety guarantees.
+<div align="center">
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running nine gates sequentially" width="100%"/>
+</div>
+
+This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees.
+
+The single best diagnostic is `npm run truth-gates` — it surfaces nine independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
 
 ## Code-quality conventions
 

@@ -1,6 +1,10 @@
-# Interop with Other MCP Patterns
+# HermesProof — Interop with Other MCP Servers
 
-This orchestrator solves **one** problem well: keeping Claude, Codex, Windsurf, and review agents from clobbering each other on the same files. It is intentionally narrow.
+<div align="center">
+<img src="./diagrams/mcp-composition.svg" alt="HermesProof composes with filesystem MCP and Codex bridges as peer servers, all sharing the same workspace" width="100%"/>
+</div>
+
+HermesProof solves **one** problem well: keeping Claude, Codex, Windsurf, and review agents from clobbering each other on the same files. It is intentionally narrow.
 
 You will usually want to run it **alongside** other MCP servers and bridges. This doc explains how it composes with each pattern you may have seen recommended, and what (if anything) was extracted into our codebase versus left external.
 
@@ -93,17 +97,17 @@ The same lock discipline applies: every Codex-driven edit must funnel through th
 
 **How it composes with us.** They solve different problems and stack cleanly:
 
-| Concern | Claude Flow | This orchestrator |
-| --- | --- | --- |
-| Spawning agents | yes | no |
-| Routing prompts | yes | no |
-| Monitoring agent health | yes | partial (heartbeat only) |
-| File ownership / locks | partial | **primary purpose** |
-| Atomic transactions | no | yes |
-| Handoff approval workflow | no | yes |
-| Path-escape protection | unknown | yes |
-| Evidence ledger | no | yes (NDJSON) |
-| Allowlisted gate runner | no | yes |
+| Concern                   | Claude Flow | This orchestrator        |
+| ------------------------- | ----------- | ------------------------ |
+| Spawning agents           | yes         | no                       |
+| Routing prompts           | yes         | no                       |
+| Monitoring agent health   | yes         | partial (heartbeat only) |
+| File ownership / locks    | partial     | **primary purpose**      |
+| Atomic transactions       | no          | yes                      |
+| Handoff approval workflow | no          | yes                      |
+| Path-escape protection    | unknown     | yes                      |
+| Evidence ledger           | no          | yes (NDJSON)             |
+| Allowlisted gate runner   | no          | yes                      |
 
 If you adopt Claude Flow for spawning, run our orchestrator under it as the per-file coordination layer. The two are complementary, not redundant.
 
@@ -121,16 +125,16 @@ If you adopt Claude Flow for spawning, run our orchestrator under it as the per-
 
 ## What we extracted vs left external
 
-| Concept | Source | Status |
-| --- | --- | --- |
-| Atomic file locking via `mkdir` EEXIST | (our own) | shipped here |
-| Handoff request → approval → transfer | hinted at in `codex-plugin-cc` adversarial-review pattern | shipped here as `hermes_request_handoff` + `hermes_approve_handoff` |
-| Evidence ledger | (our own) | shipped here as NDJSON |
-| Allowlisted gate runner | (our own; not in any of the listed projects) | shipped here |
-| Filesystem read/write | `@modelcontextprotocol/server-filesystem` | **external — coexists** |
-| Codex CLI access from Claude | `openai/codex-plugin-cc`, `cexll/codex-mcp-server` | **external — coexists** |
-| Multi-agent spawning / routing | `ruvnet/claude-flow` | **external — runs above us** |
-| Cloud-document sync | `@google/mcp-server-workspace` | **out of scope** |
+| Concept                                | Source                                                    | Status                                                              |
+| -------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
+| Atomic file locking via `mkdir` EEXIST | (our own)                                                 | shipped here                                                        |
+| Handoff request → approval → transfer  | hinted at in `codex-plugin-cc` adversarial-review pattern | shipped here as `hermes_request_handoff` + `hermes_approve_handoff` |
+| Evidence ledger                        | (our own)                                                 | shipped here as NDJSON                                              |
+| Allowlisted gate runner                | (our own; not in any of the listed projects)              | shipped here                                                        |
+| Filesystem read/write                  | `@modelcontextprotocol/server-filesystem`                 | **external — coexists**                                             |
+| Codex CLI access from Claude           | `openai/codex-plugin-cc`, `cexll/codex-mcp-server`        | **external — coexists**                                             |
+| Multi-agent spawning / routing         | `ruvnet/claude-flow`                                      | **external — runs above us**                                        |
+| Cloud-document sync                    | `@google/mcp-server-workspace`                            | **out of scope**                                                    |
 
 **Bottom line:** the listed projects don't replace anything we ship; they sit at higher layers (spawning, transport, file IO) where this orchestrator deliberately doesn't operate. Use them in combination.
 

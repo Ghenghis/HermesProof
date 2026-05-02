@@ -1,4 +1,4 @@
-# Setup: Claude Code
+# HermesProof Setup — Claude Code
 
 After unzipping into `G:\Github\Hermes3D\tools\hermes3d-mcp-lock-orchestrator`:
 

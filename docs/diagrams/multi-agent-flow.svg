@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Multi-agent coordination flow — Claude lead, Codex implementer, reviewer, HermesProof server">
+  <title>Multi-agent coordination flow</title>
+  <defs>
+    <linearGradient id="bg4" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="100%" stop-color="#13183a"/>
+    </linearGradient>
+    <pattern id="grid4" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1c2348" stroke-width="0.5"/>
+    </pattern>
+    <filter id="g4" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="620" fill="url(#bg4)"/>
+  <rect width="1200" height="620" fill="url(#grid4)"/>
+
+  <text x="600" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#e0e7ff" letter-spacing="1">MULTI-AGENT COORDINATION</text>
+  <text x="600" y="58" text-anchor="middle" font-size="12" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Claude lead · Codex impl · Claude reviewer ↔ HermesProof MCP server</text>
+
+  <!-- Lifeline columns: 4 actors -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <g transform="translate(150 90)">
+      <rect width="180" height="50" rx="10" fill="#1a1f3a" stroke="#a855f7" stroke-width="1.5"/>
+      <text x="90" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#e0e7ff">Claude Lead</text>
+      <text x="90" y="40" text-anchor="middle" font-size="10" fill="#94a3b8">architect · docs · contracts</text>
+    </g>
+    <line x1="240" y1="140" x2="240" y2="580" stroke="#a855f7" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"/>
+
+    <g transform="translate(420 90)">
+      <rect width="180" height="50" rx="10" fill="#1a1f3a" stroke="#06b6d4" stroke-width="1.5"/>
+      <text x="90" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#e0e7ff">Codex Impl</text>
+      <text x="90" y="40" text-anchor="middle" font-size="10" fill="#94a3b8">code · gates · execution</text>
+    </g>
+    <line x1="510" y1="140" x2="510" y2="580" stroke="#06b6d4" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"/>
+
+    <g transform="translate(690 90)">
+      <rect width="180" height="50" rx="10" fill="#1a1f3a" stroke="#ec4899" stroke-width="1.5"/>
+      <text x="90" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#e0e7ff">Claude Reviewer</text>
+      <text x="90" y="40" text-anchor="middle" font-size="10" fill="#94a3b8">audit · correction packets</text>
+    </g>
+    <line x1="780" y1="140" x2="780" y2="580" stroke="#ec4899" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"/>
+
+    <g transform="translate(960 90)">
+      <rect width="180" height="50" rx="10" fill="#1a1f3a" stroke="#22c55e" stroke-width="1.5"/>
+      <text x="90" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#e0e7ff">HermesProof</text>
+      <text x="90" y="40" text-anchor="middle" font-size="10" fill="#94a3b8">stdio MCP server</text>
+    </g>
+    <line x1="1050" y1="140" x2="1050" y2="580" stroke="#22c55e" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"/>
+  </g>
+
+  <!-- Sequence messages. Stagger via opacity in/out across 18s loop. -->
+  <g font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="11" fill="#e0e7ff">
+
+    <!-- 1. Claude lead claims contracts -->
+    <g>
+      <line x1="240" y1="170" x2="1050" y2="170" stroke="#a855f7" stroke-width="1.5">
+        <animate attributeName="stroke-dasharray" values="0 1000;1000 0" dur="0.8s" begin="0s" fill="freeze"/>
+      </line>
+      <polygon points="1050,170 1042,166 1042,174" fill="#a855f7"/>
+      <rect x="450" y="156" width="380" height="22" rx="11" fill="#0a0e27" stroke="#a855f7" stroke-width="1"/>
+      <text x="640" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">claim_task + lock_files(contracts/CP-UX-A_*.md)</text>
+    </g>
+
+    <!-- 2. Codex claims code files -->
+    <g transform="translate(0 50)">
+      <line x1="510" y1="170" x2="1050" y2="170" stroke="#06b6d4" stroke-width="1.5"/>
+      <polygon points="1050,170 1042,166 1042,174" fill="#06b6d4"/>
+      <rect x="600" y="156" width="380" height="22" rx="11" fill="#0a0e27" stroke="#06b6d4" stroke-width="1"/>
+      <text x="790" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">lock_files(03_implementation/ui/src/tabs/*.tsx)</text>
+    </g>
+
+    <!-- 3. Reviewer attempts to lock Codex's file → blocked -->
+    <g transform="translate(0 100)">
+      <line x1="780" y1="170" x2="1050" y2="170" stroke="#ec4899" stroke-width="1.5"/>
+      <polygon points="1050,170 1042,166 1042,174" fill="#ec4899"/>
+      <rect x="800" y="156" width="240" height="22" rx="11" fill="#0a0e27" stroke="#ec4899" stroke-width="1"/>
+      <text x="920" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">lock_files(Dashboard.tsx)</text>
+    </g>
+
+    <!-- 3b. Server replies: BLOCKED -->
+    <g transform="translate(0 130)">
+      <line x1="1050" y1="170" x2="780" y2="170" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <polygon points="780,170 788,166 788,174" fill="#ef4444"/>
+      <rect x="800" y="156" width="240" height="22" rx="11" fill="#0a0e27" stroke="#ef4444" stroke-width="1"/>
+      <text x="920" y="171" text-anchor="middle" fill="#fca5a5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">BLOCKED · current_owner=codex-impl-01</text>
+    </g>
+
+    <!-- 4. Reviewer requests handoff -->
+    <g transform="translate(0 180)">
+      <line x1="780" y1="170" x2="1050" y2="170" stroke="#ec4899" stroke-width="1.5"/>
+      <polygon points="1050,170 1042,166 1042,174" fill="#ec4899"/>
+      <rect x="790" y="156" width="260" height="22" rx="11" fill="#0a0e27" stroke="#ec4899" stroke-width="1"/>
+      <text x="920" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">request_handoff(Dashboard.tsx)</text>
+    </g>
+
+    <!-- 5. Server notifies Codex -->
+    <g transform="translate(0 220)">
+      <line x1="1050" y1="170" x2="510" y2="170" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <polygon points="510,170 518,166 518,174" fill="#22c55e"/>
+      <rect x="600" y="156" width="380" height="22" rx="11" fill="#0a0e27" stroke="#22c55e" stroke-width="1"/>
+      <text x="790" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">handoff.requested · awaiting approve_handoff</text>
+    </g>
+
+    <!-- 6. Codex approves -->
+    <g transform="translate(0 260)">
+      <line x1="510" y1="170" x2="1050" y2="170" stroke="#06b6d4" stroke-width="1.5"/>
+      <polygon points="1050,170 1042,166 1042,174" fill="#06b6d4"/>
+      <rect x="600" y="156" width="380" height="22" rx="11" fill="#0a0e27" stroke="#06b6d4" stroke-width="1"/>
+      <text x="790" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">approve_handoff(decision="approve")</text>
+    </g>
+
+    <!-- 7. Server transfers ownership to reviewer -->
+    <g transform="translate(0 300)">
+      <line x1="1050" y1="170" x2="780" y2="170" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <polygon points="780,170 788,166 788,174" fill="#22c55e"/>
+      <rect x="790" y="156" width="260" height="22" rx="11" fill="#0a0e27" stroke="#22c55e" stroke-width="1"/>
+      <text x="920" y="171" text-anchor="middle" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">OWNED · role=handoff_receiver</text>
+    </g>
+
+    <!-- 8. Reviewer runs gate -->
+    <g transform="translate(0 340)">
+      <line x1="780" y1="170" x2="1050" y2="170" stroke="#f59e0b" stroke-width="1.5"/>
+      <polygon points="1050,170 1042,166 1042,174" fill="#f59e0b"/>
+      <rect x="800" y="156" width="240" height="22" rx="11" fill="#0a0e27" stroke="#f59e0b" stroke-width="1"/>
+      <text x="920" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">run_gate(git-diff-check)</text>
+    </g>
+
+    <!-- 9. Reviewer appends evidence -->
+    <g transform="translate(0 380)">
+      <line x1="780" y1="170" x2="1050" y2="170" stroke="#22c55e" stroke-width="1.5"/>
+      <polygon points="1050,170 1042,166 1042,174" fill="#22c55e"/>
+      <rect x="810" y="156" width="220" height="22" rx="11" fill="#0a0e27" stroke="#22c55e" stroke-width="1"/>
+      <text x="920" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">append_evidence(...)</text>
+    </g>
+
+    <!-- 10. Reviewer releases -->
+    <g transform="translate(0 420)">
+      <line x1="780" y1="170" x2="1050" y2="170" stroke="#ec4899" stroke-width="1.5"/>
+      <polygon points="1050,170 1042,166 1042,174" fill="#ec4899"/>
+      <rect x="800" y="156" width="240" height="22" rx="11" fill="#0a0e27" stroke="#ec4899" stroke-width="1"/>
+      <text x="920" y="171" text-anchor="middle" fill="#e0e7ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10">release_files(Dashboard.tsx)</text>
+    </g>
+  </g>
+
+  <!-- Animated highlight bar that scrolls down to highlight active step -->
+  <rect x="60" y="160" width="1080" height="22" rx="11" fill="#a855f7" opacity="0.08">
+    <animate attributeName="y" values="160;210;260;290;340;380;420;460;500;540" keyTimes="0;0.11;0.22;0.33;0.44;0.55;0.66;0.77;0.88;1" dur="18s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.08;0.14;0.14;0.14;0.14;0.14;0.14;0.14;0.14;0.08" keyTimes="0;0.05;0.22;0.33;0.44;0.55;0.66;0.77;0.88;1" dur="18s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Footer -->
+  <g transform="translate(0 600)">
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="#1f2547" stroke-width="1"/>
+  </g>
+</svg>

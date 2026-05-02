@@ -1,191 +1,288 @@
-# Hermes3D MCP Lock Orchestrator
+<div align="center">
+
+<img src="docs/diagrams/hero.svg" alt="HermesProof — verifiable multi-agent coordination over MCP" width="100%"/>
+
+<br/>
 
 [![Truth Gates](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml/badge.svg)](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml)
+[![MCP](https://img.shields.io/badge/MCP-2024--11--05-a855f7?style=flat-square)](https://modelcontextprotocol.io)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-06b6d4?style=flat-square)](https://nodejs.org)
+[![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](./LICENSE)
+[![Inspired by](https://img.shields.io/badge/inspired%20by-Hermes%20Agent-ec4899?style=flat-square)](https://hermes-agent.nousresearch.com/)
 
-Local stdio MCP server that coordinates Claude, Codex, Windsurf/Cascade, and review agents on the **same code repository** by enforcing per-file locks, atomic transactions, and explicit handoffs.
+**HermesProof** is the verifiable file-lock and proof layer that lets **Claude · Codex · Windsurf · Cascade** coordinate edits on the **same repository** — without clobbering each other.
 
-Every push runs the `truth-gates` harness against a clean sandbox and refreshes `PROOF/latest.json` + `PROOF_E2E_REPORT.md` automatically. See [`PROOF_E2E_REPORT.md`](./PROOF_E2E_REPORT.md) for the latest attestation.
+[Quickstart](#-quickstart) · [Pipeline](#-end-to-end-pipeline) · [Truth Gates](#-truth-gates) · [Architecture](#-architecture) · [Coordination](#-multi-agent-coordination) · [Composition](#-composes-with-other-mcp-servers) · [Docs](#-documentation)
 
-It is designed for the Hermes3D workflow but is **project-agnostic** — install it into any new or existing repository.
+</div>
 
-```text
-Claude creates scope locks, docs, reviews, and correction packets.
-Codex edits code and runs gates.
-Claude review agents audit the result.
-Windsurf can complete/setup/test the MCP and then use it as the IDE control layer.
-No agent edits another agent's files unless it owns the lock or receives an approved handoff.
-```
+---
 
-## What this server provides
+## ✦ End-to-end pipeline
 
-### Coordination tools
+Every edit flows through six gates, leaving an immutable trail behind.
 
-- `hermes_claim_task`
-- `hermes_release_task`
-- `hermes_lock_files`
-- `hermes_release_files`
-- `hermes_list_locks`
-- `hermes_heartbeat`
-- `hermes_request_handoff`
-- `hermes_approve_handoff`
-- `hermes_recover_stale_locks`
-- `hermes_append_evidence`
-- `hermes_get_state`
-
-### Diagnostic tools
-
-- `hermes_read_policy` — read-only policy view (workspace, state dir, env-var resolution).
-- `hermes_doctor` — non-destructive pre-flight: workspace exists, writable, env wired, git present, Node version.
-
-### Gate tools
-
-- `hermes_list_gates`
-- `hermes_run_gate`
-
-The gate runner is **allowlist-only**. Built-in gates: `git-status`, `git-branch`, `git-diff-check`, `git-diff-staged`, `git-log-recent`, `npm-test`, `npm-build`, `npm-lint`, `npm-typecheck`, `npm-audit`, `playwright`. It does not expose arbitrary shell execution.
-
-## Install in the Hermes3D repo
-
-Recommended repo layout:
+<div align="center">
+<img src="docs/diagrams/pipeline-flow.svg" alt="End-to-end pipeline: intent → claim → work → handoff → verify → attest" width="100%"/>
+</div>
 
 ```text
-G:\Github\Hermes3D\
-  tools\
-    hermes3d-mcp-lock-orchestrator\
-      README.md
-      src\server.mjs
-      ...
+01 INTENT     agent decides "I want to edit X"
+02 CLAIM      claim_task + lock_files (atomic mkdir EEXIST, 90-min TTL)
+03 WORK       edit owned files, heartbeat to extend TTL — others see "blocked"
+04 HANDOFF    request_handoff → approve_handoff → ownership transferred
+05 VERIFY     run_gate (allowlisted: git-status, diff-check, npm-test, audit, …)
+06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Steps:
+Every push to `main` re-proves the entire chain through 9 truth gates and commits the refreshed proof bundle back to the repo automatically.
 
-```powershell
-cd G:\Github\Hermes3D
-mkdir tools -Force
-# unzip this package into tools\hermes3d-mcp-lock-orchestrator
-cd tools\hermes3d-mcp-lock-orchestrator
-npm install
-npm test
-npm run init-project -- --workspace "G:\Github\Hermes3D"
+---
+
+## ✦ Truth gates
+
+The proof harness — `npm run truth-gates` — runs nine independent verifications in sequence, capturing structured evidence at every step.
+
+<div align="center">
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running nine gates sequentially" width="100%"/>
+</div>
+
+| # | Gate | What it proves |
+| - | --- | --- |
+| 01 | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift |
+| 02 | `deps.parity` | `package.json` declared deps match the installed ones in `node_modules/` |
+| 03 | `tests.unit` | All 12 unit tests pass via direct `node --test` (npm pipe-routing bypassed) |
+| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 15 tools |
+| 05 | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace |
+| 06 | `e2e.multi_agent_flow` | 14-step real stdio probe: claim → lock → block → handoff → gate → release |
+| 07 | `workspace.integrity` | No probe files leaked, no unexpected tracked changes in the workspace |
+| 08 | `clients.config_presence` | Claude Desktop, Claude Code, Codex, Windsurf all have `hermes3d-locks` wired |
+| 09 | `clients.claude_code_live` | `claude mcp list` reports `hermes3d-locks: ✓ Connected` (round-trip live) |
+
+Outputs:
+
+- `PROOF/latest.json` — machine-readable evidence (gate-by-gate JSON, manifest hashes, config snapshots)
+- `PROOF_E2E_REPORT.md` — human-readable summary table at the repo root
+- GitHub Actions artifact `proof-<sha>` — 90-day retention
+
+> Run locally: `npm run truth-gates` · Run CI-only subset: `npm run truth-gates -- --ci` · Read latest: [`PROOF_E2E_REPORT.md`](./PROOF_E2E_REPORT.md)
+
+---
+
+## ✦ Architecture
+
+Single stdio process per workspace, four MCP clients, two persistence surfaces.
+
+<div align="center">
+<img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
+</div>
+
+The server exposes **15 MCP tools** for coordination, gates, and diagnostics:
+
+```text
+CLAIM           claim_task          release_task
+LOCK            lock_files          release_files       heartbeat
+HANDOFF         request_handoff     approve_handoff
+GATE            run_gate            list_gates
+EVIDENCE        append_evidence
+DIAGNOSTICS     get_state           list_locks          recover_stale_locks
+                doctor              read_policy
 ```
 
-`init-project` is idempotent. It creates the hidden state dir, appends `.gitignore` rules, runs `hermes_doctor`, and prints ready-to-paste MCP client configs.
-
-## Install into any other project (new or existing)
-
-The same package works for any repository. Pick a workspace path and tell the orchestrator about it through `MCP_LOCK_WORKSPACE`:
-
-```powershell
-# 1. Drop the package somewhere reusable
-cd C:\path\to\YourProject
-mkdir tools -Force
-# unzip into tools\hermes3d-mcp-lock-orchestrator (the folder name is fine; the server is project-agnostic)
-cd tools\hermes3d-mcp-lock-orchestrator
-npm install
-npm test
-
-# 2. Point it at the project you actually want to govern
-npm run init-project -- --workspace "C:\path\to\YourProject"
-
-# 3. (optional) override the hidden state dir name and MCP server identifier
-npm run init-project -- --workspace "C:\path\to\YourProject" --state-dir ".project_locks" --server-name "your-project-locks"
-```
-
-The default suite (`npm test`) covers two files and 12 named tests:
-
-**`scripts/coordination-smoke-test.mjs`** — proves the multi-agent flow:
-1. Claude locks contract docs.
-2. Codex locks UI code files.
-3. A reviewer tries to lock a Codex-owned file and is **blocked**.
-4. The reviewer requests a handoff.
-5. Codex approves the handoff.
-6. Ownership transfers to the reviewer.
-7. Codex cannot silently resume editing the transferred file without requesting it back.
-
-**`scripts/hardening-smoke-test.mjs`** — proves the safety guarantees:
-
-- Path-escape attempts (absolute paths, `..` traversal, locking the workspace root) are rejected with an explicit error.
-- An owner can refresh its own lock without conflict.
-- `releaseFiles` from a non-owner is blocked, not silently allowed.
-- Heartbeat extends lock expiry.
-- Stale lock recovery archives metadata and clears the lock.
-- The gate runner rejects unknown gate IDs without spawning anything.
-- `cwd` values that escape the workspace are rejected.
-- `doctor()` reports actionable findings with suggested fixes.
-- `getPolicy()` exposes env-var resolution and stable policy fields.
-- Custom state dir names work end-to-end.
-- `MCP_LOCK_STATE_DIR` values containing slashes or `..` are rejected.
-
-## Runtime state
-
-State is stored inside the workspace under a single hidden directory. Default name: `.hermes3d_orchestrator/`. Override with `MCP_LOCK_STATE_DIR` (must be a single directory name without slashes or `..`).
+State lives in `<workspace>/.hermes3d_orchestrator/`:
 
 ```text
 .hermes3d_orchestrator/
-  locks/                # one directory per locked file (atomic mkdir guards EEXIST)
-  tasks/                # JSON per claimed task
-  handoffs/             # JSON per handoff request/decision
-  evidence/             # ledger.ndjson + per-event archives
-  gates/                # gate run reports
-  events.ndjson         # append-only event log
-  config.json           # written once on first init()
+├── locks/              one directory per locked file (mkdir EEXIST = atomic acquire)
+│   └── <hash>/metadata.json
+├── tasks/              active task records
+├── handoffs/           pending + decided handoff requests
+├── evidence/
+│   └── ledger.ndjson   append-only attestation log
+└── events.ndjson       append-only event stream (lock.acquired, handoff.decided, …)
 ```
 
-`init-project` adds this dir and `tools/hermes3d-mcp-lock-orchestrator/node_modules/` to the workspace's `.gitignore`. You can intentionally commit an evidence bundle by overriding the gitignore for a specific run.
+---
 
-## Environment variables
+## ✦ Multi-agent coordination
 
-| Variable               | Purpose                                                   | Default                  |
-| ---------------------- | --------------------------------------------------------- | ------------------------ |
-| `MCP_LOCK_WORKSPACE`   | Project root the orchestrator governs (preferred).        | _unset_                  |
-| `HERMES3D_WORKSPACE`   | Legacy alias; honored when `MCP_LOCK_WORKSPACE` is unset. | _unset_                  |
-| `MCP_LOCK_STATE_DIR`   | Override the hidden state dir name.                       | `.hermes3d_orchestrator` |
-| `MCP_LOCK_SERVER_NAME` | Override the MCP server identifier in printed configs.    | `hermes3d-locks`         |
+Claude leads with docs and contracts. Codex implements code. Reviewers audit. HermesProof keeps them out of each other's way.
 
-## Safety policy
+<div align="center">
+<img src="docs/diagrams/multi-agent-flow.svg" alt="Sequence diagram of Claude lead, Codex implementer, Claude reviewer, and HermesProof server coordinating an edit with handoff" width="100%"/>
+</div>
 
-1. Every agent must claim a task before editing.
-2. Every file edit must be preceded by `hermes_lock_files`.
-3. If `hermes_lock_files` returns `blocked`, the agent must stop and call `hermes_request_handoff`.
-4. Only the current owner can approve or deny a handoff.
-5. Approval transfers lock ownership; denial keeps the lock.
-6. Every checkpoint appends evidence.
-7. Gates are allowlisted only.
-8. Stale recovery is manual and must append evidence.
+### Per-file lock lifecycle
 
-## Quick config generator
+<div align="center">
+<img src="docs/diagrams/lock-lifecycle.svg" alt="Lock lifecycle states: unlocked, held by A, handoff pending, held by B" width="100%"/>
+</div>
 
-For Hermes3D:
+The state machine is intentionally minimal:
+
+- **unlocked** → no entry under `locks/`
+- **held by owner A** → `locks/<hash>/metadata.json` exists; only A can release; heartbeat extends TTL
+- **handoff pending** → `handoffs/<id>.json` exists; A still owns the lock
+- **held by owner B** → after A approves; same metadata file, role updated to `handoff_receiver`
+- **stale recovery** → after TTL expiry, any agent can call `recover_stale_locks` (the only safe override path)
+
+---
+
+## ✦ Composes with other MCP servers
+
+HermesProof is intentionally narrow: it is the **governance layer**. It coexists with — never competes with — filesystem, transport, and bridge MCPs.
+
+<div align="center">
+<img src="docs/diagrams/mcp-composition.svg" alt="HermesProof composes with filesystem MCP and Codex bridges as peer servers, all sharing the same workspace" width="100%"/>
+</div>
+
+| Concern | Server | Status |
+| --- | --- | --- |
+| Per-file ownership / locking / handoffs / evidence | **HermesProof** (this repo) | shipped here |
+| Read / write / list files | [`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers) | external — coexists |
+| Claude → Codex bridge | [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) · [`cexll/codex-mcp-server`](https://github.com/cexll/codex-mcp-server) | external — coexists |
+| Multi-agent spawning / routing | [`ruvnet/claude-flow`](https://github.com/ruvnet/claude-flow) | external — runs above |
+
+See [`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md) for full composition recipes.
+
+---
+
+## ✦ Quickstart
 
 ```powershell
-$env:MCP_LOCK_WORKSPACE="G:\Github\Hermes3D"
-node scripts/print-configs.mjs
+# 1. Clone and install
+git clone https://github.com/Ghenghis/HermesProof.git
+cd HermesProof
+npm install
+
+# 2. Verify the package
+npm run truth-gates                                 # 9/9 gates pass against your local machine
+npm test                                            # 12 unit tests
+npm run doctor -- --workspace G:\Github\Hermes3D    # non-destructive readiness probe
+
+# 3. Bootstrap the target workspace
+npm run init-project -- --workspace G:\Github\Hermes3D
+
+# 4. Wire it into every MCP client (with backups)
+npm run install-clients -- --workspace G:\Github\Hermes3D
+
+# 5. Confirm it's live
+claude mcp list                                     # expect "hermes3d-locks: ✓ Connected"
 ```
 
-For any other project:
-
-```powershell
-$env:MCP_LOCK_WORKSPACE="C:\path\to\YourProject"
-$env:MCP_LOCK_SERVER_NAME="your-project-locks"
-node scripts/print-configs.mjs
-```
-
-The script emits the OS-specific paths for the Claude Desktop, Windsurf, and Codex config files alongside paste-ready JSON/TOML blocks.
-
-## Recommended owner names
-
-Use stable owner names. Do not use vague names like `agent`.
+After step 4, restart Claude Desktop and Codex; refresh MCP servers in Cascade. Tell any agent:
 
 ```text
-claude-lead
-claude-reviewer-ux
-claude-reviewer-tests
-claude-reviewer-security
-codex-impl-01
-codex-fix-01
-windsurf-cascade
+Use hermes_doctor and hermes_read_policy. Confirm workspace_root.
+Then claim_task + lock_files before editing anything.
 ```
 
-## First real Hermes3D test task
+For projects other than Hermes3D, just point `--workspace` somewhere else — HermesProof is project-agnostic.
 
-Use the included UX-A task in `examples/HERMES3D_UX_A_COORDINATION_TEST.md`. It is intentionally small but complex enough to prove real multi-agent coordination around the current UI audit.
+---
+
+## ✦ MCP client configuration
+
+Four clients are supported; `npm run install-clients` writes all of them with timestamped backups. Manual JSON for reference:
+
+<details>
+<summary><b>Claude Desktop</b> · <code>%APPDATA%\Claude\claude_desktop_config.json</code></summary>
+
+```json
+{
+  "mcpServers": {
+    "hermes3d-locks": {
+      "command": "node",
+      "args": ["G:\\Github\\HermesProof\\src\\server.mjs"],
+      "env": { "MCP_LOCK_WORKSPACE": "G:\\Github\\Hermes3D" }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Claude Code</b> · CLI</summary>
+
+```powershell
+claude mcp add --transport stdio hermes3d-locks --scope user `
+  --env MCP_LOCK_WORKSPACE="G:\Github\Hermes3D" `
+  -- node "G:\Github\HermesProof\src\server.mjs"
+```
+</details>
+
+<details>
+<summary><b>Codex</b> · <code>~/.codex/config.toml</code></summary>
+
+```toml
+[mcp_servers.hermes3d-locks]
+command = "node"
+args = ["G:\\Github\\HermesProof\\src\\server.mjs"]
+env = { MCP_LOCK_WORKSPACE = "G:\\Github\\Hermes3D" }
+enabled = true
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+# Keep serialized for lock correctness; do not enable parallel tool calls.
+```
+</details>
+
+<details>
+<summary><b>Windsurf · Cascade</b> · <code>~/.codeium/windsurf/mcp_config.json</code></summary>
+
+```json
+{
+  "mcpServers": {
+    "hermes3d-locks": {
+      "command": "node",
+      "args": ["G:\\Github\\HermesProof\\src\\server.mjs"],
+      "env": { "MCP_LOCK_WORKSPACE": "G:\\Github\\Hermes3D" }
+    }
+  }
+}
+```
+</details>
+
+---
+
+## ✦ Environment
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MCP_LOCK_WORKSPACE` | `cwd()` | Absolute path of the workspace HermesProof governs |
+| `HERMES3D_WORKSPACE` | — | Legacy alias for `MCP_LOCK_WORKSPACE` (still honored) |
+| `MCP_LOCK_STATE_DIR` | `.hermes3d_orchestrator` | Name of the state dir inside the workspace; rejects slashes / `..` |
+| `MCP_LOCK_SERVER_NAME` | `hermes3d-locks` | Name surfaced to MCP clients (only used by `print-configs`) |
+
+---
+
+## ✦ Documentation
+
+- **[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)** — full system deep-dive with all diagrams
+- **[`docs/LOCK_PROTOCOL.md`](./docs/LOCK_PROTOCOL.md)** — exactly when and how locks are acquired and released
+- **[`docs/TOOL_REFERENCE.md`](./docs/TOOL_REFERENCE.md)** — every MCP tool, with example arguments and responses
+- **[`docs/SECURITY_POLICY.md`](./docs/SECURITY_POLICY.md)** — what the server will and will not do, threat model, allowlist
+- **[`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md)** — composing with filesystem MCP, Codex bridges, claude-flow
+- **[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)** — repair scripts, debugging recipes, release checklist
+- **[`docs/SETUP_CLAUDE_DESKTOP.md`](./docs/SETUP_CLAUDE_DESKTOP.md)** · **[`docs/SETUP_CLAUDE_CODE.md`](./docs/SETUP_CLAUDE_CODE.md)** · **[`docs/SETUP_CODEX.md`](./docs/SETUP_CODEX.md)** · **[`docs/SETUP_WINDSURF.md`](./docs/SETUP_WINDSURF.md)**
+- **[`docs/SETUP_GENERIC_PROJECT.md`](./docs/SETUP_GENERIC_PROJECT.md)** — install into any repo (not just Hermes3D)
+- **[`AGENTS.md`](./AGENTS.md)** — mandatory rules for any agent operating against this server
+- **[`PROOF_E2E_REPORT.md`](./PROOF_E2E_REPORT.md)** — latest auto-generated proof report
+
+---
+
+## ✦ Inspiration & credits
+
+HermesProof carries the [Hermes Agent](https://hermes-agent.nousresearch.com/) lineage from [Nous Research](https://nousresearch.com/) — the same emphasis on **verifiable, agentic capability** with an immutable trail of evidence.
+
+Where Nous's [`hermes-agent`](https://github.com/nousresearch/hermes-agent) reasons and acts, HermesProof **governs and attests**: it is the layer that lets multiple Hermes-class agents cooperate on a real codebase without stepping on each other.
+
+Built for the [Hermes3D](https://github.com/Ghenghis/Hermes3D) workflow; project-agnostic by design.
+
+---
+
+<div align="center">
+
+`hermes3d-locks` is the deployed MCP server name (already wired into client configs).
+**HermesProof** is the project, the harness, and the proof bundle.
+
+</div>

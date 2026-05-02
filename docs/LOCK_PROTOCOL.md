@@ -1,8 +1,12 @@
-# Hermes3D Lock Protocol
+# HermesProof — Lock Protocol
+
+<div align="center">
+<img src="./diagrams/lock-lifecycle.svg" alt="Per-file lock lifecycle: unlocked → held(A) → handoff_pending → held(B) → unlocked" width="100%"/>
+</div>
 
 ## Golden rule
 
-No agent edits a file unless it owns the lock for that file.
+No agent edits a file unless it owns the lock for that file. The server enforces this; conventions cannot.
 
 ## Required lifecycle
 

@@ -1,6 +1,6 @@
-# Hermes3D Agent Rules
+# HermesProof — Agent Rules
 
-This repository uses `hermes3d-locks`, a local MCP server, to prevent Claude, Codex, Windsurf, and review agents from editing the same files at the same time. It is project-agnostic — the same rules apply to any project that wires the orchestrator into its MCP clients.
+When using the HermesProof MCP server (deployed name `hermes3d-locks`) you **must** follow these rules. They prevent Claude, Codex, Windsurf, and review agents from editing the same files at the same time. The rules are project-agnostic — they apply to any repository that wires the orchestrator into its MCP clients.
 
 ## Mandatory before every edit
 

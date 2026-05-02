@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Truth gates pipeline — 9 gates running sequentially">
+  <title>Truth gates pipeline</title>
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="100%" stop-color="#13183a"/>
+    </linearGradient>
+    <pattern id="grid3" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1c2348" stroke-width="0.5"/>
+    </pattern>
+    <filter id="g3" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="540" fill="url(#bg3)"/>
+  <rect width="1200" height="540" fill="url(#grid3)"/>
+
+  <text x="600" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#e0e7ff" letter-spacing="1">TRUTH-GATE PIPELINE&#160;·&#160;9 GATES</text>
+  <text x="600" y="58" text-anchor="middle" font-size="12" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">npm run truth-gates → exit 0 ⇔ every required gate passes</text>
+
+  <!-- 9 gate cards in 3x3 grid. Each runs every 12s, staggered every 1.2s.
+       Card layout: 280x100, gap 30. Centers row1 y=130, row2 y=270, row3 y=410. Cols: 90, 400, 710 left coords. -->
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- Gate 1 -->
+    <g transform="translate(60 110)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="0s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#a855f7" letter-spacing="1">01 · INTEGRITY</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">source.integrity_manifest</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">SHA-256 manifest of src/ + scripts/</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">tampering = manifest hash drift</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="0s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 2 -->
+    <g transform="translate(440 110)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="1.2s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#a855f7" letter-spacing="1">02 · DEPS</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">deps.parity</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">declared = installed</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">@modelcontextprotocol/sdk · zod</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="1.2s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 3 -->
+    <g transform="translate(820 110)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="2.4s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#a855f7" letter-spacing="1">03 · UNIT</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">tests.unit</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">12 tests · coordination + hardening</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">node --test direct subprocess</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="2.4s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 4 -->
+    <g transform="translate(60 250)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="3.6s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#06b6d4" letter-spacing="1">04 · TRANSPORT</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">server.stdio_handshake</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">MCP initialize · tools/list</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">15 tools surface, all named</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="3.6s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 5 -->
+    <g transform="translate(440 250)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="4.8s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#06b6d4" letter-spacing="1">05 · DOCTOR</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">doctor.hermes3d</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">workspace probe · non-destructive</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">env vars · git status · node version</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="4.8s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 6 -->
+    <g transform="translate(820 250)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="6s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#ec4899" letter-spacing="1">06 · END-TO-END</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">e2e.multi_agent_flow</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">14-step real stdio probe</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">claim · lock · block · handoff · gate</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="6s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 7 -->
+    <g transform="translate(60 390)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="7.2s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#f59e0b" letter-spacing="1">07 · INTEGRITY</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">workspace.integrity</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">no probe-files leaked</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">no unexpected tracked changes</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="7.2s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 8 -->
+    <g transform="translate(440 390)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="8.4s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#22c55e" letter-spacing="1">08 · CLIENTS</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">clients.config_presence</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">Claude Desktop · Code · Codex · Windsurf</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">all four have hermes3d-locks wired</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="8.4s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+
+    <!-- Gate 9 -->
+    <g transform="translate(820 390)">
+      <rect width="320" height="100" rx="12" fill="#1a1f3a" stroke="#1f2547" stroke-width="1.5"/>
+      <rect width="320" height="100" rx="12" fill="none" stroke="#22c55e" stroke-width="2" opacity="0">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="12s" begin="9.6s" repeatCount="indefinite"/>
+      </rect>
+      <text x="20" y="28" font-size="11" fill="#22c55e" letter-spacing="1">09 · LIVE</text>
+      <text x="20" y="54" font-size="14" font-weight="700" fill="#e0e7ff">clients.claude_code_live</text>
+      <text x="20" y="76" font-size="11" fill="#94a3b8">claude mcp list shows ✓ Connected</text>
+      <text x="20" y="92" font-size="11" fill="#94a3b8">round-trip server reachability</text>
+      <g transform="translate(280 50)">
+        <circle r="14" fill="#0a0e27" stroke="#22c55e" stroke-width="2"/>
+        <path d="M -6 0 L -2 4 L 6 -4" stroke="#22c55e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.04;0.06;0.95;1" dur="12s" begin="9.6s" repeatCount="indefinite"/>
+        </path>
+      </g>
+    </g>
+  </g>
+
+  <!-- Bottom result strip -->
+  <g transform="translate(60 510)">
+    <text x="0" y="0" font-size="12" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" letter-spacing="1">RESULT</text>
+    <rect x="80" y="-12" width="160" height="20" rx="10" fill="#0a0e27" stroke="#22c55e" stroke-width="1.2"/>
+    <text x="160" y="2" text-anchor="middle" font-size="11" fill="#22c55e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="700">PASS 9 / 9</text>
+    <text x="270" y="0" font-size="12" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">→ PROOF/latest.json · PROOF_E2E_REPORT.md · upload-artifact</text>
+  </g>
+</svg>

@@ -1,6 +1,14 @@
-# Security Policy
+# HermesProof — Security Policy
 
-This MCP is intentionally narrow.
+This MCP is intentionally narrow. Everything the server is allowed to do is enumerated in this document.
+
+<div align="center">
+<img src="./diagrams/architecture.svg" alt="HermesProof architecture: clients, server, state directory, and allowlisted gate runner" width="100%"/>
+</div>
+
+## Threat model in one diagram
+
+The two surfaces an attacker (or a buggy agent) might target are the **state directory** and the **gate runner**. Both are kept small on purpose.
 
 ## Allowed
 

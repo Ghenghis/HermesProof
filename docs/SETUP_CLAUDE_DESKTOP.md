@@ -1,4 +1,4 @@
-# Setup: Claude Desktop
+# HermesProof Setup — Claude Desktop
 
 Use the Developer settings / MCP config editor in Claude Desktop and add this server:
 

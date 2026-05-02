@@ -1,4 +1,21 @@
-# Tool Reference
+# HermesProof — Tool Reference
+
+The server exposes 15 MCP tools across coordination, gates, evidence, and diagnostics.
+
+<div align="center">
+<img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the 15 tools surfaced over stdio JSON-RPC" width="100%"/>
+</div>
+
+| Group           | Tools                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------ |
+| Claim / release | `hermes_claim_task`, `hermes_release_task`                                                                   |
+| Lock            | `hermes_lock_files`, `hermes_release_files`, `hermes_heartbeat`                                              |
+| Handoff         | `hermes_request_handoff`, `hermes_approve_handoff`                                                           |
+| Gate            | `hermes_run_gate`, `hermes_list_gates`                                                                       |
+| Evidence        | `hermes_append_evidence`                                                                                     |
+| Diagnostics     | `hermes_get_state`, `hermes_list_locks`, `hermes_recover_stale_locks`, `hermes_doctor`, `hermes_read_policy` |
+
+---
 
 ## hermes_get_state
 

@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 540" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Per-file lock lifecycle">
+  <title>Lock lifecycle</title>
+  <defs>
+    <linearGradient id="bgL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="100%" stop-color="#13183a"/>
+    </linearGradient>
+    <pattern id="gridL" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1c2348" stroke-width="0.5"/>
+    </pattern>
+    <filter id="gL" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="aL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/></marker>
+    <marker id="aLg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#22c55e"/></marker>
+    <marker id="aLp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/></marker>
+    <marker id="aLr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ef4444"/></marker>
+  </defs>
+
+  <rect width="1100" height="540" fill="url(#bgL)"/>
+  <rect width="1100" height="540" fill="url(#gridL)"/>
+
+  <text x="550" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#e0e7ff" letter-spacing="1">PER-FILE LOCK LIFECYCLE</text>
+  <text x="550" y="58" text-anchor="middle" font-size="12" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">unlocked → held → handoff_pending → held(other) → unlocked</text>
+
+  <!-- unlocked -->
+  <g transform="translate(425 90)">
+    <rect width="250" height="64" rx="32" fill="#1a1f3a" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="125" y="30" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">unlocked</text>
+    <text x="125" y="50" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">no entry under locks/</text>
+  </g>
+
+  <!-- arrow down to held -->
+  <line x1="550" y1="156" x2="550" y2="220" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#aLg)">
+    <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.2s" repeatCount="indefinite"/>
+  </line>
+  <text x="560" y="190" font-size="11" fill="#22c55e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">lock_files</text>
+
+  <!-- held by A -->
+  <g transform="translate(390 230)">
+    <rect width="320" height="86" rx="12" fill="#1a1f3a" stroke="#22c55e" stroke-width="2" filter="url(#gL)"/>
+    <rect width="320" height="86" rx="12" fill="none" stroke="#22c55e" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.3;1;0.3" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="160" y="32" text-anchor="middle" font-size="14" font-weight="700" fill="#86efac">held by owner A</text>
+    <text x="160" y="54" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">locks/&lt;hash&gt;/metadata.json</text>
+    <text x="160" y="72" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">ttl=90 min · heartbeat extends</text>
+  </g>
+
+  <!-- self-loop heartbeat -->
+  <path d="M 710 260 C 800 240, 800 300, 710 300" fill="none" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#aL)"/>
+  <text x="780" y="278" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">heartbeat</text>
+
+  <!-- to handoff_pending -->
+  <line x1="390" y1="280" x2="200" y2="340" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="6 4" marker-end="url(#aL)"/>
+  <text x="170" y="310" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">B requests</text>
+  <text x="170" y="324" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">handoff</text>
+
+  <!-- handoff pending -->
+  <g transform="translate(40 340)">
+    <rect width="320" height="86" rx="12" fill="#1a1f3a" stroke="#f59e0b" stroke-width="2" filter="url(#gL)"/>
+    <rect width="320" height="86" rx="12" fill="none" stroke="#f59e0b" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.3;1;0.3" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="160" y="32" text-anchor="middle" font-size="14" font-weight="700" fill="#fcd34d">handoff pending</text>
+    <text x="160" y="54" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">handoffs/&lt;id&gt;.json</text>
+    <text x="160" y="72" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">A still owns the lock</text>
+  </g>
+
+  <!-- approve to held by B -->
+  <line x1="220" y1="426" x2="430" y2="468" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#aLg)">
+    <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.2s" repeatCount="indefinite"/>
+  </line>
+  <text x="240" y="455" font-size="11" fill="#22c55e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">approve</text>
+
+  <!-- deny back to held by A -->
+  <path d="M 80 426 C 30 440, 360 240, 390 252" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#aLr)">
+    <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.2s" repeatCount="indefinite"/>
+  </path>
+  <text x="40" y="436" font-size="11" fill="#ef4444" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">deny</text>
+
+  <!-- held by B -->
+  <g transform="translate(420 460)">
+    <rect width="320" height="60" rx="12" fill="#1a1f3a" stroke="#22c55e" stroke-width="2" filter="url(#gL)"/>
+    <text x="160" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#86efac">held by owner B</text>
+    <text x="160" y="46" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">role=handoff_receiver · same metadata file</text>
+  </g>
+
+  <!-- release from B back to unlocked -->
+  <path d="M 740 480 C 880 460, 920 200, 670 122" fill="none" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="6 4" marker-end="url(#aL)"/>
+  <text x="900" y="290" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">release_files</text>
+
+  <!-- release from A -->
+  <path d="M 710 270 C 880 250, 920 160, 670 122" fill="none" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="6 4" marker-end="url(#aL)"/>
+  <text x="900" y="200" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">release_files</text>
+
+  <!-- stale recovery -->
+  <path d="M 390 290 C 80 260, 80 100, 425 100" fill="none" stroke="#475569" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#aL)"/>
+  <text x="60" y="170" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-style="italic">recover_stale_locks</text>
+  <text x="60" y="184" font-size="10" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-style="italic">(after ttl expiry)</text>
+</svg>

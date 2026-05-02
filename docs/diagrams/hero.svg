@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="HermesProof — verifiable multi-agent coordination over MCP">
+  <title>HermesProof</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="50%" stop-color="#13183a"/>
+      <stop offset="100%" stop-color="#0a0e27"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"  stop-color="#a855f7">
+        <animate attributeName="stop-color" values="#a855f7;#06b6d4;#ec4899;#a855f7" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="50%" stop-color="#06b6d4">
+        <animate attributeName="stop-color" values="#06b6d4;#ec4899;#a855f7;#06b6d4" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#ec4899">
+        <animate attributeName="stop-color" values="#ec4899;#a855f7;#06b6d4;#ec4899" dur="8s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%"  stop-color="#a855f7" stop-opacity="0.6"/>
+      <stop offset="60%" stop-color="#a855f7" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1f2547" stroke-width="0.5"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="360" fill="url(#bg)"/>
+  <rect width="1200" height="360" fill="url(#grid)"/>
+  <ellipse cx="600" cy="180" rx="500" ry="180" fill="url(#halo)">
+    <animate attributeName="rx" values="500;540;500" dur="6s" repeatCount="indefinite"/>
+    <animate attributeName="ry" values="180;200;180" dur="6s" repeatCount="indefinite"/>
+  </ellipse>
+
+  <!-- Hex monogram (winged Hermes glyph: a stylized H with ascending lines) -->
+  <g transform="translate(120 180)" filter="url(#glow)">
+    <polygon points="0,-72 62,-36 62,36 0,72 -62,36 -62,-36" fill="none" stroke="#a855f7" stroke-width="2.5">
+      <animate attributeName="stroke" values="#a855f7;#06b6d4;#ec4899;#a855f7" dur="8s" repeatCount="indefinite"/>
+    </polygon>
+    <polygon points="0,-52 44,-26 44,26 0,52 -44,26 -44,-26" fill="none" stroke="#06b6d4" stroke-width="1.5" opacity="0.7">
+      <animateTransform attributeName="transform" type="rotate" values="0;360" dur="20s" repeatCount="indefinite"/>
+    </polygon>
+    <!-- Stylized H with caduceus tick marks -->
+    <line x1="-22" y1="-30" x2="-22" y2="30" stroke="#e0e7ff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="22"  y1="-30" x2="22"  y2="30" stroke="#e0e7ff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="-22" y1="0"   x2="22"  y2="0"  stroke="#e0e7ff" stroke-width="3" stroke-linecap="round"/>
+    <!-- Tiny "wings" -->
+    <path d="M -32 -30 L -42 -38 M -32 -22 L -46 -22 M 32 -30 L 42 -38 M 32 -22 L 46 -22" stroke="#06b6d4" stroke-width="1.4" stroke-linecap="round" fill="none">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="3s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- Title -->
+  <g transform="translate(230 130)">
+    <text x="0" y="0" font-size="72" font-weight="800" letter-spacing="-2" fill="url(#title)">HermesProof</text>
+    <text x="2" y="38" font-size="16" letter-spacing="2" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">VERIFIABLE&#160;·&#160;MULTI-AGENT&#160;·&#160;COORDINATION</text>
+    <text x="2" y="80" font-size="18" fill="#e0e7ff">Per-file locks, atomic handoffs, and an attested proof bundle</text>
+    <text x="2" y="104" font-size="18" fill="#e0e7ff">for Claude · Codex · Windsurf working on the same repository.</text>
+  </g>
+
+  <!-- Right-side status pills (animated) -->
+  <g transform="translate(870 90)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <g>
+      <rect x="0" y="0" width="240" height="36" rx="18" fill="#1a1f3a" stroke="#22c55e" stroke-width="1.2"/>
+      <circle cx="22" cy="18" r="6" fill="#22c55e">
+        <animate attributeName="opacity" values="0.4;1;0.4" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      <text x="40" y="22" fill="#e0e7ff">truth-gates: 9 / 9 PASS</text>
+    </g>
+    <g transform="translate(0 50)">
+      <rect x="0" y="0" width="240" height="36" rx="18" fill="#1a1f3a" stroke="#a855f7" stroke-width="1.2"/>
+      <circle cx="22" cy="18" r="6" fill="#a855f7">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+      <text x="40" y="22" fill="#e0e7ff">15 MCP tools · stdio</text>
+    </g>
+    <g transform="translate(0 100)">
+      <rect x="0" y="0" width="240" height="36" rx="18" fill="#1a1f3a" stroke="#06b6d4" stroke-width="1.2"/>
+      <circle cx="22" cy="18" r="6" fill="#06b6d4">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="2.8s" repeatCount="indefinite"/>
+      </circle>
+      <text x="40" y="22" fill="#e0e7ff">CI: auto-attested on push</text>
+    </g>
+    <g transform="translate(0 150)">
+      <rect x="0" y="0" width="240" height="36" rx="18" fill="#1a1f3a" stroke="#ec4899" stroke-width="1.2"/>
+      <circle cx="22" cy="18" r="6" fill="#ec4899">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="3.2s" repeatCount="indefinite"/>
+      </circle>
+      <text x="40" y="22" fill="#e0e7ff">SHA-256 source manifest</text>
+    </g>
+  </g>
+
+  <!-- Bottom flow line -->
+  <g transform="translate(0 320)">
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="#1f2547" stroke-width="1"/>
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="url(#title)" stroke-width="2" stroke-dasharray="14 12">
+      <animate attributeName="stroke-dashoffset" values="0;-260" dur="5s" repeatCount="indefinite"/>
+    </line>
+  </g>
+</svg>

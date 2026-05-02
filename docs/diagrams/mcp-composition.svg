@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="HermesProof composes with other MCP servers">
+  <title>MCP composition</title>
+  <defs>
+    <linearGradient id="bgC" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="100%" stop-color="#13183a"/>
+    </linearGradient>
+    <pattern id="gridC" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1c2348" stroke-width="0.5"/>
+    </pattern>
+    <filter id="gC" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="aC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#a855f7"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="540" fill="url(#bgC)"/>
+  <rect width="1200" height="540" fill="url(#gridC)"/>
+
+  <text x="600" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#e0e7ff" letter-spacing="1">MCP COMPOSITION</text>
+  <text x="600" y="58" text-anchor="middle" font-size="12" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">HermesProof governs · filesystem MCP transports · Codex bridge augments · all peers</text>
+
+  <!-- Agent (top) -->
+  <g transform="translate(450 90)">
+    <rect width="300" height="64" rx="12" fill="#1a1f3a" stroke="#a855f7" stroke-width="1.5" filter="url(#gC)"/>
+    <text x="150" y="30" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">Agent (Claude / Codex / Windsurf)</text>
+    <text x="150" y="50" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">single MCP client speaks to many servers</text>
+  </g>
+
+  <!-- Three MCP servers row -->
+  <g transform="translate(0 220)">
+    <!-- HermesProof -->
+    <g transform="translate(80 0)">
+      <rect width="300" height="120" rx="12" fill="#1a1f3a" stroke="#22c55e" stroke-width="2" filter="url(#gC)"/>
+      <rect width="300" height="120" rx="12" fill="none" stroke="#22c55e" stroke-width="2">
+        <animate attributeName="stroke-opacity" values="0.3;1;0.3" dur="2.4s" begin="0s" repeatCount="indefinite"/>
+      </rect>
+      <text x="150" y="34" text-anchor="middle" font-size="14" font-weight="700" fill="#86efac">HermesProof</text>
+      <text x="150" y="56" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">governance / coordination</text>
+      <text x="150" y="78" text-anchor="middle" font-size="11" fill="#e0e7ff">per-file locks</text>
+      <text x="150" y="96" text-anchor="middle" font-size="11" fill="#e0e7ff">handoffs · evidence ledger</text>
+      <text x="150" y="112" text-anchor="middle" font-size="10" fill="#22c55e" font-style="italic">primary purpose of this repo</text>
+    </g>
+
+    <!-- Filesystem MCP -->
+    <g transform="translate(450 0)">
+      <rect width="300" height="120" rx="12" fill="#1a1f3a" stroke="#06b6d4" stroke-width="2" filter="url(#gC)"/>
+      <rect width="300" height="120" rx="12" fill="none" stroke="#06b6d4" stroke-width="2">
+        <animate attributeName="stroke-opacity" values="0.3;1;0.3" dur="2.4s" begin="0.6s" repeatCount="indefinite"/>
+      </rect>
+      <text x="150" y="34" text-anchor="middle" font-size="14" font-weight="700" fill="#67e8f9">Filesystem MCP</text>
+      <text x="150" y="56" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">transport / IO</text>
+      <text x="150" y="78" text-anchor="middle" font-size="11" fill="#e0e7ff">read / write / list files</text>
+      <text x="150" y="96" text-anchor="middle" font-size="11" fill="#e0e7ff">@modelcontextprotocol/server-filesystem</text>
+      <text x="150" y="112" text-anchor="middle" font-size="10" fill="#06b6d4" font-style="italic">external — coexists</text>
+    </g>
+
+    <!-- Codex bridge -->
+    <g transform="translate(820 0)">
+      <rect width="300" height="120" rx="12" fill="#1a1f3a" stroke="#ec4899" stroke-width="2" filter="url(#gC)"/>
+      <rect width="300" height="120" rx="12" fill="none" stroke="#ec4899" stroke-width="2">
+        <animate attributeName="stroke-opacity" values="0.3;1;0.3" dur="2.4s" begin="1.2s" repeatCount="indefinite"/>
+      </rect>
+      <text x="150" y="34" text-anchor="middle" font-size="14" font-weight="700" fill="#f9a8d4">Codex bridge</text>
+      <text x="150" y="56" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">augmentation / cross-agent</text>
+      <text x="150" y="78" text-anchor="middle" font-size="11" fill="#e0e7ff">openai/codex-plugin-cc</text>
+      <text x="150" y="96" text-anchor="middle" font-size="11" fill="#e0e7ff">cexll/codex-mcp-server</text>
+      <text x="150" y="112" text-anchor="middle" font-size="10" fill="#ec4899" font-style="italic">external — coexists</text>
+    </g>
+  </g>
+
+  <!-- Connectors from agent to each server -->
+  <g fill="none" stroke="#a855f7" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#aC)">
+    <path d="M 540 154 Q 540 200 230 220">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 600 154 L 600 220">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 660 154 Q 660 200 970 220">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.2s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- Workspace bottom -->
+  <g transform="translate(80 400)">
+    <rect width="1040" height="100" rx="14" fill="#1a1f3a" stroke="#a855f7" stroke-width="1.5" filter="url(#gC)"/>
+    <text x="520" y="34" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">Shared workspace (e.g. G:\Github\Hermes3D)</text>
+    <text x="520" y="58" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">filesystem MCP performs the IO · HermesProof governs WHO can write WHICH file · Codex bridge invokes Codex CLI</text>
+    <text x="520" y="80" text-anchor="middle" font-size="11" fill="#e0e7ff" font-style="italic">all three servers see the same .hermes3d_orchestrator/ state</text>
+  </g>
+
+  <!-- Connectors from each server to workspace -->
+  <g fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3 3">
+    <line x1="230" y1="340" x2="230" y2="400"/>
+    <line x1="600" y1="340" x2="600" y2="400"/>
+    <line x1="970" y1="340" x2="970" y2="400"/>
+  </g>
+</svg>

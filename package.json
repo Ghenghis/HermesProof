@@ -1,11 +1,32 @@
 {
-  "name": "hermes3d-mcp-lock-orchestrator",
-  "version": "0.1.0",
+  "name": "hermesproof",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Local MCP server for Hermes3D agent coordination, file locking, handoffs, gates, and evidence ledgers.",
+  "description": "HermesProof — verifiable multi-agent coordination over MCP. Per-file locks, atomic handoffs, allowlisted gates, evidence ledger, and truth-gate proof bundle.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "codex",
+    "windsurf",
+    "agent-coordination",
+    "file-locking",
+    "hermes3d",
+    "truth-gates",
+    "attestation"
+  ],
+  "homepage": "https://github.com/Ghenghis/HermesProof",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ghenghis/HermesProof.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ghenghis/HermesProof/issues"
+  },
+  "license": "MIT",
   "bin": {
-    "hermes3d-mcp-locks": "src/server.mjs"
+    "hermesproof": "src/server.mjs"
   },
   "scripts": {
     "start": "node src/server.mjs",

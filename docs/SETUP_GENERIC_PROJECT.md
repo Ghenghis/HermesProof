@@ -1,4 +1,4 @@
-# Setup: Any Project (new or existing)
+# HermesProof Setup — Any Project (new or existing)
 
 The MCP Lock Orchestrator is project-agnostic. Use the same package to coordinate agents on **any** repository — Hermes3D was just the first project that needed it.
 
@@ -57,11 +57,11 @@ npm run init-project -- `
 
 ## Environment variables an MCP client should set
 
-| Variable | Required? | Purpose |
-| --- | --- | --- |
-| `MCP_LOCK_WORKSPACE` | yes | Absolute path to the project root. |
-| `MCP_LOCK_STATE_DIR` | optional | Override the hidden state dir name. Default: `.hermes3d_orchestrator`. |
-| `HERMES3D_WORKSPACE` | optional | Legacy alias for `MCP_LOCK_WORKSPACE`. Honored when the new name is unset. |
+| Variable             | Required? | Purpose                                                                    |
+| -------------------- | --------- | -------------------------------------------------------------------------- |
+| `MCP_LOCK_WORKSPACE` | yes       | Absolute path to the project root.                                         |
+| `MCP_LOCK_STATE_DIR` | optional  | Override the hidden state dir name. Default: `.hermes3d_orchestrator`.     |
+| `HERMES3D_WORKSPACE` | optional  | Legacy alias for `MCP_LOCK_WORKSPACE`. Honored when the new name is unset. |
 
 ## Per-client wiring
 

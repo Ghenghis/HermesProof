@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="HermesProof end-to-end pipeline flow">
+  <title>HermesProof end-to-end pipeline</title>
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="100%" stop-color="#13183a"/>
+    </linearGradient>
+    <pattern id="grid2" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1c2348" stroke-width="0.5"/>
+    </pattern>
+    <filter id="g2" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="cy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#06b6d4"/>
+    </marker>
+    <marker id="pp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#a855f7"/>
+    </marker>
+    <marker id="pk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#ec4899"/>
+    </marker>
+    <marker id="gn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="520" fill="url(#bg2)"/>
+  <rect width="1200" height="520" fill="url(#grid2)"/>
+
+  <text x="600" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#e0e7ff" letter-spacing="1">END-TO-END PIPELINE</text>
+  <text x="600" y="58" text-anchor="middle" font-size="12" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">agent → MCP → state · gates · evidence → proof</text>
+
+  <!-- 6-stage pipeline boxes (centers): 100, 280, 460, 640, 820, 1000  width 160 each, y=130, h=120 -->
+
+  <!-- Stage 1: Agent intent -->
+  <g transform="translate(20 130)">
+    <rect width="160" height="120" rx="12" fill="#1a1f3a" stroke="#06b6d4" stroke-width="1.5" filter="url(#g2)"/>
+    <text x="80" y="28" text-anchor="middle" font-size="11" fill="#06b6d4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">01 · INTENT</text>
+    <text x="80" y="58" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">Agent</text>
+    <text x="80" y="80" text-anchor="middle" font-size="11" fill="#94a3b8">Claude / Codex /</text>
+    <text x="80" y="96" text-anchor="middle" font-size="11" fill="#94a3b8">Windsurf review</text>
+    <text x="80" y="112" text-anchor="middle" font-size="10" fill="#06b6d4" font-style="italic">"I want to edit X"</text>
+  </g>
+
+  <!-- Stage 2: claim_task + lock_files -->
+  <g transform="translate(200 130)">
+    <rect width="160" height="120" rx="12" fill="#1a1f3a" stroke="#a855f7" stroke-width="1.5" filter="url(#g2)"/>
+    <text x="80" y="28" text-anchor="middle" font-size="11" fill="#a855f7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">02 · CLAIM</text>
+    <text x="80" y="58" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">claim_task</text>
+    <text x="80" y="78" text-anchor="middle" font-size="13" font-weight="700" fill="#e0e7ff">+ lock_files</text>
+    <text x="80" y="100" text-anchor="middle" font-size="10" fill="#94a3b8">atomic mkdir EEXIST</text>
+    <text x="80" y="114" text-anchor="middle" font-size="10" fill="#a855f7" font-style="italic">90-min TTL</text>
+  </g>
+
+  <!-- Stage 3: heartbeat + edit -->
+  <g transform="translate(380 130)">
+    <rect width="160" height="120" rx="12" fill="#1a1f3a" stroke="#a855f7" stroke-width="1.5" filter="url(#g2)"/>
+    <text x="80" y="28" text-anchor="middle" font-size="11" fill="#a855f7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">03 · WORK</text>
+    <text x="80" y="58" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">edit + heartbeat</text>
+    <text x="80" y="82" text-anchor="middle" font-size="10" fill="#94a3b8">other agents see "blocked"</text>
+    <text x="80" y="98" text-anchor="middle" font-size="10" fill="#94a3b8">via tools/list_locks</text>
+    <text x="80" y="114" text-anchor="middle" font-size="10" fill="#a855f7" font-style="italic">heartbeat extends TTL</text>
+  </g>
+
+  <!-- Stage 4: handoff (optional branch) -->
+  <g transform="translate(560 130)">
+    <rect width="160" height="120" rx="12" fill="#1a1f3a" stroke="#ec4899" stroke-width="1.5" filter="url(#g2)"/>
+    <text x="80" y="28" text-anchor="middle" font-size="11" fill="#ec4899" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">04 · HANDOFF</text>
+    <text x="80" y="58" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">request +</text>
+    <text x="80" y="78" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">approve</text>
+    <text x="80" y="100" text-anchor="middle" font-size="10" fill="#94a3b8">explicit consent</text>
+    <text x="80" y="114" text-anchor="middle" font-size="10" fill="#ec4899" font-style="italic">ownership transferred</text>
+  </g>
+
+  <!-- Stage 5: gate runner -->
+  <g transform="translate(740 130)">
+    <rect width="160" height="120" rx="12" fill="#1a1f3a" stroke="#f59e0b" stroke-width="1.5" filter="url(#g2)"/>
+    <text x="80" y="28" text-anchor="middle" font-size="11" fill="#f59e0b" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">05 · VERIFY</text>
+    <text x="80" y="58" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">run_gate</text>
+    <text x="80" y="80" text-anchor="middle" font-size="11" fill="#94a3b8">git-status · diff-check</text>
+    <text x="80" y="96" text-anchor="middle" font-size="11" fill="#94a3b8">npm-test · audit · etc.</text>
+    <text x="80" y="112" text-anchor="middle" font-size="10" fill="#f59e0b" font-style="italic">allowlisted only</text>
+  </g>
+
+  <!-- Stage 6: evidence + release -->
+  <g transform="translate(920 130)">
+    <rect width="160" height="120" rx="12" fill="#1a1f3a" stroke="#22c55e" stroke-width="1.5" filter="url(#g2)"/>
+    <text x="80" y="28" text-anchor="middle" font-size="11" fill="#22c55e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">06 · ATTEST</text>
+    <text x="80" y="58" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">evidence</text>
+    <text x="80" y="78" text-anchor="middle" font-size="14" font-weight="700" fill="#e0e7ff">+ release</text>
+    <text x="80" y="100" text-anchor="middle" font-size="10" fill="#94a3b8">NDJSON ledger</text>
+    <text x="80" y="114" text-anchor="middle" font-size="10" fill="#22c55e" font-style="italic">append-only · signed</text>
+  </g>
+
+  <!-- Pulse rings on every stage center, staggered -->
+  <g fill="none" stroke-width="2">
+    <circle cx="100" cy="190" r="60" stroke="#06b6d4" opacity="0">
+      <animate attributeName="r" values="32;78" dur="2.4s" begin="0s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0" dur="2.4s" begin="0s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="280" cy="190" r="60" stroke="#a855f7" opacity="0">
+      <animate attributeName="r" values="32;78" dur="2.4s" begin="0.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0" dur="2.4s" begin="0.4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="460" cy="190" r="60" stroke="#a855f7" opacity="0">
+      <animate attributeName="r" values="32;78" dur="2.4s" begin="0.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0" dur="2.4s" begin="0.8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="640" cy="190" r="60" stroke="#ec4899" opacity="0">
+      <animate attributeName="r" values="32;78" dur="2.4s" begin="1.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0" dur="2.4s" begin="1.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="820" cy="190" r="60" stroke="#f59e0b" opacity="0">
+      <animate attributeName="r" values="32;78" dur="2.4s" begin="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0" dur="2.4s" begin="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1000" cy="190" r="60" stroke="#22c55e" opacity="0">
+      <animate attributeName="r" values="32;78" dur="2.4s" begin="2.0s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0" dur="2.4s" begin="2.0s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- Connector lines with flowing dashes -->
+  <g fill="none" stroke-width="2">
+    <line x1="180" y1="190" x2="200" y2="190" stroke="#06b6d4" marker-end="url(#cy)" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="0.8s" repeatCount="indefinite"/>
+    </line>
+    <line x1="360" y1="190" x2="380" y2="190" stroke="#a855f7" marker-end="url(#pp)" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="0.8s" repeatCount="indefinite"/>
+    </line>
+    <line x1="540" y1="190" x2="560" y2="190" stroke="#a855f7" marker-end="url(#pp)" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="0.8s" repeatCount="indefinite"/>
+    </line>
+    <line x1="720" y1="190" x2="740" y2="190" stroke="#ec4899" marker-end="url(#pk)" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="0.8s" repeatCount="indefinite"/>
+    </line>
+    <line x1="900" y1="190" x2="920" y2="190" stroke="#f59e0b" marker-end="url(#cy)" stroke-dasharray="6 4">
+      <animate attributeName="stroke-dashoffset" values="0;-20" dur="0.8s" repeatCount="indefinite"/>
+    </line>
+  </g>
+
+  <!-- Bottom outputs lane -->
+  <g transform="translate(20 310)">
+    <text x="0" y="0" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" letter-spacing="1">PERSISTED ARTIFACTS</text>
+    <line x1="0" y1="10" x2="1160" y2="10" stroke="#1f2547" stroke-width="1"/>
+  </g>
+
+  <!-- Output cards (4) -->
+  <g transform="translate(20 340)">
+    <g>
+      <rect width="270" height="80" rx="10" fill="#1a1f3a" stroke="#22c55e" stroke-width="1"/>
+      <text x="20" y="28" font-size="12" font-weight="700" fill="#22c55e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">events.ndjson</text>
+      <text x="20" y="48" font-size="11" fill="#94a3b8">every state change appended</text>
+      <text x="20" y="64" font-size="11" fill="#94a3b8">type: lock.acquired / blocked / handoff.*</text>
+    </g>
+    <g transform="translate(290 0)">
+      <rect width="270" height="80" rx="10" fill="#1a1f3a" stroke="#22c55e" stroke-width="1"/>
+      <text x="20" y="28" font-size="12" font-weight="700" fill="#22c55e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">evidence/ledger.ndjson</text>
+      <text x="20" y="48" font-size="11" fill="#94a3b8">gate runs · agent attestations</text>
+      <text x="20" y="64" font-size="11" fill="#94a3b8">stable IDs · timestamps · hashes</text>
+    </g>
+    <g transform="translate(580 0)">
+      <rect width="270" height="80" rx="10" fill="#1a1f3a" stroke="#a855f7" stroke-width="1"/>
+      <text x="20" y="28" font-size="12" font-weight="700" fill="#a855f7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PROOF/latest.json</text>
+      <text x="20" y="48" font-size="11" fill="#94a3b8">9-gate truth bundle, machine-readable</text>
+      <text x="20" y="64" font-size="11" fill="#94a3b8">refreshed automatically by CI on push</text>
+    </g>
+    <g transform="translate(870 0)">
+      <rect width="270" height="80" rx="10" fill="#1a1f3a" stroke="#06b6d4" stroke-width="1"/>
+      <text x="20" y="28" font-size="12" font-weight="700" fill="#06b6d4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">PROOF_E2E_REPORT.md</text>
+      <text x="20" y="48" font-size="11" fill="#94a3b8">human-readable summary table</text>
+      <text x="20" y="64" font-size="11" fill="#94a3b8">visible at the top of the repo</text>
+    </g>
+  </g>
+
+  <!-- Connecting lines from each pipeline stage to the outputs lane (subtle) -->
+  <g stroke="#22c55e" stroke-width="1" opacity="0.3" stroke-dasharray="3 3">
+    <line x1="100" y1="250" x2="100" y2="310"/>
+    <line x1="280" y1="250" x2="280" y2="310"/>
+    <line x1="460" y1="250" x2="460" y2="310"/>
+    <line x1="640" y1="250" x2="640" y2="310"/>
+    <line x1="820" y1="250" x2="820" y2="310"/>
+    <line x1="1000" y1="250" x2="1000" y2="310"/>
+  </g>
+
+  <!-- Footer trace line -->
+  <g transform="translate(0 480)">
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="#1f2547" stroke-width="1"/>
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="#a855f7" stroke-width="2" stroke-dasharray="14 12" opacity="0.7">
+      <animate attributeName="stroke-dashoffset" values="0;-260" dur="6s" repeatCount="indefinite"/>
+    </line>
+    <text x="600" y="22" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" letter-spacing="2">EVERY STAGE WRITES IMMUTABLE EVIDENCE&#160;·&#160;EVERY PUSH RE-PROVES THE WHOLE CHAIN</text>
+  </g>
+</svg>
