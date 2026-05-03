@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 24 MCP tools across coordination, gates, evidence, events, queue pickup, and diagnostics.
+The server exposes 42 MCP tools across coordination, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>

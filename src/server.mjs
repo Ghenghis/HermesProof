@@ -6,6 +6,10 @@ import { config as loadDotenv } from "dotenv";
 import { resolveEnvFile } from "./core/env-file.mjs";
 import { HermesLockManager } from "./core/lock-manager.mjs";
 import { GateRunner } from "./core/gate-runner.mjs";
+import { SkillRotation } from "./core/skill-rotation.mjs";
+import { ReputationTracker } from "./core/reputation.mjs";
+import { CapabilityDispatch } from "./core/capability-dispatch.mjs";
+import { A2AStub } from "./core/a2a-stub.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
 import { loadRegistryProviders } from "./core/registry-providers.mjs";
@@ -41,6 +45,10 @@ const workspaceRoot =
 const stateDirName = process.env.MCP_LOCK_STATE_DIR || undefined;
 const manager = new HermesLockManager({ workspaceRoot, stateDirName });
 const gates = new GateRunner({ workspaceRoot });
+const skills = new SkillRotation({ workspaceRoot, stateDirName });
+const reputation = new ReputationTracker({ workspaceRoot, stateDirName });
+const dispatch = new CapabilityDispatch({ workspaceRoot, stateDirName });
+const a2a = new A2AStub({ workspaceRoot, stateDirName });
 const anon = new AnonymousOrchestrator({ workspaceRoot, stateDirName });
 // Auto-load any of the 62 Continue LLM provider classes from
 // policies/provider-registry/registry.yaml. Per the user's directive: don't
@@ -60,11 +68,15 @@ const hermesAgent = new HermesAgentBridge({
   registryProviders: registryLoad.providers || [],
 });
 await manager.init();
+await skills.init();
+await reputation.init();
+await dispatch.init();
+await a2a.init();
 await anon.init();
 
 const server = new McpServer({
   name: "hermes3d-lock-orchestrator",
-  version: "0.5.0"
+  version: "0.7.0"
 });
 
 // Tightened owner regex: lowercase + digits + hyphen, must start with a letter,
@@ -552,6 +564,71 @@ registerTool(
   }
 );
 
+// ---------------------------------------------------------------------------
+// v0.7 — Anonymous orchestration: skill-rotation, reputation, dispatch, A2A
+// ---------------------------------------------------------------------------
+
+registerTool(
+  "hermes_list_agents",
+  {
+    title: "List agents",
+    description: "List active agents with their role, skill histogram, reputation score, and dispatch ranking for an optional task_type. Combines anonymous orchestrator state with skill-rotation and reputation data. Pass task_type to see routing recommendations.",
+    inputSchema: {
+      task_type: z.string().optional()
+        .describe("Task type to compute dispatch ranking for (e.g. 'gate', 'review', 'build'). Optional."),
+      include_history: z.boolean().optional()
+        .describe("Include recent reputation events. Default false.")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const [allSkills, leaderboard] = await Promise.all([
+        skills.listActors(),
+        reputation.leaderboard(),
+      ]);
+      const repMap = Object.fromEntries(leaderboard.map((a) => [a.actor_id, a]));
+      const allActorIds = [...new Set([...Object.keys(allSkills), ...leaderboard.map((a) => a.actor_id)])];
+
+      let dispatchRanks = {};
+      if (args?.task_type) {
+        const ranked = await dispatch.rankActors(args.task_type, allActorIds);
+        for (const r of ranked) dispatchRanks[r.actor_id] = r.dispatch_score;
+      }
+
+      // include_history requires per-actor recent_events; reputation.leaderboard()
+      // does not surface them (only score/total_outcomes), so resolve them via
+      // reputation.getScore() per actor only when the flag is set.
+      const historyMap = {};
+      if (args?.include_history) {
+        const records = await Promise.all(allActorIds.map((id) => reputation.getScore(id)));
+        for (let i = 0; i < allActorIds.length; i++) {
+          historyMap[allActorIds[i]] = records[i]?.recent_events ?? [];
+        }
+      }
+
+      const agents = allActorIds.map((actor_id) => {
+        const skill = allSkills[actor_id] ?? { task_counts: {}, last_active_ts: 0, total_tasks: 0 };
+        const rep = repMap[actor_id] ?? { score: 1.0, total_outcomes: 0 };
+        const entry = {
+          actor_id,
+          reputation_score: rep.score,
+          total_outcomes: rep.total_outcomes,
+          total_tasks: skill.total_tasks,
+          task_counts: skill.task_counts,
+          last_active_ts: skill.last_active_ts,
+        };
+        if (args?.task_type) entry.dispatch_score = dispatchRanks[actor_id] ?? 0;
+        if (args?.include_history) entry.recent_events = historyMap[actor_id] ?? [];
+        return entry;
+      });
+
+      agents.sort((a, b) => b.reputation_score - a.reputation_score);
+      return toolResult({ agents, count: agents.length });
+    } catch (err) { return toolError(err); }
+  }
+);
+
 // === Anonymous orchestrator + Hermes Agent USER bridge tools ===
 
 const RoleEnum = z.enum(["BUILDER", "CRITIC", "SCRIBE", "GATE-SMITH", "DOC-KEEPER", "WATCHDOG"]);
@@ -570,6 +647,30 @@ registerTool(
 );
 
 registerTool(
+  "hermes_record_outcome",
+  {
+    title: "Record outcome",
+    description: "Record a task outcome (merge/lgtm/timeout/reject) for an actor. Updates their rolling reputation score. Used by CI, review gates, and the merge-master pattern. Outcomes: merge=+1.0, lgtm=+0.5, timeout=-0.25, reject=-1.0.",
+    inputSchema: {
+      actor_id: z.string().regex(/^[a-z][a-z0-9-]{1,63}$/)
+        .describe("Actor ID that produced the outcome."),
+      outcome: z.enum(["merge", "lgtm", "timeout", "reject"])
+        .describe("Outcome type: merge | lgtm | timeout | reject"),
+      context: z.string().max(200).optional()
+        .describe("Optional free-text annotation (PR number, gate name, etc.).")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const result = await reputation.recordOutcome(args.actor_id, args.outcome, args.context);
+      await skills.recordTask(args.actor_id, "outcome_" + args.outcome);
+      return toolResult(result);
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_anonymous_release",
   {
     title: "Release an anonymous role",
@@ -583,12 +684,33 @@ registerTool(
 );
 
 registerTool(
+  "hermes_record_task",
+  {
+    title: "Record task",
+    description: "Record that an actor performed a task of a given type. Updates their skill histogram for load-balanced routing. Task types: gate, lock, review, handoff, build, docs, test, infra.",
+    inputSchema: {
+      actor_id: z.string().regex(/^[a-z][a-z0-9-]{1,63}$/)
+        .describe("Actor ID performing the task."),
+      task_type: z.string().min(1).max(40)
+        .describe("Task type identifier (gate | lock | review | handoff | build | docs | test | infra).")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const result = await skills.recordTask(args.actor_id, args.task_type);
+      return toolResult(result);
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_anonymous_state",
   {
     title: "Read anonymous orchestrator state",
     description: "Read-only view of active role claims and (redacted) active user session. Hash field is redacted.",
     inputSchema: {},
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false }
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   async () => {
     try { return toolResult(await anon.getState()); } catch (err) { return toolError(err); }
@@ -616,6 +738,52 @@ registerTool(
 );
 
 registerTool(
+  "hermes_dispatch_recommend",
+  {
+    title: "Dispatch recommendation",
+    description: "Get a routing recommendation: which actor from a candidate list is best suited for the given task_type, based on reputation and skill-balance. Returns actor_id, composite score, and reasoning string.",
+    inputSchema: {
+      task_type: z.string().min(1).max(40)
+        .describe("Task type to route."),
+      candidates: z.array(z.string().regex(/^[a-z][a-z0-9-]{1,63}$/)).min(1).max(50)
+        .describe("Candidate actor IDs to choose from.")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const result = await dispatch.recommend(args.task_type, args.candidates);
+      return toolResult(result);
+    } catch (err) { return toolError(err); }
+  }
+);
+
+// A2A protocol tools
+
+registerTool(
+  "hermes_a2a_create_task",
+  {
+    title: "A2A: create task",
+    description: "Create an Agent-to-Agent task. Returns a task_id and initial status 'submitted'. The submitting agent is responsible for transitioning the task to 'working' once execution begins.",
+    inputSchema: {
+      agent_id: z.string().regex(/^[a-z][a-z0-9-]{1,63}$/)
+        .describe("Agent submitting the task."),
+      task_type: z.string().min(1).max(40)
+        .describe("Task type (e.g. gate_run, review, build, merge_check)."),
+      input: z.record(z.unknown()).optional()
+        .describe("Task parameters, opaque to the orchestrator.")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const result = await a2a.createTask({ agent_id: args.agent_id, task_type: args.task_type, input: args.input });
+      return toolResult(result);
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_user_revoke_session",
   {
     title: "Revoke the active AS_USER session",
@@ -629,15 +797,60 @@ registerTool(
 );
 
 registerTool(
+  "hermes_a2a_get_task",
+  {
+    title: "A2A: get task",
+    description: "Get the current state of an A2A task by ID. Returns status, input, output (if completed), and error (if failed).",
+    inputSchema: {
+      task_id: z.string().min(1).max(80)
+        .describe("A2A task ID returned by hermes_a2a_create_task.")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const task = await a2a.getTask(args.task_id);
+      if (!task) return toolResult({ ok: false, reason: "task not found" });
+      return toolResult(task);
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_user_check_authorization",
   {
     title: "Check AS_USER authorization for an action",
     description: "Returns { allowed, reason, granted_by } for the given action name against the currently active AS_USER session. Lazy-clears expired sessions.",
     inputSchema: { action: z.string().min(1).max(128) },
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false }
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   async ({ action }) => {
     try { return toolResult(await anon.checkUserAuthorization(action)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_a2a_update_task",
+  {
+    title: "A2A: update task",
+    description: "Transition an A2A task to a new status. Valid transitions: submitted→working, working→{input_required,completed,failed,canceled}, input_required→{working,canceled}. Terminal states (completed,failed,canceled) cannot be changed.",
+    inputSchema: {
+      task_id: z.string().min(1).max(80)
+        .describe("A2A task ID."),
+      status: z.enum(["working", "input_required", "completed", "failed", "canceled"])
+        .describe("New status."),
+      output: z.record(z.unknown()).optional()
+        .describe("Task result, set when transitioning to 'completed'."),
+      error: z.string().max(500).optional()
+        .describe("Error message, set when transitioning to 'failed'.")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const result = await a2a.updateTask(args.task_id, args.status, { output: args.output, error: args.error });
+      return toolResult(result);
+    } catch (err) { return toolError(err); }
   }
 );
 
@@ -647,10 +860,33 @@ registerTool(
     title: "Hermes Agent bridge health probe",
     description: "Probes the configured DeepSeek/MiniMax/SiliconFlow/LM-Studio providers in failover order. Returns the first healthy provider + model. Bridge is disabled by default (set HERMES_AGENT_ENABLED=1).",
     inputSchema: {},
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true }
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
   async () => {
     try { return toolResult(await hermesAgent.healthCheck()); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_a2a_list_tasks",
+  {
+    title: "A2A: list tasks",
+    description: "List A2A tasks, optionally filtered by agent_id, status, or task_type. Tasks older than 24h are excluded (auto-archived). Results sorted newest first.",
+    inputSchema: {
+      agent_id: z.string().regex(/^[a-z][a-z0-9-]{1,63}$/).optional()
+        .describe("Filter to tasks submitted by this agent."),
+      status: z.enum(["submitted", "working", "input_required", "completed", "failed", "canceled"]).optional()
+        .describe("Filter by status."),
+      task_type: z.string().min(1).max(40).optional()
+        .describe("Filter by task type.")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const tasks = await a2a.listTasks({ agent_id: args?.agent_id, status: args?.status, task_type: args?.task_type });
+      return toolResult({ tasks, count: tasks.length });
+    } catch (err) { return toolError(err); }
   }
 );
 
