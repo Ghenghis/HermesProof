@@ -12,7 +12,13 @@ import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { ensureEventDirs, generateReviewPacket, validateEventEnvelope } from "./generate-review-packet.mjs";
 import { markEventHandled } from "./watch-events.mjs";
 import {
+  generateSbom,
+  collectInstalledComponents,
+  writeSbomToProof
+} from "./sbom-generator.mjs";
+import {
   runLicensesScanGate,
+  runDependencyFreshGate,
   LICENSE_ALLOWLIST,
   LICENSE_DENYLIST
 } from "./license-and-deps-gates.mjs";
@@ -712,6 +718,172 @@ async function pathExists(file) {
 }
 
 // ---------------------------------------------------------------------------
+// sbom-generator unit tests (CycloneDX 1.5 emitter)
+//
+// Pure inputs only — these tests must NOT walk the live node_modules tree
+// or write to PROOF/. The truth-gate harness exercises the live path
+// separately, asserting the file shows up at PROOF/sbom.json.
+// ---------------------------------------------------------------------------
+test("generateSbom emits a valid CycloneDX 1.5 doc with sorted components", () => {
+  const components = [
+    { name: "zod", version: "3.24.1", license: "MIT", sha256: "deadbeef" },
+    { name: "@modelcontextprotocol/sdk", version: "1.29.0", license: "MIT" },
+    { name: "dotenv", version: "16.4.5", license: "BSD-2-Clause" }
+  ];
+  const text = generateSbom({
+    pkg: { name: "hermesproof", version: "0.5.0" },
+    components,
+    now: new Date("2026-05-03T00:00:00Z"),
+    serialNumber: "urn:uuid:0000-test"
+  });
+  const sbom = JSON.parse(text);
+  assert.equal(sbom.bomFormat, "CycloneDX");
+  assert.equal(sbom.specVersion, "1.5");
+  assert.equal(sbom.serialNumber, "urn:uuid:0000-test");
+  assert.equal(sbom.metadata.timestamp, "2026-05-03T00:00:00.000Z");
+  assert.equal(sbom.metadata.component.name, "hermesproof");
+  assert.equal(sbom.metadata.component.purl, "pkg:npm/hermesproof@0.5.0");
+  assert.equal(sbom.components.length, 3);
+  // Sorted by (name + version).
+  assert.equal(sbom.components[0].name, "@modelcontextprotocol/sdk");
+  assert.equal(sbom.components[1].name, "dotenv");
+  assert.equal(sbom.components[2].name, "zod");
+  // PURL formatting + scope + hash propagation.
+  assert.equal(sbom.components[0].purl, "pkg:npm/%40modelcontextprotocol/sdk@1.29.0");
+  assert.equal(sbom.components[2].purl, "pkg:npm/zod@3.24.1");
+  assert.equal(sbom.components[2].scope, "required");
+  assert.deepEqual(sbom.components[2].hashes, [{ alg: "SHA-256", content: "deadbeef" }]);
+  // SPDX id-shaped license stays as `id`.
+  assert.deepEqual(sbom.components[2].licenses, [{ license: { id: "MIT" } }]);
+});
+
+test("generateSbom is deterministic for stable inputs", () => {
+  const args = {
+    pkg: { name: "x", version: "1.0.0" },
+    components: [
+      { name: "b", version: "2.0.0", license: "MIT" },
+      { name: "a", version: "1.0.0", license: "MIT" }
+    ],
+    now: new Date("2026-05-03T00:00:00Z"),
+    serialNumber: "urn:uuid:fixed-123"
+  };
+  const a = generateSbom(args);
+  const b = generateSbom(args);
+  assert.equal(a, b, "same inputs must yield identical SBOM JSON");
+});
+
+test("generateSbom handles empty components and missing root metadata", () => {
+  const text = generateSbom({
+    pkg: {},
+    components: [],
+    now: new Date("2026-05-03T00:00:00Z"),
+    serialNumber: "urn:uuid:empty"
+  });
+  const sbom = JSON.parse(text);
+  assert.equal(sbom.components.length, 0);
+  assert.equal(sbom.metadata.component.name, "unknown");
+  assert.equal(sbom.bomFormat, "CycloneDX");
+});
+
+test("collectInstalledComponents tolerates missing node_modules", async () => {
+  const sb = await fs.mkdtemp(path.join(os.tmpdir(), "hp-sbom-noNM-"));
+  try {
+    const components = await collectInstalledComponents(sb);
+    assert.deepEqual(components, []);
+  } finally {
+    await fs.rm(sb, { recursive: true, force: true });
+  }
+});
+
+test("collectInstalledComponents harvests scoped + flat fixture packages", async () => {
+  const sb = await fs.mkdtemp(path.join(os.tmpdir(), "hp-sbom-fixture-"));
+  try {
+    const nm = path.join(sb, "node_modules");
+    await fs.mkdir(path.join(nm, "left-pad"), { recursive: true });
+    await fs.mkdir(path.join(nm, "@scope", "thing"), { recursive: true });
+    await fs.mkdir(path.join(nm, ".bin"), { recursive: true });          // ignored
+    await fs.mkdir(path.join(nm, "broken"), { recursive: true });        // no package.json -> skip
+    await fs.writeFile(
+      path.join(nm, "left-pad", "package.json"),
+      JSON.stringify({ name: "left-pad", version: "1.3.0", license: "WTFPL" })
+    );
+    await fs.writeFile(
+      path.join(nm, "@scope", "thing", "package.json"),
+      JSON.stringify({ name: "@scope/thing", version: "0.0.1", license: "MIT" })
+    );
+    const components = await collectInstalledComponents(sb);
+    const names = components.map((c) => c.name).sort();
+    assert.deepEqual(names, ["@scope/thing", "left-pad"]);
+    const lp = components.find((c) => c.name === "left-pad");
+    assert.equal(lp.version, "1.3.0");
+    assert.equal(lp.license, "WTFPL");
+    assert.match(lp.sha256, /^[a-f0-9]{64}$/);
+  } finally {
+    await fs.rm(sb, { recursive: true, force: true });
+  }
+});
+
+test("writeSbomToProof writes PROOF/sbom.json with components and serial number", async () => {
+  const sb = await fs.mkdtemp(path.join(os.tmpdir(), "hp-sbom-write-"));
+  try {
+    await fs.writeFile(
+      path.join(sb, "package.json"),
+      JSON.stringify({ name: "demo", version: "0.0.1", dependencies: {} })
+    );
+    const nm = path.join(sb, "node_modules", "alpha");
+    await fs.mkdir(nm, { recursive: true });
+    await fs.writeFile(
+      path.join(nm, "package.json"),
+      JSON.stringify({ name: "alpha", version: "1.0.0", license: "MIT" })
+    );
+    const receipt = await writeSbomToProof(sb);
+    assert.equal(receipt.ok, true);
+    assert.equal(receipt.components, 1);
+    assert.match(receipt.sha256, /^[a-f0-9]{64}$/);
+    assert.match(receipt.serialNumber, /^urn:uuid:/);
+    const sbomText = await fs.readFile(path.join(sb, "PROOF", "sbom.json"), "utf8");
+    const sbom = JSON.parse(sbomText);
+    assert.equal(sbom.bomFormat, "CycloneDX");
+    assert.equal(sbom.specVersion, "1.5");
+    assert.equal(sbom.components[0].name, "alpha");
+    assert.equal(sbom.metadata.component.name, "demo");
+    assert.equal(sbom.metadata.timestamp, "1970-01-01T00:00:00.000Z");
+  } finally {
+    await fs.rm(sb, { recursive: true, force: true });
+  }
+});
+
+test("writeSbomToProof is deterministic for unchanged installed packages", async () => {
+  const sb = await fs.mkdtemp(path.join(os.tmpdir(), "hp-sbom-deterministic-"));
+  try {
+    await fs.writeFile(
+      path.join(sb, "package.json"),
+      JSON.stringify({ name: "@demo/root", version: "0.0.1", dependencies: {} })
+    );
+    const nm = path.join(sb, "node_modules", "@scope", "alpha");
+    await fs.mkdir(nm, { recursive: true });
+    await fs.writeFile(
+      path.join(nm, "package.json"),
+      JSON.stringify({ name: "@scope/alpha", version: "1.0.0", license: "MIT" })
+    );
+    const first = await writeSbomToProof(sb);
+    const firstText = await fs.readFile(path.join(sb, "PROOF", "sbom.json"), "utf8");
+    const second = await writeSbomToProof(sb);
+    const secondText = await fs.readFile(path.join(sb, "PROOF", "sbom.json"), "utf8");
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, true);
+    assert.equal(first.sha256, second.sha256);
+    assert.equal(first.serialNumber, second.serialNumber);
+    assert.equal(firstText, secondText);
+    const sbom = JSON.parse(secondText);
+    assert.equal(sbom.metadata.component.purl, "pkg:npm/%40demo/root@0.0.1");
+    assert.equal(sbom.components[0].purl, "pkg:npm/%40scope/alpha@1.0.0");
+  } finally {
+    await fs.rm(sb, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // licenses.scan truth-gate unit tests
 //
 // All inputs are fixtures — these tests MUST NOT touch the real npm registry
@@ -752,4 +924,60 @@ test("licenses.scan passes a fixture package list of allowlisted licenses", () =
   assert.equal(out.ok, true);
   assert.equal(out.evidence.denylisted_packages.length, 0);
   assert.equal(out.evidence.unknown_packages.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// dependency.fresh truth-gate unit tests
+//
+// All inputs are fixtures — these tests MUST NOT touch the real npm registry.
+// The harness does that in a separate gate.
+// ---------------------------------------------------------------------------
+test("dependency.fresh emits warn for a fixture dep aged 12-18 months", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  // Mock dep: published ~14 months ago — should warn but NOT fail.
+  const fakePublished = new Date(now.getTime() - 14 * 30 * 24 * 60 * 60 * 1000).toISOString();
+  const pkgJson = { dependencies: { "fake-aging-pkg": "^1.0.0" } };
+  const fetchLatest = async () => ({ latestVersion: "1.0.0", publishedAt: fakePublished });
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, false);
+  assert.equal(out.ok, true, "12-18mo old dep must NOT fail the gate (warn only)");
+  assert.equal(out.evidence.warn_count, 1);
+  assert.equal(out.evidence.stale_count, 0);
+  assert.equal(out.evidence.details[0].status, "warn");
+  assert.equal(out.evidence.details[0].name, "fake-aging-pkg");
+});
+
+test("dependency.fresh fails when a direct dep is older than 18 months", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  const fakePublished = new Date(now.getTime() - 24 * 30 * 24 * 60 * 60 * 1000).toISOString();
+  const pkgJson = { dependencies: { "ancient-pkg": "^1.0.0" } };
+  const fetchLatest = async () => ({ latestVersion: "1.0.0", publishedAt: fakePublished });
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, false);
+  assert.equal(out.ok, false);
+  assert.equal(out.evidence.stale_count, 1);
+});
+
+test("dependency.fresh skips cleanly when registry is unreachable", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  const pkgJson = { dependencies: { offline: "^1.0.0" } };
+  const fetchLatest = async () => {
+    const err = new Error("getaddrinfo ENOTFOUND registry.npmjs.org");
+    err.code = "ENETWORK";
+    throw err;
+  };
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, true);
+  assert.equal(out.ok, true);
+  assert.match(out.details, /no network/);
+});
+
+test("dependency.fresh passes when there are no direct dependencies", async () => {
+  const out = await runDependencyFreshGate({
+    pkgJson: { dependencies: {} },
+    fetchLatest: async () => { throw new Error("must not be called"); }
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.skip, false);
+  assert.equal(out.evidence.direct_deps_count, 0);
 });
