@@ -1,8 +1,30 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { makeMutex } from "./mutex.mjs";
 
 export const DEFAULT_STATE_DIR_NAME = ".hermes3d_orchestrator";
+
+// Per-file shared mutex for `appendChainedJsonLine`. The chain is read +
+// hashed + appended in one logical operation; without serialization, two
+// callers in the same process can both read the same `prev_hash`, both
+// hash, and both append, forking the chain. The 2026-05-03 audit P0-3
+// (`ev_47347bd34f9a282d`) was a real-world manifestation of this race.
+//
+// Keyed by absolute file path so independent ledgers (different workspaces
+// in the same Node process) don't unnecessarily serialize against each
+// other; a single workspace gets exactly one mutex queue regardless of
+// how many caller modules invoke appendChainedJsonLine.
+const _evidenceLedgerMutexes = new Map();
+function getLedgerMutex(file) {
+  const key = path.resolve(file);
+  let mutex = _evidenceLedgerMutexes.get(key);
+  if (!mutex) {
+    mutex = makeMutex();
+    _evidenceLedgerMutexes.set(key, mutex);
+  }
+  return mutex;
+}
 // Backwards-compat alias kept for any external import sites.
 export const STATE_DIR_NAME = DEFAULT_STATE_DIR_NAME;
 
@@ -100,34 +122,43 @@ export function canonicalJSON(obj) {
 // Tampering with any entry (or splicing out a middle entry) breaks the chain
 // and is detected by verifyChainedLog.
 //
-// Note: this assumes a single-process appender (which the MCP server is).
-// Concurrent independent appenders on the same file would race; that is the
-// same coordination problem HermesProof itself solves at the file-lock layer.
+// Concurrent appenders on the same file are SERIALIZED via a per-file
+// process-shared mutex (see `_evidenceLedgerMutexes` above). Two simultaneous
+// callers in the same Node process now produce two linear chained entries,
+// not a fork. This closes the race that produced the chain break at
+// `ev_47347bd34f9a282d` (audit P0-3, 2026-05-03).
+//
+// Cross-process appenders (multiple Node processes hitting the same file)
+// are STILL UNSAFE — that requires file-system-level locking, a separate
+// problem. HermesProof's design assumes one MCP server process per workspace,
+// so the per-process boundary is correct.
 export async function appendChainedJsonLine(file, value) {
-  await ensureDir(path.dirname(file));
-  let prevHash = null;
-  let prevId = null;
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    const lines = raw.split("\n").filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const last = JSON.parse(lines[i]);
-        if (last && typeof last.entry_hash === "string") {
-          prevHash = last.entry_hash;
-          prevId = last.id || null;
-          break;
-        }
-      } catch { /* skip malformed */ }
+  return getLedgerMutex(file)(async () => {
+    await ensureDir(path.dirname(file));
+    let prevHash = null;
+    let prevId = null;
+    try {
+      const raw = await fs.readFile(file, "utf8");
+      const lines = raw.split("\n").filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const last = JSON.parse(lines[i]);
+          if (last && typeof last.entry_hash === "string") {
+            prevHash = last.entry_hash;
+            prevId = last.id || null;
+            break;
+          }
+        } catch { /* skip malformed */ }
+      }
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
     }
-  } catch (err) {
-    if (err.code !== "ENOENT") throw err;
-  }
-  const withChain = { ...value, prev_entry_id: prevId, prev_hash: prevHash };
-  const entryHash = crypto.createHash("sha256").update(canonicalJSON(withChain)).digest("hex");
-  const final = { ...withChain, entry_hash: entryHash };
-  await fs.appendFile(file, JSON.stringify(final) + "\n", "utf8");
-  return final;
+    const withChain = { ...value, prev_entry_id: prevId, prev_hash: prevHash };
+    const entryHash = crypto.createHash("sha256").update(canonicalJSON(withChain)).digest("hex");
+    const final = { ...withChain, entry_hash: entryHash };
+    await fs.appendFile(file, JSON.stringify(final) + "\n", "utf8");
+    return final;
+  });
 }
 
 // Walk an NDJSON log, validate each entry's hash matches its canonical
