@@ -61,6 +61,7 @@ jobs:
           name: proof-${{ github.sha }}
           path: |
             PROOF/latest.json
+            PROOF/sbom.json
             PROOF_E2E_REPORT.md
           if-no-files-found: error
           retention-days: 90
@@ -120,8 +121,8 @@ jobs:
           set -e
           git config user.name "hermes-truth-gate-bot"
           git config user.email "bot@hermes3d.local"
-          if [ -n "$(git status --porcelain PROOF/latest.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle)" ]; then
-            git add PROOF/latest.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle
+          if [ -n "$(git status --porcelain PROOF/latest.json PROOF/sbom.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle)" ]; then
+            git add PROOF/latest.json PROOF/sbom.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle
             git commit -m "ci: refresh truth-gate proof for ${GITHUB_SHA::7} [skip ci]" \
                        -m "Run id: ${{ github.run_id }}" \
                        -m "Workflow: ${{ github.workflow }}"
