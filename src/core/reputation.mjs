@@ -65,6 +65,9 @@ export class ReputationTracker {
    * @returns {{ ok: boolean, actor_id: string, outcome: string, delta: number, new_score: number }}
    */
   async recordOutcome(actor_id, outcome, context) {
+    if (!actor_id) {
+      throw new Error("actor_id is required");
+    }
     if (!(outcome in OUTCOME_DELTAS)) {
       throw new Error(`unknown outcome: ${outcome}. Valid: ${Object.keys(OUTCOME_DELTAS).join(", ")}`);
     }

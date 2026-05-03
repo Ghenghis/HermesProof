@@ -47,6 +47,9 @@ export class SkillRotation {
    * @param {string} task_type — one of KNOWN_TASK_TYPES or any custom string
    */
   async recordTask(actor_id, task_type) {
+    if (!actor_id || !task_type) {
+      throw new Error("actor_id and task_type are required");
+    }
     const state = await this._read();
     const now = Date.now();
     if (!state.actors[actor_id]) {
