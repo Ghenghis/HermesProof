@@ -11,15 +11,20 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const NOW = new Date();
+const INCLUDE_SIBLINGS =
+  process.env.HERMESPROOF_STREAM_INCLUDE_SIBLINGS === "1" ||
+  process.argv.includes("--include-siblings");
+const SNAPSHOT_START = "<!-- stream-state-snapshot:start -->";
+const SNAPSHOT_END = "<!-- stream-state-snapshot:end -->";
 
 function findRepoRoot() {
   let dir = process.cwd();
   while (dir !== path.dirname(dir)) {
     try {
-      execSync(`git -C "${dir}" rev-parse --git-dir`, { stdio: "pipe" });
+      execFileSync("git", ["-C", dir, "rev-parse", "--git-dir"], { stdio: "pipe" });
       return dir;
     } catch {
       // not a repo yet
@@ -31,7 +36,7 @@ function findRepoRoot() {
 
 function ghJson(args, fallback = []) {
   try {
-    const out = execSync(`gh ${args}`, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    const out = execFileSync("gh", args, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
     return JSON.parse(out);
   } catch {
     return fallback;
@@ -39,9 +44,19 @@ function ghJson(args, fallback = []) {
 }
 
 function ghPRs(repo) {
-  return ghJson(
-    `pr list -R ${repo} --state open --json number,title,headRefName,statusCheckRollup --limit 30`
-  );
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return [];
+  return ghJson([
+    "pr",
+    "list",
+    "-R",
+    repo,
+    "--state",
+    "open",
+    "--json",
+    "number,title,headRefName,statusCheckRollup",
+    "--limit",
+    "30",
+  ]);
 }
 
 function rollupSummary(checks) {
@@ -88,7 +103,20 @@ async function snapshotOneRepo(streamDir, repoSlug, label) {
     banner,
     "",
   ].join("\n");
-  await fs.writeFile(stateFile, block, "utf8");
+  const wrapped = `${SNAPSHOT_START}\n${block}\n${SNAPSHOT_END}\n`;
+  let existing = "";
+  try {
+    existing = await fs.readFile(stateFile, "utf8");
+  } catch {
+    // new STATE.md
+  }
+  const start = existing.indexOf(SNAPSHOT_START);
+  const end = existing.indexOf(SNAPSHOT_END);
+  const next =
+    start >= 0 && end > start
+      ? `${existing.slice(0, start)}${wrapped}${existing.slice(end + SNAPSHOT_END.length).replace(/^\r?\n/, "")}`
+      : `${wrapped}\n${existing}`;
+  await fs.writeFile(stateFile, next, "utf8");
   console.log(`snapshot updated: ${stateFile}`);
 }
 
@@ -97,7 +125,9 @@ async function main() {
   // Detect which repo we're in based on remote
   let repoSlug = null;
   try {
-    const url = execSync(`git -C "${root}" remote get-url origin`, { encoding: "utf8" }).trim();
+    const url = execFileSync("git", ["-C", root, "remote", "get-url", "origin"], {
+      encoding: "utf8",
+    }).trim();
     const m = url.match(/github\.com[/:]([^/]+\/[^/.]+)/);
     if (m) repoSlug = m[1];
   } catch {
@@ -113,6 +143,10 @@ async function main() {
   }
   await snapshotOneRepo(streamDir, repoSlug, label);
 
+  // Sibling STREAM/ snapshots are opt-in so cron/manual runs cannot mutate
+  // a nearby checkout without an explicit operator choice.
+  if (!INCLUDE_SIBLINGS) return;
+
   // If a sibling repo's STREAM/ is reachable, try that too
   const parent = path.dirname(root);
   try {
@@ -126,7 +160,7 @@ async function main() {
         // Try detecting the sibling's repo slug
         let sibSlug = null;
         try {
-          const url = execSync(`git -C "${path.join(parent, s.name)}" remote get-url origin`, {
+          const url = execFileSync("git", ["-C", path.join(parent, s.name), "remote", "get-url", "origin"], {
             encoding: "utf8",
           }).trim();
           const m = url.match(/github\.com[/:]([^/]+\/[^/.]+)/);

@@ -5,7 +5,7 @@
 
 ---
 
-## msg-20260503T113914Z-001 — FIX_PUSHED — hp-v0.5.1-perf
+## msg-2026-05-03T11-39-14Z-001 — FIX_PUSHED — hp-v0.5.1-perf
 - from: BUILDER (claude-impl-hp-perf)
 - to: CRITIC
 - correlation: hp-v0.5.1-perf
@@ -34,7 +34,7 @@ Version bumped to 0.5.1. CHANGELOG.md created (project did not have one before).
 
 ---
 
-## msg-20260503T115000Z-002 — GATE_LANDED — gate-batch-supply-chain
+## msg-2026-05-03T11-50-00Z-002 — GATE_LANDED — gate-batch-supply-chain
 - from: GATE-SMITH (claude-impl-gates-batch-1)
 - to: SCRIBE
 - correlation: gate-batch-supply-chain

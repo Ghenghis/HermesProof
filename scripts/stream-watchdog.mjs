@@ -2,12 +2,10 @@
 /**
  * stream-watchdog.mjs — heartbeat + auto-reassign.
  *
- * Runs every 1-15 minutes (cron or manual). Detects stuck/idle agents and
+ * Runs every 1-15 minutes (cron or manual). Detects stuck correlations and
  * auto-posts REASSIGN_REQUEST messages to free the queue.
  *
  * Detection rules:
- *   - Role IDLE: no STATE.md update by that role in >15 min while owning
- *     open `acknowledged` messages
  *   - Correlation STUCK: >3 messages on the same correlation, last activity
  *     >20 min, no `resolved`
  *   - Message EXPIRED: `expires:` field passed, status not `resolved`/`expired`
@@ -18,9 +16,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
 
 const NOW = new Date();
+const INCLUDE_SIBLINGS =
+  process.env.HERMESPROOF_STREAM_INCLUDE_SIBLINGS === '1' ||
+  process.argv.includes('--include-siblings');
 
 function findStreamDirs() {
   const here = process.cwd();
@@ -32,9 +32,9 @@ function findStreamDirs() {
   const out = [];
   const sp = path.join(root, 'handoffs', 'STREAM');
   if (fs.existsSync(sp)) out.push(sp);
-  // Sibling
+  // Sibling repos are opt-in so local/manual runs cannot mutate a nearby checkout.
   const parent = path.dirname(root);
-  if (fs.existsSync(parent)) {
+  if (INCLUDE_SIBLINGS && fs.existsSync(parent)) {
     for (const sib of fs.readdirSync(parent, { withFileTypes: true })) {
       if (!sib.isDirectory()) continue;
       const ssp = path.join(parent, sib.name, 'handoffs', 'STREAM');
@@ -86,6 +86,20 @@ function parseHeader(block) {
   };
 }
 
+function messageTimestamp(id) {
+  const dashed = id.match(/^msg-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z-/);
+  if (dashed) {
+    const [, d, hh, mm, ss] = dashed;
+    return new Date(`${d}T${hh}:${mm}:${ss}Z`);
+  }
+  const compact = id.match(/^msg-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-/);
+  if (compact) {
+    const [, yyyy, mo, dd, hh, mm, ss] = compact;
+    return new Date(`${yyyy}-${mo}-${dd}T${hh}:${mm}:${ss}Z`);
+  }
+  return null;
+}
+
 function ageMinutes(date) {
   if (!date) return Infinity;
   return (NOW - date) / 60000;
@@ -132,22 +146,82 @@ function check(dir) {
 
   // Wedged: both inboxes >5 open + no LEDGER append in 60 min
   const ledger = path.join(dir, 'LEDGER.md');
-  let ledgerAge = Infinity;
+  let latestLedgerActivity = null;
   if (fs.existsSync(ledger)) {
-    const stat = fs.statSync(ledger);
-    ledgerAge = (NOW - stat.mtime) / 60000;
+    const ledgerText = fs.readFileSync(ledger, 'utf8');
+    for (const block of parseMessages(ledgerText, ledger)) {
+      const parsed = parseHeader(block);
+      if (!parsed) continue;
+      const ts = messageTimestamp(parsed.id);
+      if (ts && (!latestLedgerActivity || ts > latestLedgerActivity)) latestLedgerActivity = ts;
+    }
   }
-  if (openCount > 10 && ledgerAge > 60) {
+  if (openCount > 10 && ageMinutes(latestLedgerActivity) > 60) {
     findings.wedged = true;
   }
 
   return findings;
 }
 
+function safeMessageId(correlation) {
+  const stamp = NOW.toISOString()
+    .replace(/\.\d{3}Z$/, 'Z')
+    .replace(/:/g, '-');
+  let hash = 0;
+  for (const ch of correlation) {
+    hash = (hash * 31 + ch.charCodeAt(0)) % 900;
+  }
+  return `msg-${stamp}-${String(hash + 100).padStart(3, '0')}`;
+}
+
+function hasOpenReassign(dir, correlation) {
+  for (const fname of ['CLAUDE_INBOX.md', 'CODEX_INBOX.md']) {
+    const f = path.join(dir, fname);
+    if (!fs.existsSync(f)) continue;
+    const text = fs.readFileSync(f, 'utf8');
+    const blocks = parseMessages(text, f).map(parseHeader).filter(Boolean);
+    if (
+      blocks.some(
+        (m) =>
+          m.type === 'REASSIGN_REQUEST' &&
+          m.fields.correlation === correlation &&
+          ['open', 'acknowledged'].includes(m.fields.status)
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function markExpired(finding) {
+  if (!fs.existsSync(finding.file)) return false;
+  const text = fs.readFileSync(finding.file, 'utf8');
+  const lines = text.split(/\r?\n/);
+  let inTarget = false;
+  let changed = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith(`## ${finding.id} `)) {
+      inTarget = true;
+      continue;
+    }
+    if (inTarget && lines[i].startsWith('## msg-')) break;
+    if (inTarget && /^- status:\s*/.test(lines[i])) {
+      lines[i] = '- status: expired';
+      changed = true;
+      break;
+    }
+  }
+  if (changed) fs.writeFileSync(finding.file, lines.join('\n'));
+  return changed;
+}
+
 function postReassign(dir, finding) {
-  const seq = String(Math.floor(Math.random() * 900) + 100); // pseudo-seq
-  const utc = NOW.toISOString().replace(/[:.]/g, '-').replace('--', '-').slice(0, 20) + 'Z';
-  const id = `msg-${utc.replace(/\..*/, '').replace(/T/, 'T')}-${seq}`;
+  if (hasOpenReassign(dir, finding.correlation)) {
+    console.log(`    REASSIGN already open for ${finding.correlation}; skipping duplicate`);
+    return;
+  }
+  const id = safeMessageId(finding.correlation);
   const body = `## ${id} — REASSIGN_REQUEST — ${finding.correlation}
 - from: WATCHDOG
 - to: ANY
@@ -182,6 +256,9 @@ function main() {
     for (const s of f.stuck) {
       console.log(`    STUCK ${s.correlation} (${s.count} msgs, last ${s.lastActivity?.toISOString()})`);
       postReassign(dir, s);
+    }
+    for (const e of f.expired) {
+      if (markExpired(e)) console.log(`    EXPIRED ${e.id} in ${e.file}`);
     }
     if (f.wedged) {
       exitCode = 2; // signal escalate-to-user

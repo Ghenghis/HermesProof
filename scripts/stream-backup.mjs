@@ -13,6 +13,9 @@ import path from 'node:path';
 
 const NOW = new Date();
 const RETENTION_DAYS = 7;
+const INCLUDE_SIBLINGS =
+  process.env.HERMESPROOF_STREAM_INCLUDE_SIBLINGS === '1' ||
+  process.argv.includes('--include-siblings');
 
 function findStreamDirs() {
   const here = process.cwd();
@@ -25,7 +28,7 @@ function findStreamDirs() {
   const sp = path.join(root, 'handoffs', 'STREAM');
   if (fs.existsSync(sp)) out.push(sp);
   const parent = path.dirname(root);
-  if (fs.existsSync(parent)) {
+  if (INCLUDE_SIBLINGS && fs.existsSync(parent)) {
     for (const sib of fs.readdirSync(parent, { withFileTypes: true })) {
       if (!sib.isDirectory()) continue;
       const ssp = path.join(parent, sib.name, 'handoffs', 'STREAM');

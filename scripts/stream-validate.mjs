@@ -9,14 +9,14 @@
  * messages valid, exits 1 with detailed errors if any malformed.
  *
  * Usage:
- *   node scripts/stream-validate.mjs                  # validate both repos
+ *   node scripts/stream-validate.mjs                  # validate this repo
+ *   node scripts/stream-validate.mjs --include-siblings # validate sibling repos too
  *   node scripts/stream-validate.mjs --repo=hermes3d  # validate one repo
- *   node scripts/stream-validate.mjs --fix            # auto-fix recoverable
+ *   node scripts/stream-validate.mjs --fix            # reserved; fails until fixer exists
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
 
 const VALID_TYPES = new Set([
   'CORRECTION_REQUEST', 'FIX_PUSHED', 'AUDIT_VERDICT', 'ENHANCEMENT_PROPOSAL',
@@ -35,6 +35,9 @@ const VALID_ROLES = new Set([
 ]);
 
 const ID_RE = /^msg-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-\d{3}$/;
+const INCLUDE_SIBLINGS =
+  process.env.HERMESPROOF_STREAM_INCLUDE_SIBLINGS === '1' ||
+  process.argv.includes('--include-siblings');
 
 function findRepoRoot(start = process.cwd()) {
   let dir = start;
@@ -46,12 +49,12 @@ function findRepoRoot(start = process.cwd()) {
 }
 
 function findStreamDirs() {
-  // Discover both repos relative to one another. Caller may live in either.
+  // Discover the current repo by default. Sibling repo checks are opt-in.
   const here = findRepoRoot();
   const candidates = [];
   if (here) candidates.push(path.join(here, 'handoffs', 'STREAM'));
   // Sibling repos
-  if (here) {
+  if (INCLUDE_SIBLINGS && here) {
     const parent = path.dirname(here);
     for (const sib of fs.readdirSync(parent, { withFileTypes: true })) {
       if (!sib.isDirectory()) continue;
@@ -116,7 +119,12 @@ function validateMessage(msg, file) {
 function main() {
   const args = process.argv.slice(2);
   const fix = args.includes('--fix');
-  const repoFilter = (args.find((a) => a.startsWith('--repo=')) || '').slice('--repo='.length);
+  if (fix) {
+    console.error('stream-validate: --fix is reserved but not implemented; refusing to report success');
+    process.exit(1);
+  }
+  const filteredArgs = args.filter((arg) => arg !== '--include-siblings');
+  const repoFilter = (filteredArgs.find((a) => a.startsWith('--repo=')) || '').slice('--repo='.length);
 
   const dirs = findStreamDirs();
   let totalMessages = 0;
@@ -157,7 +165,7 @@ function main() {
     console.error(`  ${e.file}${e.id ? ` :: ${e.id}` : ''}`);
     for (const msg of e.errors) console.error(`    - ${msg}`);
   }
-  process.exit(fix ? 0 : 1);
+  process.exit(1);
 }
 
 main();
