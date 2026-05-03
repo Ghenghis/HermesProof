@@ -11,7 +11,7 @@ workspaces.
 ## Install
 
 ```powershell
-node scripts/install-clients.mjs --workspace "G:\Github\Hermes3D" --target windsurf
+node scripts/install-clients.mjs --workspace "<ABSOLUTE_WORKSPACE_PATH>" --target windsurf
 ```
 
 The installer writes Windsurf MCP config and copies `.windsurfrules` into the

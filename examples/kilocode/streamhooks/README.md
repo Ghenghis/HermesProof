@@ -11,7 +11,7 @@ coordination for the repository.
 ## Install
 
 ```powershell
-node scripts/install-clients.mjs --workspace "G:\Github\Hermes3D" --target kilocode
+node scripts/install-clients.mjs --workspace "<ABSOLUTE_WORKSPACE_PATH>" --target kilocode
 ```
 
 The installer writes workspace-local files under `.kilocode/` and does not

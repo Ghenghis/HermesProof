@@ -11,7 +11,7 @@ and repository instruction file.
 ## Install
 
 ```powershell
-node scripts/install-clients.mjs --workspace "G:\Github\Hermes3D" --target vscode
+node scripts/install-clients.mjs --workspace "<ABSOLUTE_WORKSPACE_PATH>" --target vscode
 ```
 
 The `vscode-copilot` target remains supported; `vscode` is a shorter alias.
