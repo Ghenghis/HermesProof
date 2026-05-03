@@ -25,7 +25,7 @@ LM Studio,phi2,3B,afrideva,phi-2-uncensored@q6_k/phi-2-uncensored.q6_k.gguf,Q6_K
 LM Studio,gemma4,31B,TeichAI,gemma-4-31b-it-claude-opus-distill/gemma-4-31B-it-Claude-Opus-Distill.q4_k_m.gguf,Q4_K_M,21.0 GB,17 days ago
 LM Studio,qwen35,9.0B,Jackrong,qwen3.5-9b-glm5.1-distill-v1/Qwen3.5-9B-GLM5.1-Distill-v1-Q5_K_M.gguf,Q5_K_M,6.5 GB,17 days ago
 LM Studio,gemma4,26B-A4B,unsloth,gemma-4-26b-a4b-it/gemma-4-26B-A4B-it-UD-Q5_K_XL.gguf,Q5_K_XL,21.2 GB,17 days ago
-LM Studio,Local,gemma4,7.5B,HauhauCS,gemma-4-e4b-uncensored-hauhaucs-aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf,9.1 GB,24 days ago
+LM Studio,gemma4,7.5B,HauhauCS,gemma-4-e4b-uncensored-hauhaucs-aggressive/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf,Q8_K_P,9.1 GB,24 days ago
 LM Studio,gemma4,7.5B,TrevorJS,gemma-4-e4b-it-uncensored@q4_k_m/gemma-4-E4B-it-uncensored-Q4_K_M.gguf,Q4_K_M,5.3 GB,24 days ago
 LM Studio,gemma4,7.5B,TrevorJS,gemma-4-e4b-it-uncensored@q8_0/gemma-4-E4B-it-uncensored-Q8_0.gguf,Q8_0,8.0 GB,24 days ago
 LM Studio,gemma4,7.5B,lmstudio-community,gemma-4-e4b-it/gemma-4-E4B-it-Q8_0.gguf,Q8_0,9.0 GB,27 days ago
@@ -50,7 +50,7 @@ LM Studio,qwen35,1.9B,Jackrong,qwen3.5-2b-claude-4.6-opus-reasoning-distilled/Qw
 LM Studio,qwen35,2B,mradermacher,qwen3.5-2b-heretic/Qwen3.5-2B-heretic.Q8_0.gguf,Q8_0,2.0 GB,61 days ago
 LM Studio,qwen35,752M,mradermacher,qwen3.5-0.8b_abliterated-i1/Qwen3.5-0.8B_Abliterated.i1-Q6_K.gguf,Q6_K,629.7 MB,61 days ago
 LM Studio,deepseek2,64x2.6B,DavidAU,glm-4.7-flash-uncensored-heretic-neo-code-imatrix-max/GLM-4.7-Flash-Uncen-Hrt-NEO-CODE-MAX-imat-D_AU-Q6_K.gguf,Q6_K,25.0 GB,68 days ago
-LM Studio,Local,qwen2,7.6B,Nerdsking,nerdsking-python-coder-7b-i/nerdsking-python-coder-7B-i-Q8_0_i.gguf,8.1 GB,68 days ago
+LM Studio,qwen2,7.6B,Nerdsking,nerdsking-python-coder-7b-i/nerdsking-python-coder-7B-i-Q8_0_i.gguf,Q8_0_I,8.1 GB,68 days ago
 LM Studio,qwen3moe,30B-A3B,unsloth,qwen3-coder-30b-a3b-instruct/Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL.gguf,Q5_K_XL,21.7 GB,69 days ago
 LM Studio,qwen2,3.1B,Nerdsking,nerdsking-python-coder-3b-i/nerdsking-python-coder-3B-i_Q8_0.gguf,Q8_0,3.3 GB,69 days ago
 LM Studio,qwen2,3B,mradermacher,qwen2.5-coder-3b-instruct-distill-qwen3-coder-next-abliterated-i1/Qwen2.5-Coder-3B-Instruct-Distill-Qwen3-Coder-Next-abliterated.i1-Q4_K_S.gguf,Q4_K_S,1.8 GB,69 days ago
@@ -83,6 +83,6 @@ LM Studio,qwen2vl,2B,lmstudio-community,qwen2-vl-2b-instruct/Qwen2-VL-2B-Instruc
 LM Studio,qwen3moe,4x6B,DavidAU,qwen3-24b-a4b-freedom-thinking-abliterated-heretic-neo-imatrix/Qwen3-24B-A4B-Freedom-Think-Ablit-Heretic-Neo-D_AU-Q8_0.gguf,Q8_0,18.6 GB,126 days ago
 LM Studio,qwen3vl,8B,mradermacher,qwen3-vl-8b-instruct-abliterated-v2.0/Qwen3-VL-8B-Instruct-abliterated-v2.0.Q8_0.gguf,Q8_0,9.9 GB,126 days ago
 LM Studio,llama,13B,TheBloke,mythomax-l2-13b/mythomax-l2-13b.Q8_0.gguf,Q8_0,13.8 GB,126 days ago
-LM Studio,Local,qwen3moe,103x1.8B,spectralyst,qwen3-coder-reap-25b-a3b_moe/Qwen3-Coder-REAP-25B-A3B-MXFP4_MOE.gguf,14.1 GB,126 days ago
+LM Studio,qwen3moe,103x1.8B,spectralyst,qwen3-coder-reap-25b-a3b_moe/Qwen3-Coder-REAP-25B-A3B-MXFP4_MOE.gguf,MXFP4,14.1 GB,126 days ago
 LM Studio,llama,8B,samunder12,llama-3.1-8b-roleplay-bsnl/Llama3BSNL.Q4_K_M.gguf,Q4_K_M,4.9 GB,126 days ago
 LM Studio,llama,8B,dphn,dolphin3.0-llama3.1-8b/Dolphin3.0-Llama3.1-8B-Q8_0.gguf,Q8_0,8.5 GB,128 days ago
