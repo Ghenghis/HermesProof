@@ -266,6 +266,31 @@ test("v0.7 stdio round-trip: reputation + skill + dispatch tools", async () => {
       task_type: "build",
     }));
     assert.ok(Array.isArray(agents.agents));
+    // P1-14: every agent entry must have a `roles` array (even if empty).
+    for (const a of agents.agents) {
+      assert.ok(Array.isArray(a.roles), `agent ${a.actor_id} must have roles array (P1-14)`);
+    }
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("v0.7 stdio round-trip: P1-14 — hermes_list_agents includes anonymous role state", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "v07-rt-roles-"));
+  const s = await startServer(tmp);
+  try {
+    // Claim a role for an actor that has NO recorded skill or reputation.
+    // Pre-P1-14 this actor was invisible in hermes_list_agents.
+    await s.call("hermes_anonymous_claim", {
+      role: "GATE-SMITH",
+      actor_id: "rt-role-only-actor",
+      purpose: "P1-14 visibility test",
+    });
+    const agents = parseToolResult(await s.call("hermes_list_agents", {}));
+    const found = agents.agents.find((a) => a.actor_id === "rt-role-only-actor");
+    assert.ok(found, "role-only actor must appear in hermes_list_agents (P1-14)");
+    assert.ok(found.roles.some((r) => r.role === "GATE-SMITH"), "actor's GATE-SMITH role must be surfaced");
 
     // Invalid outcome (not in OUTCOME_DELTAS) → graceful error
     const badOutcome = parseToolResult(await s.call("hermes_record_outcome", {
