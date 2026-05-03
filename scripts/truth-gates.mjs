@@ -28,6 +28,7 @@ import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
 import { checkSecretRotationEvidence } from "./secret-rotation-evidence.mjs";
+import { writeSbomToProof } from "./sbom-generator.mjs";
 import {
   runLicensesScanGate,
   runDependencyFreshGate,
@@ -928,9 +929,7 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
 // Gate: secrets.rotation_evidence_present — metadata-only check that the
 // configured Hermes3D env file (G:\private\.env or HERMES3D_ENV_FILE) has
 // been modified within HERMES_SECRET_MAX_AGE_DAYS (default 90). Never reads
-// the file's contents — only fs.stat. If the env file does not exist (e.g.
-// running on CI where G:\private\.env is not present), the gate is recorded
-// as a WARN with reason=env_file_missing rather than failing.
+// the file's contents — only fs.stat.
 // ----------------------------------------------------------------------------
 if (!shouldSkip("secrets.rotation_evidence_present")) {
   const { result, error, durationMs } = await timed(async () => {
@@ -939,10 +938,6 @@ if (!shouldSkip("secrets.rotation_evidence_present")) {
   if (error) {
     record("secrets.rotation_evidence_present", "warn", false, {}, error.message, durationMs);
   } else {
-    // env_file_missing -> WARN level, ok=true (not_applicable on CI)
-    // stale            -> WARN level, ok=false
-    // fresh            -> WARN level, ok=true
-    // stat_error       -> WARN level, ok=false
     const level = "warn";
     record(
       "secrets.rotation_evidence_present",
@@ -952,6 +947,29 @@ if (!shouldSkip("secrets.rotation_evidence_present")) {
       result.details,
       durationMs
     );
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: sbom.cyclonedx_generated — emit CycloneDX 1.5 SBOM at PROOF/sbom.json
+// ----------------------------------------------------------------------------
+if (!shouldSkip("sbom.cyclonedx_generated")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await writeSbomToProof(repoRoot);
+  });
+  if (error) {
+    record("sbom.cyclonedx_generated", "required", false, {}, error.message, durationMs);
+  } else if (!result.ok) {
+    record("sbom.cyclonedx_generated", "required", false, { reason: result.reason },
+      `sbom generation failed: ${result.reason}`, durationMs);
+  } else {
+    record("sbom.cyclonedx_generated", "required", true, {
+      path: result.path,
+      components: result.components,
+      sha256: result.sha256,
+      serial_number: result.serialNumber,
+      spec_version: "1.5"
+    }, `${result.components} components @ ${result.path}`, durationMs);
   }
 }
 
