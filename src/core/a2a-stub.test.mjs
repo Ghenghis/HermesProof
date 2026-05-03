@@ -99,4 +99,64 @@ describe("A2AStub", () => {
     const gone = await a2a.getTask("a2a_old_test");
     assert.equal(gone, null);
   });
+
+  it("serializes concurrent createTask without losing updates (race-condition guard)", async () => {
+    // Use a fresh A2AStub on its own dir so prior tests don't pollute the count
+    const raceDir = await fs.mkdtemp(path.join(os.tmpdir(), "hermes-a2a-race-"));
+    const race = new A2AStub({ workspaceRoot: raceDir });
+    await race.init();
+    try {
+      // Fire 50 createTask calls concurrently. Pre-fix, read-modify-write
+      // races dropped tasks; post-fix, the serialize chain preserves all 50.
+      const results = await Promise.all(
+        Array.from({ length: 50 }, (_, i) =>
+          race.createTask({ agent_id: `a-${i}`, task_type: "race", input: { i } })
+        )
+      );
+      const ids = new Set(results.map((r) => r.task_id));
+      assert.equal(ids.size, 50, "all task_ids must be unique");
+      const listed = await race.listTasks({ task_type: "race" });
+      assert.equal(listed.length, 50, "all 50 tasks must be persisted");
+    } finally {
+      await fs.rm(raceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("listTasks does NOT hide old non-terminal tasks (TTL list/prune consistency)", async () => {
+    // Pre-fix: a 25h-old `working` task became invisible in listings yet was
+    // never pruned (pruneCompleted only deletes terminal tasks). Post-fix,
+    // listTasks's TTL filter only skips terminal+stale tasks, so a long-running
+    // non-terminal task stays visible.
+    const ttlDir = await fs.mkdtemp(path.join(os.tmpdir(), "hermes-a2a-ttl-"));
+    const ttl = new A2AStub({ workspaceRoot: ttlDir });
+    await ttl.init();
+    try {
+      const raw = JSON.parse(await fs.readFile(ttl.stateFile, "utf8"));
+      const old_ts = Date.now() - 25 * 60 * 60 * 1000;
+      // Old non-terminal — must remain visible
+      raw.tasks["old_working"] = {
+        id: "old_working", agent_id: "a", task_type: "long_run", status: "working",
+        created_ts: old_ts, updated_ts: old_ts, input: null, output: null, error: null,
+      };
+      // Old terminal — must be hidden (and pruneable)
+      raw.tasks["old_done"] = {
+        id: "old_done", agent_id: "a", task_type: "long_run", status: "completed",
+        created_ts: old_ts, updated_ts: old_ts, input: null, output: null, error: null,
+      };
+      await fs.writeFile(ttl.stateFile, JSON.stringify(raw), "utf8");
+
+      const listed = await ttl.listTasks({ task_type: "long_run" });
+      const ids = new Set(listed.map((t) => t.id));
+      assert.ok(ids.has("old_working"), "old non-terminal task must remain visible");
+      assert.ok(!ids.has("old_done"), "old terminal task must be hidden by TTL");
+
+      const pr = await ttl.pruneCompleted();
+      assert.ok(pr.pruned >= 1);
+      assert.equal(await ttl.getTask("old_done"), null);
+      // Non-terminal must NOT be pruned
+      assert.ok((await ttl.getTask("old_working")) !== null);
+    } finally {
+      await fs.rm(ttlDir, { recursive: true, force: true });
+    }
+  });
 });

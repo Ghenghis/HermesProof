@@ -44,6 +44,10 @@ export class A2AStub {
     if (!workspaceRoot) throw new Error("A2AStub requires workspaceRoot");
     this.stateDir = path.join(workspaceRoot, stateDirName);
     this.stateFile = path.join(this.stateDir, "a2a_tasks.json");
+    // Promise-chain mutex: serializes read-modify-write on stateFile so
+    // concurrent createTask/updateTask/pruneCompleted calls cannot lose updates.
+    // Failures in one mutation do NOT poison the chain (caught and rethrown).
+    this._mutateQueue = Promise.resolve();
   }
 
   async init() {
@@ -63,6 +67,25 @@ export class A2AStub {
   }
 
   /**
+   * Serialize a read-modify-write mutation against stateFile. The mutator
+   * receives the current state and may mutate it in place; the new state is
+   * written atomically after the mutator resolves. Errors propagate to the
+   * caller without breaking the chain for subsequent mutations.
+   */
+  _serialize(mutator) {
+    const next = this._mutateQueue.then(async () => {
+      const state = await this._read();
+      const result = await mutator(state);
+      await this._write(state);
+      return result;
+    });
+    // Swallow rejections on the chain itself so one failure doesn't block
+    // future mutations; the original promise (returned to caller) still rejects.
+    this._mutateQueue = next.catch(() => {});
+    return next;
+  }
+
+  /**
    * Create a new A2A task.
    *
    * @param {object} args
@@ -73,21 +96,21 @@ export class A2AStub {
    */
   async createTask({ agent_id, task_type, input }) {
     if (!agent_id || !task_type) throw new Error("agent_id and task_type are required");
-    const state = await this._read();
-    const task_id = `a2a_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-    state.tasks[task_id] = {
-      id: task_id,
-      agent_id,
-      task_type,
-      status: "submitted",
-      created_ts: Date.now(),
-      updated_ts: Date.now(),
-      input: input ?? null,
-      output: null,
-      error: null,
-    };
-    await this._write(state);
-    return { ok: true, task_id, status: "submitted" };
+    return this._serialize((state) => {
+      const task_id = `a2a_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      state.tasks[task_id] = {
+        id: task_id,
+        agent_id,
+        task_type,
+        status: "submitted",
+        created_ts: Date.now(),
+        updated_ts: Date.now(),
+        input: input ?? null,
+        output: null,
+        error: null,
+      };
+      return { ok: true, task_id, status: "submitted" };
+    });
   }
 
   /**
@@ -112,19 +135,19 @@ export class A2AStub {
     if (!VALID_STATUSES.includes(new_status)) {
       throw new Error(`invalid status: ${new_status}`);
     }
-    const state = await this._read();
-    const task = state.tasks[task_id];
-    if (!task) throw new Error(`task not found: ${task_id}`);
-    const allowed = VALID_TRANSITIONS[task.status];
-    if (!allowed.includes(new_status)) {
-      throw new Error(`invalid transition ${task.status} → ${new_status}`);
-    }
-    task.status = new_status;
-    task.updated_ts = Date.now();
-    if (output !== undefined) task.output = output;
-    if (error !== undefined) task.error = error;
-    await this._write(state);
-    return { ok: true, task_id, status: new_status };
+    return this._serialize((state) => {
+      const task = state.tasks[task_id];
+      if (!task) throw new Error(`task not found: ${task_id}`);
+      const allowed = VALID_TRANSITIONS[task.status];
+      if (!allowed.includes(new_status)) {
+        throw new Error(`invalid transition ${task.status} → ${new_status}`);
+      }
+      task.status = new_status;
+      task.updated_ts = Date.now();
+      if (output !== undefined) task.output = output;
+      if (error !== undefined) task.error = error;
+      return { ok: true, task_id, status: new_status };
+    });
   }
 
   /**
@@ -139,8 +162,12 @@ export class A2AStub {
         if (filter.agent_id && t.agent_id !== filter.agent_id) return false;
         if (filter.status && t.status !== filter.status) return false;
         if (filter.task_type && t.task_type !== filter.task_type) return false;
-        // Exclude tasks older than TTL (treat as auto-archived)
-        if (now - t.created_ts > TASK_TTL_MS) return false;
+        // TTL filter must match pruneCompleted() semantics: only auto-archive
+        // terminal tasks past TTL (compared against updated_ts, since that's
+        // when the task entered its terminal state). Non-terminal tasks remain
+        // visible regardless of age — they may still be in flight, and hiding
+        // them in listings while leaving them in state was a leak source.
+        if (TERMINAL_STATUSES.has(t.status) && now - t.updated_ts > TASK_TTL_MS) return false;
         return true;
       })
       .sort((a, b) => b.created_ts - a.created_ts);
@@ -148,19 +175,20 @@ export class A2AStub {
 
   /**
    * Prune tasks that have been in a terminal state for > TTL.
+   * Consistent with listTasks's auto-archive filter.
    */
   async pruneCompleted() {
-    const state = await this._read();
-    const now = Date.now();
-    let pruned = 0;
-    for (const [id, task] of Object.entries(state.tasks)) {
-      if (TERMINAL_STATUSES.has(task.status) && now - task.updated_ts > TASK_TTL_MS) {
-        delete state.tasks[id];
-        pruned++;
+    return this._serialize((state) => {
+      const now = Date.now();
+      let pruned = 0;
+      for (const [id, task] of Object.entries(state.tasks)) {
+        if (TERMINAL_STATUSES.has(task.status) && now - task.updated_ts > TASK_TTL_MS) {
+          delete state.tasks[id];
+          pruned++;
+        }
       }
-    }
-    if (pruned > 0) await this._write(state);
-    return { ok: true, pruned };
+      return { ok: true, pruned };
+    });
   }
 }
 
