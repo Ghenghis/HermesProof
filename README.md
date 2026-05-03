@@ -70,6 +70,7 @@ The proof harness — `npm run truth-gates` — runs eighteen independent verifi
 | 16  | `queue.doctor_passes`                     | Queue doctor validates enqueue, pick, done, owner affinity, priority, and recovery   |
 | 17  | `wizard.dry_run_passes`                   | Universal setup wizard dry-run plans client wiring without writing state             |
 | 18  | `sbom.cyclonedx_generated`                | Emits a deterministic CycloneDX 1.5 SBOM at `PROOF/sbom.json` on every run           |
+| 19  | `licenses.scan`                           | Every production dep on the SPDX allowlist; GPL/AGPL/LGPL/SSPL/EUPL/BUSL deny-fail   |
 
 Outputs:
 
