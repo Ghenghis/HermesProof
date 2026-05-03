@@ -92,7 +92,7 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **24 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, and diagnostics:
+The server exposes **32 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
