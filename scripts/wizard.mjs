@@ -190,7 +190,7 @@ async function handleGithub(args, workspaceRoot, env, emit) {
 async function selectClients(args, detections, emit) {
   if (args.clients.length) {
     for (const client of args.clients) {
-      if (!CLIENT_IDS.includes(client) && client !== "claude-code-hooks") throw new Error(`unsupported client: ${client}`);
+      if (!CLIENT_IDS.includes(client) && client !== "claude-code-hooks" && client !== "vscode") throw new Error(`unsupported client: ${client}`);
     }
     return args.clients;
   }
@@ -299,7 +299,7 @@ function helpText() {
     `  --dry-run                 show the plan without writing\n` +
     `  --workspace <path>        workspace HermesProof should govern\n` +
     `  --github <owner/repo>     optional GitHub repo to clone/link\n` +
-    `  --clients <csv>           claude-desktop,claude-code,codex,windsurf,cursor,vscode-copilot,anthropic-sdk\n` +
+    `  --clients <csv>           claude-desktop,claude-code,codex,windsurf,kilocode,cursor,vscode,vscode-copilot,anthropic-sdk\n` +
     `  --no-truth-gates          skip post-install truth-gates --ci\n` +
     `  --json                    machine-readable output\n` +
     `  --yes                     accept defaults for non-interactive runs`;

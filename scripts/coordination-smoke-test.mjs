@@ -18,9 +18,11 @@ import {
 } from "./sbom-generator.mjs";
 import {
   runLicensesScanGate,
+  runDependencyFreshGate,
   LICENSE_ALLOWLIST,
   LICENSE_DENYLIST
 } from "./license-and-deps-gates.mjs";
+import { installClients } from "./install-clients.mjs";
 
 const repoRoot = process.cwd();
 
@@ -633,6 +635,51 @@ test("wizard detects anthropic key without leaking the synthetic value", async (
   assert.ok(files.some((file) => file.endsWith(path.join(".hermesproof", "anthropic-sdk-example.mjs"))));
 });
 
+test("install-clients wires streamhook adapters for KiloCode, Cursor, Windsurf, and VS Code", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-client-home-"));
+  const result = await installClients([
+    `--workspace=${workspaceRoot}`,
+    "--server-name=hermes-test",
+    "--target=kilocode,cursor,windsurf,vscode"
+  ], {
+    HERMESPROOF_TEST_HOME: home,
+    APPDATA: path.join(home, "AppData", "Roaming")
+  });
+  assert.equal(result.ok, true, JSON.stringify(result.results, null, 2));
+  assert.equal(result.results.kilocode.status, "written");
+  assert.equal(result.results.cursor.status, "written");
+  assert.equal(result.results.windsurf.status, "written");
+  assert.equal(result.results.vscode.status, "written");
+
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".kilocode", "rules.toml"), "utf8"),
+    /KILOCODE_INBOX\.md/
+  );
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".kilocode", "system-prompt-snippet.md"), "utf8"),
+    /HermesProof STREAM Discipline for KiloCode/
+  );
+  const cursorMcp = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".cursor", "mcp.json"), "utf8"));
+  assert.equal(cursorMcp.mcpServers["hermes-test"].env.MCP_LOCK_WORKSPACE, workspaceRoot);
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".cursor", "rules", "stream.mdc"), "utf8"),
+    /HermesProof STREAM coordination protocol/
+  );
+  const windsurfMcp = JSON.parse(await fs.readFile(path.join(home, ".codeium", "windsurf", "mcp_config.json"), "utf8"));
+  assert.equal(windsurfMcp.mcpServers["hermes-test"].env.MCP_LOCK_WORKSPACE, workspaceRoot);
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".windsurfrules"), "utf8"),
+    /HermesProof STREAM Rules for Windsurf/
+  );
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".github", "copilot-instructions.md"), "utf8"),
+    /HermesProof STREAM Discipline/
+  );
+  const vscodeMcp = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".vscode", "mcp.json"), "utf8"));
+  assert.equal(vscodeMcp.servers["hermes-test"].env.MCP_LOCK_WORKSPACE, workspaceRoot);
+});
+
 function runWizard(args, extraEnv = {}) {
   return spawnSync(
     process.platform === "win32" ? "node.exe" : "node",
@@ -845,4 +892,60 @@ test("licenses.scan passes a fixture package list of allowlisted licenses", () =
   assert.equal(out.ok, true);
   assert.equal(out.evidence.denylisted_packages.length, 0);
   assert.equal(out.evidence.unknown_packages.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// dependency.fresh truth-gate unit tests
+//
+// All inputs are fixtures — these tests MUST NOT touch the real npm registry.
+// The harness does that in a separate gate.
+// ---------------------------------------------------------------------------
+test("dependency.fresh emits warn for a fixture dep aged 12-18 months", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  // Mock dep: published ~14 months ago — should warn but NOT fail.
+  const fakePublished = new Date(now.getTime() - 14 * 30 * 24 * 60 * 60 * 1000).toISOString();
+  const pkgJson = { dependencies: { "fake-aging-pkg": "^1.0.0" } };
+  const fetchLatest = async () => ({ latestVersion: "1.0.0", publishedAt: fakePublished });
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, false);
+  assert.equal(out.ok, true, "12-18mo old dep must NOT fail the gate (warn only)");
+  assert.equal(out.evidence.warn_count, 1);
+  assert.equal(out.evidence.stale_count, 0);
+  assert.equal(out.evidence.details[0].status, "warn");
+  assert.equal(out.evidence.details[0].name, "fake-aging-pkg");
+});
+
+test("dependency.fresh fails when a direct dep is older than 18 months", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  const fakePublished = new Date(now.getTime() - 24 * 30 * 24 * 60 * 60 * 1000).toISOString();
+  const pkgJson = { dependencies: { "ancient-pkg": "^1.0.0" } };
+  const fetchLatest = async () => ({ latestVersion: "1.0.0", publishedAt: fakePublished });
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, false);
+  assert.equal(out.ok, false);
+  assert.equal(out.evidence.stale_count, 1);
+});
+
+test("dependency.fresh skips cleanly when registry is unreachable", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  const pkgJson = { dependencies: { offline: "^1.0.0" } };
+  const fetchLatest = async () => {
+    const err = new Error("getaddrinfo ENOTFOUND registry.npmjs.org");
+    err.code = "ENETWORK";
+    throw err;
+  };
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, true);
+  assert.equal(out.ok, true);
+  assert.match(out.details, /no network/);
+});
+
+test("dependency.fresh passes when there are no direct dependencies", async () => {
+  const out = await runDependencyFreshGate({
+    pkgJson: { dependencies: {} },
+    fetchLatest: async () => { throw new Error("must not be called"); }
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.skip, false);
+  assert.equal(out.evidence.direct_deps_count, 0);
 });
