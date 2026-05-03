@@ -749,6 +749,7 @@ test("generateSbom emits a valid CycloneDX 1.5 doc with sorted components", () =
   assert.equal(sbom.components[1].name, "dotenv");
   assert.equal(sbom.components[2].name, "zod");
   // PURL formatting + scope + hash propagation.
+  assert.equal(sbom.components[0].purl, "pkg:npm/%40modelcontextprotocol/sdk@1.29.0");
   assert.equal(sbom.components[2].purl, "pkg:npm/zod@3.24.1");
   assert.equal(sbom.components[2].scope, "required");
   assert.deepEqual(sbom.components[2].hashes, [{ alg: "SHA-256", content: "deadbeef" }]);
@@ -846,6 +847,37 @@ test("writeSbomToProof writes PROOF/sbom.json with components and serial number"
     assert.equal(sbom.specVersion, "1.5");
     assert.equal(sbom.components[0].name, "alpha");
     assert.equal(sbom.metadata.component.name, "demo");
+    assert.equal(sbom.metadata.timestamp, "1970-01-01T00:00:00.000Z");
+  } finally {
+    await fs.rm(sb, { recursive: true, force: true });
+  }
+});
+
+test("writeSbomToProof is deterministic for unchanged installed packages", async () => {
+  const sb = await fs.mkdtemp(path.join(os.tmpdir(), "hp-sbom-deterministic-"));
+  try {
+    await fs.writeFile(
+      path.join(sb, "package.json"),
+      JSON.stringify({ name: "@demo/root", version: "0.0.1", dependencies: {} })
+    );
+    const nm = path.join(sb, "node_modules", "@scope", "alpha");
+    await fs.mkdir(nm, { recursive: true });
+    await fs.writeFile(
+      path.join(nm, "package.json"),
+      JSON.stringify({ name: "@scope/alpha", version: "1.0.0", license: "MIT" })
+    );
+    const first = await writeSbomToProof(sb);
+    const firstText = await fs.readFile(path.join(sb, "PROOF", "sbom.json"), "utf8");
+    const second = await writeSbomToProof(sb);
+    const secondText = await fs.readFile(path.join(sb, "PROOF", "sbom.json"), "utf8");
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, true);
+    assert.equal(first.sha256, second.sha256);
+    assert.equal(first.serialNumber, second.serialNumber);
+    assert.equal(firstText, secondText);
+    const sbom = JSON.parse(secondText);
+    assert.equal(sbom.metadata.component.purl, "pkg:npm/%40demo/root@0.0.1");
+    assert.equal(sbom.components[0].purl, "pkg:npm/%40scope/alpha@1.0.0");
   } finally {
     await fs.rm(sb, { recursive: true, force: true });
   }

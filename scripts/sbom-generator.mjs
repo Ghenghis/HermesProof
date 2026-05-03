@@ -34,6 +34,7 @@ import crypto from "node:crypto";
 const SBOM_SPEC_VERSION = "1.5";
 const TOOL_NAME = "hermesproof-sbom-generator";
 const TOOL_VERSION = "1.0.0";
+const DETERMINISTIC_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 
 /**
  * Build a CycloneDX 1.5 JSON SBOM string from explicit inputs (pure).
@@ -48,7 +49,7 @@ const TOOL_VERSION = "1.0.0";
 export function generateSbom({ pkg, components, now = new Date(), serialNumber }) {
   const sn = serialNumber || `urn:uuid:${crypto.randomUUID()}`;
   const rootPurl = pkg?.name && pkg?.version
-    ? `pkg:npm/${encodeURIComponent(pkg.name)}@${encodeURIComponent(pkg.version)}`
+    ? npmPurl(pkg.name, pkg.version)
     : undefined;
 
   const sbom = {
@@ -89,7 +90,7 @@ function buildComponent({ name, version, license, sha256 }) {
     type: "library",
     name,
     version: version || "",
-    purl: `pkg:npm/${encodeURIComponent(name)}@${encodeURIComponent(version || "")}`,
+    purl: npmPurl(name, version || ""),
     scope: "required"
   };
   if (license) {
@@ -103,6 +104,46 @@ function buildComponent({ name, version, license, sha256 }) {
     out.hashes = [{ alg: "SHA-256", content: sha256 }];
   }
   return out;
+}
+
+function npmPurl(name, version) {
+  const encodedVersion = encodeURIComponent(version || "");
+  if (name.startsWith("@") && name.includes("/")) {
+    const [scope, packageName] = name.split("/", 2);
+    return `pkg:npm/${encodeURIComponent(scope)}/${encodeURIComponent(packageName)}@${encodedVersion}`;
+  }
+  return `pkg:npm/${encodeURIComponent(name)}@${encodedVersion}`;
+}
+
+function deterministicSbomIdentity(pkg, components) {
+  const canonical = JSON.stringify({
+    root: {
+      name: pkg?.name || "",
+      version: pkg?.version || ""
+    },
+    components: components
+      .slice()
+      .sort((a, b) => (a.name + a.version).localeCompare(b.name + b.version))
+      .map((component) => ({
+        name: component.name,
+        version: component.version || "",
+        license: component.license || null,
+        sha256: component.sha256 || null
+      }))
+  });
+  const hash = crypto.createHash("sha256").update(canonical).digest("hex");
+  return {
+    now: new Date(DETERMINISTIC_TIMESTAMP),
+    serialNumber: `urn:uuid:${uuidFromHash(hash)}`
+  };
+}
+
+function uuidFromHash(hash) {
+  const chars = hash.slice(0, 32).split("");
+  chars[12] = "5";
+  chars[16] = ["8", "9", "a", "b"][parseInt(chars[16], 16) % 4];
+  const hex = chars.join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
 function normalizeLicense(raw) {
@@ -207,7 +248,13 @@ export async function writeSbomToProof(repoRoot, { now } = {}) {
   } catch (err) {
     return { ok: false, reason: `node_modules walk failed: ${err.message}` };
   }
-  const sbomText = generateSbom({ pkg, components, now: now || new Date() });
+  const identity = deterministicSbomIdentity(pkg, components);
+  const sbomText = generateSbom({
+    pkg,
+    components,
+    now: now || identity.now,
+    serialNumber: identity.serialNumber
+  });
   const proofDir = path.join(repoRoot, "PROOF");
   await fs.mkdir(proofDir, { recursive: true });
   const target = path.join(proofDir, "sbom.json");
