@@ -1,12 +1,12 @@
 # HermesProof — Maintenance & Best Practices
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running nine gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running fourteen gates sequentially" width="100%"/>
 </div>
 
 This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees.
 
-The single best diagnostic is `npm run truth-gates` — it surfaces nine independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
+The single best diagnostic is `npm run truth-gates` — it surfaces fourteen independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
 
 ## Code-quality conventions
 
@@ -14,7 +14,7 @@ The single best diagnostic is `npm run truth-gates` — it surfaces nine indepen
 - **Atomic file ops.** Use `writeJsonAtomic` (write tmp + rename) and `mkdir { recursive: false }` for lock acquisition. Avoid `fs.writeFile` directly for state files.
 - **Path-relative inputs.** Tools that accept file paths must funnel through `normalizeWorkspacePath`. The function rejects path traversal, null bytes, and the workspace root itself.
 - **Owner string discipline.** Use `claude-lead`, `claude-reviewer-ux`, `codex-impl-01`, `windsurf-cascade`, etc. Reject vague names like `agent`, `me`, `bot`.
-- **Evidence on every checkpoint.** Lock acquire/release, gate result, handoff decision, and error must each produce an `appendEvidence` call.
+- **Evidence and events on every checkpoint.** Lock acquire/release, gate result, handoff decision, and error must each produce evidence. Coordination state changes should also emit `event_schema_version: 1` files unless they are internal event-manager bookkeeping rows.
 
 ## Repair procedures
 
@@ -81,13 +81,34 @@ hermes_read_policy
 
 Confirm `workspace_root` matches the directory you opened in your IDE. If not, fix the env var in the client config.
 
-### Tail the event log
+### Watch trigger-bridge events
 
 ```powershell
-Get-Content -Wait .hermes3d_orchestrator\events.ndjson
+node scripts\watch-events.mjs --workspace G:\Github\Hermes3D --once
+node scripts\watch-events.mjs --workspace G:\Github\Hermes3D --write-review-packets
 ```
 
-Useful when reproducing a race between two agents.
+The watcher is passive. By default it prints pending events. With `--write-review-packets`, it writes deterministic Markdown packets under `.hermes3d_orchestrator/review_packets/` and leaves the source event in `events/outbox/`. If `HERMESPROOF_WEBHOOK_URL` is set, the watcher may POST event JSON to that URL; HermesProof itself still does not call a model or wake a chat session.
+
+### Prune handled events
+
+Handled events can be pruned once operators no longer need them for routine audit lookups. A conservative default is 30 days:
+
+```powershell
+$cutoff = (Get-Date).ToUniversalTime().AddDays(-30).ToString("o")
+node scripts\prune-events.mjs --workspace G:\Github\Hermes3D --before $cutoff --dry-run
+node scripts\prune-events.mjs --workspace G:\Github\Hermes3D --before $cutoff
+```
+
+The prune script only deletes `events/handled/*.json` older than the cutoff. It must never delete `events/outbox/` or `events/failed/`; failed events require manual inspection because they usually mean a consumer rejected the schema, failed a webhook, or found a malformed payload.
+
+### Generate a review packet manually
+
+```powershell
+node scripts\generate-review-packet.mjs --workspace G:\Github\Hermes3D --event-id evt_20260503T000000000Z_a1b2c3
+```
+
+Packets include the event details, task id, owner, branch, changed files when available, evidence ids, PR context, gate status, and a ready-to-paste review prompt.
 
 ## Extending the orchestrator
 
@@ -104,6 +125,13 @@ Useful when reproducing a race between two agents.
 2. Wire it in `src/server.mjs` with a strict `zod` schema. Avoid `z.any()` for free-form input — use `z.record(z.any())` only for opaque metadata.
 3. Add a reference entry in `docs/TOOL_REFERENCE.md`.
 4. Add a test that proves both the happy path and at least one rejection path.
+
+### Adding or changing event types
+
+1. Update `docs/EVENT_SCHEMA.md` first so consumers know the versioned contract.
+2. Keep `event_schema_version: 1` unless the envelope shape or required semantics change incompatibly.
+3. Resolve `evidence_ids` at emit time for task-bound events, ordered by the evidence `prev_hash` chain.
+4. Preserve atomic file transitions: tmp file to `outbox/`, then `fs.rename` to `handled/` or `failed/`.
 
 ### Adding new tests
 

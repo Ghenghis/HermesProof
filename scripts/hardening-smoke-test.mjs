@@ -5,6 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { GateRunner } from "../src/core/gate-runner.mjs";
+import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { markEventHandled } from "./watch-events.mjs";
+import { pruneHandledEvents } from "./prune-events.mjs";
+import { runTriggerDoctor } from "./trigger-doctor.mjs";
 
 async function makeTempWorkspace() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermes3d-mcp-hardening-"));
@@ -199,4 +203,64 @@ test("MCP_LOCK_STATE_DIR with a slash is rejected", async () => {
     () => new HermesLockManager({ workspaceRoot, stateDirName: "../escape" }),
     /MCP_LOCK_STATE_DIR must be a single directory name/
   );
+});
+
+test("event_path_cannot_escape_workspace", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  await assert.rejects(
+    markEventHandled({ workspace: workspaceRoot, eventId: "../escape", handledBy: "test" }),
+    /invalid event_id/
+  );
+});
+
+test("prune_events_respects_before_cutoff", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const paths = await ensureEventDirs(workspaceRoot);
+  const oldEvent = {
+    event_schema_version: 1,
+    event_id: "evt_old",
+    event_type: "task.released",
+    created_utc: "2026-01-01T00:00:00.000Z",
+    workspace_root: workspaceRoot,
+    files: [],
+    evidence_ids: [],
+    next_actor: "claude",
+    recommended_action: "review_pr",
+    payload: {}
+  };
+  const newEvent = { ...oldEvent, event_id: "evt_new", created_utc: "2026-05-01T00:00:00.000Z" };
+  await fs.writeFile(path.join(paths.handledDir, "evt_old.json"), JSON.stringify(oldEvent), "utf8");
+  await fs.writeFile(path.join(paths.handledDir, "evt_new.json"), JSON.stringify(newEvent), "utf8");
+  const result = await pruneHandledEvents({ workspace: workspaceRoot, before: "2026-03-01T00:00:00.000Z" });
+  assert.equal(result.deleted.length, 1);
+  await assert.rejects(fs.stat(path.join(paths.handledDir, "evt_old.json")));
+  assert.equal((await fs.stat(path.join(paths.handledDir, "evt_new.json"))).isFile(), true);
+});
+
+test("prune_events_never_touches_failed_directory", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const paths = await ensureEventDirs(workspaceRoot);
+  const failedFile = path.join(paths.failedDir, "evt_failed.json");
+  await fs.writeFile(failedFile, JSON.stringify({
+    event_schema_version: 1,
+    event_id: "evt_failed",
+    event_type: "task.released",
+    created_utc: "2026-01-01T00:00:00.000Z",
+    workspace_root: workspaceRoot,
+    files: [],
+    evidence_ids: [],
+    next_actor: "claude",
+    recommended_action: "review_pr",
+    payload: {}
+  }), "utf8");
+  const result = await pruneHandledEvents({ workspace: workspaceRoot, before: "2026-03-01T00:00:00.000Z" });
+  assert.equal(result.failed_dir_touched, false);
+  assert.equal((await fs.stat(failedFile)).isFile(), true);
+});
+
+test("trigger_doctor_passes_on_clean_sandbox", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const result = await runTriggerDoctor({ workspace: workspaceRoot });
+  assert.equal(result.ok, true);
+  assert.ok(result.checks.every((c) => c.ok));
 });

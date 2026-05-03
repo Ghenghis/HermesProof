@@ -8,6 +8,8 @@ HermesProof solves **one** problem well: keeping Claude, Codex, Windsurf, and re
 
 You will usually want to run it **alongside** other MCP servers and bridges. This doc explains how it composes with each pattern you may have seen recommended, and what (if anything) was extracted into our codebase versus left external.
 
+In v0.4, HermesProof also exposes a passive trigger bridge: state changes become durable JSON files under `.hermes3d_orchestrator/events/outbox/`. Other MCP servers, shell watchers, or CI jobs may observe those files and decide what to do. HermesProof itself does not call LLM APIs, send prompts into a chat session, or directly wake Claude/Codex/Windsurf.
+
 ## Recommended day-to-day client config
 
 Every MCP-capable agent that touches the project should see these three classes of server:
@@ -15,8 +17,28 @@ Every MCP-capable agent that touches the project should see these three classes 
 1. **`hermes3d-locks`** — this project. Owns coordination state.
 2. **A filesystem MCP** — gives agents read/write access to the workspace.
 3. **A Codex bridge** — only if you want Claude → Codex hand-offs in the same session.
+4. **An optional event watcher** — only if you want review packets, webhook posts, or external routing based on HermesProof events.
 
 Everything below explains how each external piece fits with `hermes3d-locks` without weakening its safety guarantees.
+
+---
+
+## 0. Passive event watchers
+
+**Pattern.** A separate process watches `.hermes3d_orchestrator/events/outbox/*.json` and reacts to events such as `task.released`, `task.blocked`, `handoff.created`, `gate.failed`, or `pr.opened`.
+
+**How it composes with us.** The watcher is a consumer, not part of the lock protocol. It can print summaries, generate review packets, or POST JSON to an operator-owned webhook:
+
+```powershell
+node scripts\watch-events.mjs --workspace G:\Github\Hermes3D --poll 30
+node scripts\watch-events.mjs --workspace G:\Github\Hermes3D --write-review-packets
+$env:HERMESPROOF_WEBHOOK_URL="https://example.internal/hermesproof"
+node scripts\watch-events.mjs --workspace G:\Github\Hermes3D --mark-handled
+```
+
+Consumers should call `hermes_mark_event_handled` only after durable downstream handling. That call renames the event from `outbox/` to `handled/` atomically. If two watchers race, one wins and the other should surface `event_already_handled`.
+
+**Why it stays passive.** Direct chat wake-up requires product-specific APIs, user consent, credentials, and delivery guarantees outside the lock manager's scope. HermesProof provides the durable outbox and schema; bridge processes provide notification policy.
 
 ---
 
@@ -130,6 +152,8 @@ If you adopt Claude Flow for spawning, run our orchestrator under it as the per-
 | Atomic file locking via `mkdir` EEXIST | (our own)                                                 | shipped here                                                        |
 | Handoff request → approval → transfer  | hinted at in `codex-plugin-cc` adversarial-review pattern | shipped here as `hermes_request_handoff` + `hermes_approve_handoff` |
 | Evidence ledger                        | (our own)                                                 | shipped here as NDJSON                                              |
+| Durable event outbox                   | (our own)                                                 | shipped here as passive `event_schema_version: 1` JSON files        |
+| Chat-session wake-up                   | external bridges / product APIs                           | **not shipped**                                                     |
 | Allowlisted gate runner                | (our own; not in any of the listed projects)              | shipped here                                                        |
 | Filesystem read/write                  | `@modelcontextprotocol/server-filesystem`                 | **external — coexists**                                             |
 | Codex CLI access from Claude           | `openai/codex-plugin-cc`, `cexll/codex-mcp-server`        | **external — coexists**                                             |
@@ -147,3 +171,4 @@ If you wire up several MCP servers in the same client config:
 3. Set `MCP_LOCK_WORKSPACE` (or `HERMES3D_WORKSPACE`) on the lock orchestrator only — other servers may use their own conventions for workspace.
 4. Restart the MCP client after editing its config so all servers reload together.
 5. After the client reloads, ask the agent to call `hermes_doctor` and confirm `ok: true`. If filesystem or Codex bridges block disk writes, the doctor will surface it.
+6. If you run multiple event watchers, make sure each treats `event_already_handled` as a normal lost race, not as data loss.

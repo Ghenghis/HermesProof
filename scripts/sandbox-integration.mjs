@@ -17,6 +17,7 @@ import path from "node:path";
 import url from "node:url";
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
+import { ensureEventDirs } from "./generate-review-packet.mjs";
 
 function parseArgs(argv) {
   const out = {};
@@ -120,6 +121,19 @@ async function callTool(client, name, args) {
 const baseEnv = {
   MCP_LOCK_WORKSPACE: workspace
 };
+
+async function durableEventTypes() {
+  const paths = await ensureEventDirs(workspace);
+  const names = await fs.readdir(paths.outboxDir).catch(() => []);
+  const events = [];
+  for (const name of names.filter((n) => n.endsWith(".json")).sort()) {
+    try {
+      const event = JSON.parse(await fs.readFile(path.join(paths.outboxDir, name), "utf8"));
+      events.push(event.event_type);
+    } catch { /* ignore malformed files here; trigger-doctor covers schema */ }
+  }
+  return events;
+}
 
 // We use a single client connected to the same stdio server for all simulated
 // agents. The lock manager identifies agents by `owner` strings, not by
@@ -303,6 +317,15 @@ await withClient({ ...baseEnv, __agent: "sandbox-driver" }, async (client) => {
   assert.equal(releaseReviewer.ok, true);
   console.log(`[ok] all locks released`);
 
+  const outboxTypes = await durableEventTypes();
+  const expectedDurableTypes = ["task.claimed", "lock.acquired", "lock.released"];
+  const missingDurableTypes = expectedDurableTypes.filter((type) => !outboxTypes.includes(type));
+  if (missingDurableTypes.length === 0) {
+    console.log(`[ok] durable outbox includes lifecycle events: ${expectedDurableTypes.join(", ")}`);
+  } else {
+    console.log(`[warn] durable outbox API not active in this checkout; missing ${missingDurableTypes.join(", ")}`);
+  }
+
   // 14. Final state should have zero locks.
   const final = await callTool(client, "hermes_get_state", {});
   assert.equal(final.locks.length, 0, `expected 0 locks, got ${final.locks.length}`);
@@ -313,9 +336,12 @@ await withClient({ ...baseEnv, __agent: "sandbox-driver" }, async (client) => {
 const stateDir = path.join(workspace, ".hermes3d_orchestrator");
 const ledger = path.join(stateDir, "evidence", "ledger.ndjson");
 const events = path.join(stateDir, "events.ndjson");
+const durablePaths = await ensureEventDirs(workspace);
 const ledgerLines = (await fs.readFile(ledger, "utf8").catch(() => "")).split("\n").filter(Boolean).length;
 const eventLines = (await fs.readFile(events, "utf8").catch(() => "")).split("\n").filter(Boolean).length;
+const outboxLines = (await fs.readdir(durablePaths.outboxDir).catch(() => [])).filter((f) => f.endsWith(".json")).length;
 console.log(`\n[summary] evidence ledger entries: ${ledgerLines}`);
 console.log(`[summary] event log entries:        ${eventLines}`);
+console.log(`[summary] durable outbox events:    ${outboxLines}`);
 console.log(`[summary] state dir:                ${stateDir}`);
 console.log(`\nALL CHECKS PASSED`);

@@ -8,17 +8,18 @@ This document is the consolidated technical view of HermesProof. Every other doc
 <img src="./diagrams/architecture.svg" alt="HermesProof system architecture" width="100%"/>
 </div>
 
-HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio (MCP `2024-11-05`), is single-threaded by design (so its lock state cannot race against itself), and writes to a single hidden directory inside the workspace.
+HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio (MCP `2025-11-25`), is single-threaded by design (so its lock state cannot race against itself), and writes to a single hidden directory inside the workspace.
 
 | Layer | What it does | Where it lives |
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
-| Transport | stdio JSON-RPC, MCP 2024-11-05 | `@modelcontextprotocol/sdk@^1.19` |
-| Server | 15 tools across coordination, gates, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
+| Server | 20 tools across coordination, gates, evidence, events, diagnostics | [`src/server.mjs`](../src/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
+| Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
 | Gate runner | allowlisted command execution | [`src/core/gate-runner.mjs`](../src/core/gate-runner.mjs) |
 | Path safety | env-var resolution, escape rejection | [`src/core/fs-utils.mjs`](../src/core/fs-utils.mjs) |
-| Persistence | NDJSON event log, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
+| Persistence | event outbox directories, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
 
 ## 2. End-to-end pipeline
 
@@ -36,6 +37,18 @@ Every successful edit traverses six logical stages:
 6. **Attest + release** — `hermes_append_evidence` records the human-readable summary; `hermes_release_files` and `hermes_release_task` clear ownership.
 
 Every stage writes append-only evidence. Nothing is silently mutated.
+
+CP-HERMESPROOF-0.4 adds a passive event bridge beside the existing proof layer:
+
+```text
+state change
+  -> lock manager appends evidence
+  -> event manager writes event_schema_version=1 JSON to events/outbox via tmp + rename
+  -> optional watcher prints, posts, or writes a review packet
+  -> consumer may atomically rename outbox/<id>.json to handled/<id>.json
+```
+
+The bridge is intentionally not a chat wake-up system. HermesProof never calls an LLM API and never reaches into a Claude, Codex, or Windsurf session. It creates durable files that external watchers can observe.
 
 ## 3. Lock lifecycle
 
@@ -77,10 +90,10 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 ## 5. Truth-gate harness
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running nine gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running fourteen gates sequentially" width="100%"/>
 </div>
 
-`scripts/truth-gates.mjs` is the attestation runner. Nine independent gates, each producing structured evidence:
+`scripts/truth-gates.mjs` is the attestation runner. Fourteen independent gates, each producing structured evidence:
 
 | # | Gate | Implementation |
 | - | --- | --- |
@@ -93,11 +106,16 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 | 07 | `workspace.integrity` | `git status --porcelain`, allow only install-related markers |
 | 08 | `clients.config_presence` | check Claude Desktop / Code / Codex / Windsurf configs |
 | 09 | `clients.claude_code_live` | parse `claude mcp list` for `✓ Connected` |
+| 10 | `server.tool_description_hygiene` | scan tool descriptions for prompt-injection markers |
+| 11 | `evidence.hash_chain_valid` | append and verify evidence, including tamper detection |
+| 12 | `docs.master_prompt_deliverables_present` | verify required design and handoff docs exist |
+| 13 | `events.directory_present` | verify `events/outbox`, `events/handled`, and `events/failed` exist after init |
+| 14 | `trigger.doctor_passes` | verify the trigger bridge doctor succeeds in a sandbox |
 
 CLI:
 
 ```text
-node scripts/truth-gates.mjs               # run all 9 against your local Hermes3D
+node scripts/truth-gates.mjs               # run all 14 against your local Hermes3D
 node scripts/truth-gates.mjs --ci          # skip the 4 local-machine gates
 node scripts/truth-gates.mjs --skip foo,bar
 ```
@@ -164,13 +182,18 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (15 tools)
+│   ├── server.mjs                 # MCP entrypoint (20 tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
+│       ├── event-manager.mjs      # event_schema_version=1 outbox bridge
 │       ├── gate-runner.mjs        # DEFAULT_GATES allowlist + spawn
 │       └── fs-utils.mjs           # path safety, NDJSON helpers
 ├── scripts/
-│   ├── truth-gates.mjs            # 9-gate harness
+│   ├── truth-gates.mjs            # 14-gate harness
+│   ├── watch-events.mjs           # passive watcher: console, review packet, or webhook
+│   ├── generate-review-packet.mjs # deterministic Markdown review context
+│   ├── trigger-doctor.mjs         # trigger bridge end-to-end diagnostic
+│   ├── prune-events.mjs           # handled-event retention only
 │   ├── sandbox-integration.mjs    # 14-assertion end-to-end probe
 │   ├── coordination-smoke-test.mjs
 │   ├── hardening-smoke-test.mjs
@@ -183,6 +206,7 @@ HermesProof/
 │   ├── diagrams/                  # 7 SVGs (this doc + README + 5 others)
 │   ├── ARCHITECTURE.md            # ← you are here
 │   ├── LOCK_PROTOCOL.md
+│   ├── EVENT_SCHEMA.md
 │   ├── TOOL_REFERENCE.md
 │   ├── SECURITY_POLICY.md
 │   ├── INTEROP_WITH_OTHER_MCP.md
