@@ -1108,8 +1108,8 @@ if (!shouldSkip("secret.scan")) {
       { encoding: "utf8" }
     );
     // gitleaks exit codes per upstream docs: 0 = no leaks, 1 = leaks found,
-    // anything else = infrastructure error. Both 0 and 1 must be treated as
-    // "scanner ran successfully"; any other status is fail-closed.
+    // anything else = infrastructure error. Exit 1 means the gate must fail
+    // even if report parsing returns an empty array.
     const exitCode = r.status;
     const scannerOk = exitCode === 0 || exitCode === 1;
     let parsed = [];
@@ -1130,15 +1130,17 @@ if (!shouldSkip("secret.scan")) {
       findings: Array.isArray(parsed) ? parsed.slice(0, 10) : [],
     };
   });
-  // Fail closed: any scanner-execution failure (scanner_ok=false) blocks
-  // the gate, even if findings is empty. Previously this false-passed.
-  const noFindings = (result.findings?.length || 0) === 0;
-  const ok = result.scanner_ok === true && noFindings;
+  // Fail closed: scanner execution failures and gitleaks' leak-found exit
+  // code both block the gate. Previously exit 1 could false-pass when the
+  // JSON report was empty or not captured from stdout.
+  const findingCount = result.finding_count ?? result.findings?.length ?? 0;
+  const leaksFound = result.exit_code === 1 || findingCount > 0;
+  const ok = result.scanner_ok === true && !leaksFound;
   const detailParts = [];
   detailParts.push(result.mode);
   if (!result.scanner_ok)
     detailParts.push(`SCANNER ERROR: ${result.error || result.parse_error || `exit=${result.exit_code}`}`);
-  detailParts.push(`${result.findings?.length || 0} finding(s)`);
+  detailParts.push(`${findingCount} finding(s)`);
   record("secret.scan", "required", ok, result, detailParts.join(": "), durationMs);
 }
 

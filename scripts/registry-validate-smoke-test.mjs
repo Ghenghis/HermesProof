@@ -18,6 +18,9 @@ import {
   runLmstudioHealth,
   runOllamaHealth
 } from "./local-providers-health.mjs";
+import {
+  parseYamlSubset as parseRegistryProvidersYamlSubset
+} from "../src/core/registry-providers.mjs";
 
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 const repoRoot = path.resolve(here, "..");
@@ -58,6 +61,42 @@ test("parseYamlSubset — sequence of mappings", () => {
   assert.equal(out.providers.length, 2);
   assert.equal(out.providers[0].name, "a");
   assert.equal(out.providers[1].url, "u-b");
+});
+
+test("parseYamlSubset — top-level sibling after same-indent sequence", () => {
+  const yaml = [
+    "providers:",
+    "- name: a",
+    "  url: u-a",
+    "models:",
+    "- id: m1"
+  ].join("\n") + "\n";
+  const out = parseYamlSubset(yaml);
+  assert.equal(out.providers.length, 1);
+  assert.equal(out.models.length, 1);
+  assert.equal(out.providers[0].models, undefined);
+});
+
+test("parseYamlSubset — shipped registry keeps local models top-level", async () => {
+  const raw = await fs.readFile(path.join(REGISTRY_DIR, "registry.yaml"), "utf8");
+  const out = parseYamlSubset(raw);
+  assert.equal(out.continue_llm_classes.length, 62);
+  assert.ok(Array.isArray(out.lmstudio_local_models));
+  assert.equal(out.continue_llm_classes.at(-1).lmstudio_local_models, undefined);
+});
+
+test("registry provider loader YAML parser — supports indented sequences", () => {
+  const yaml = [
+    "providers:",
+    "  - name: a",
+    "    url: u-a",
+    "models:",
+    "  - id: m1"
+  ].join("\n") + "\n";
+  const out = parseRegistryProvidersYamlSubset(yaml);
+  assert.equal(out.providers.length, 1);
+  assert.equal(out.providers[0].name, "a");
+  assert.equal(out.models[0].id, "m1");
 });
 
 // ---------------------------------------------------------------------------
@@ -168,6 +207,32 @@ test("local.models.catalog.validate — fails when required column missing", asy
     const r = await runLocalModelsCatalogValidate({ registryDir: tmp });
     assert.equal(r.ok, false);
     assert.ok(r.findings.some((f) => f.kind === "missing_column" && f.column === "modified"));
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("local.models.catalog.validate — fails on header-only empty catalog", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "lms-empty-"));
+  try {
+    await fs.writeFile(path.join(tmp, "lmstudio_local_models.csv"),
+      "device,arch,params,publisher,model_id,quant,size,modified\n", "utf8");
+    const r = await runLocalModelsCatalogValidate({ registryDir: tmp });
+    assert.equal(r.ok, false);
+    assert.ok(r.findings.some((f) => f.kind === "empty_catalog"));
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("local.models.catalog.validate — fails on malformed rows", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "lms-malformed-"));
+  try {
+    await fs.writeFile(path.join(tmp, "lmstudio_local_models.csv"),
+      "device,arch,params,publisher,model_id,quant,size,modified\nLM,qwen,7B,pub,model,Q4,1G\n", "utf8");
+    const r = await runLocalModelsCatalogValidate({ registryDir: tmp });
+    assert.equal(r.ok, false);
+    assert.ok(r.findings.some((f) => f.kind === "skipped_row"));
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

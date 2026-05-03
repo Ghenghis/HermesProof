@@ -83,11 +83,22 @@ export function parseYamlSubset(src) {
     const stripped = rawLine.replace(/\s+#.*$/, "");
     const indent = stripped.match(/^ */)[0].length;
     const content = stripped.slice(indent);
+    const isSequenceItem = content.startsWith("- ");
 
     popTo(indent);
+    if (!isSequenceItem) {
+      while (stack.length > 1) {
+        const topFrame = stack[stack.length - 1];
+        if (!Array.isArray(topFrame.container) || topFrame._listIndent === undefined || indent > topFrame._listIndent) {
+          break;
+        }
+        stack.pop();
+        popTo(indent);
+      }
+    }
     const top = stack[stack.length - 1];
 
-    if (content.startsWith("- ")) {
+    if (isSequenceItem) {
       // sequence item
       // ensure top container is a list under previous key
       if (!Array.isArray(top.container)) {
@@ -311,11 +322,24 @@ export async function runLocalModelsCatalogValidate({ registryDir = REGISTRY_DIR
       findings.push({ kind: "missing_column", column: col });
     }
   }
+  for (const col of parsed.header) {
+    if (!LMS_REQUIRED_COLS.includes(col)) {
+      findings.push({ kind: "unexpected_column", column: col });
+    }
+  }
+  const schemaOk = parsed.header.length === LMS_REQUIRED_COLS.length &&
+    LMS_REQUIRED_COLS.every((col, i) => parsed.header[i] === col);
+  if (!schemaOk && LMS_REQUIRED_COLS.every((col) => parsed.header.includes(col))) {
+    findings.push({ kind: "header_order_mismatch", got: parsed.header, want: LMS_REQUIRED_COLS });
+  }
 
   evidence.row_count = parsed.rows.length;
   evidence.skipped_rows = parsed.skipped.length;
   for (const sk of parsed.skipped) {
     findings.push({ kind: "skipped_row", ...sk });
+  }
+  if (parsed.rows.length === 0) {
+    findings.push({ kind: "empty_catalog", reason: "no valid model rows parsed" });
   }
 
   // Basic per-row hygiene: model_id must be non-empty.
@@ -329,16 +353,13 @@ export async function runLocalModelsCatalogValidate({ registryDir = REGISTRY_DIR
   }
   evidence.invalid_row_count = invalid;
 
-  const headerOk = LMS_REQUIRED_COLS.every((c) => parsed.header.includes(c));
-  // Skipped rows + empty model_ids are warnings within the gate, but the
-  // gate fails only when the header itself is wrong (schema breakage).
-  const ok = headerOk;
+  const ok = schemaOk && parsed.rows.length > 0 && parsed.skipped.length === 0 && invalid === 0;
   return {
     ok,
     evidence,
     details: ok
-      ? `header ok; ${parsed.rows.length} valid rows, ${parsed.skipped.length} skipped`
-      : `header missing required columns`,
+      ? `schema ok; ${parsed.rows.length} valid rows`
+      : `${findings.length} catalog finding(s)`,
     findings
   };
 }
