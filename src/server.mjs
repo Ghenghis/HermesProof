@@ -62,7 +62,7 @@ const hermesAgent = new HermesAgentBridge({
   orchestrator: anon,
   enabled: process.env.HERMES_AGENT_ENABLED === "1",
   scope: process.env.HERMES_AGENT_SCOPE
-    ? process.env.HERMES_AGENT_SCOPE.split(",").map((s) => s.trim())
+    ? process.env.HERMES_AGENT_SCOPE.split(",").map((s) => s.trim()).filter(Boolean)
     : null,
   projectGoals: process.env.HERMES_AGENT_PROJECT_GOALS || null,
   registryProviders: registryLoad.providers || [],
