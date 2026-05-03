@@ -92,11 +92,11 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **34 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, Hermes Agent bridging, and diagnostics:
+The server exposes **42 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
-LOCK            lock_files          release_files       heartbeat
+LOCK            lock_files          release_files       heartbeat           list_locks
 HANDOFF         request_handoff     approve_handoff
 GATE            run_gate            list_gates
 EVIDENCE        append_evidence     verify_evidence
@@ -104,8 +104,14 @@ EVENTS          list_events         emit_event          mark_event_handled
                 create_blocked_handoff
 QUEUE           enqueue_task        list_pending_tasks  pick_task
                 recover_stale_tasks
-DIAGNOSTICS     get_state           list_locks          recover_stale_locks
-                doctor              read_policy
+DIAGNOSTICS     get_state           recover_stale_locks doctor              read_policy
+                list_agents
+ANONYMOUS       anonymous_claim     anonymous_release   anonymous_state
+                record_outcome      record_task         dispatch_recommend
+USER SESSION    user_grant_session  user_revoke_session user_check_authorization
+A2A             a2a_create_task     a2a_get_task        a2a_update_task     a2a_list_tasks
+AGENT           agent_health        agent_request_user_session
+                agent_resolve_blocked                   agent_revoke_session
 ```
 
 Each tool ships with MCP `2025-11-25` annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients can render approval prompts that match the actual blast radius — read-only listing tools auto-allow, destructive recovery tools always confirm.
