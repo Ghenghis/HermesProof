@@ -330,13 +330,18 @@ if (!shouldSkip("server.stdio_handshake")) {
   } else {
     const got = result.tools.sort();
     const missing = expectedTools.filter((t) => !got.includes(t));
-    record("server.stdio_handshake", "required", missing.length === 0, {
+    const unexpected = got.filter((t) => !expectedTools.includes(t));
+    const ok = missing.length === 0 && unexpected.length === 0 && got.length === expectedTools.length;
+    record("server.stdio_handshake", "required", ok, {
       protocol_version: result.protocolVersion,
       server_name: result.serverInfo?.name,
       server_version: result.serverInfo?.version,
       tool_count: got.length,
-      tools: got
-    }, missing.length === 0 ? `${got.length} tools` : `missing: ${missing.join(",")}`, durationMs);
+      expected_tool_count: expectedTools.length,
+      tools: got,
+      missing,
+      unexpected
+    }, ok ? `${got.length} tools` : `missing: ${missing.join(",") || "(none)"}; unexpected: ${unexpected.join(",") || "(none)"}`, durationMs);
   }
 }
 
