@@ -47,6 +47,7 @@ import {
   fetchLatestFromNpm,
   readPackageJson
 } from "./license-and-deps-gates.mjs";
+import { runWorkflowPinningGate } from "./workflow-pinning-gate.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -1246,6 +1247,25 @@ if (!shouldSkip("dependency.fresh")) {
     record("dependency.fresh", "skipped", true, result.evidence, result.details, durationMs);
   } else {
     record("dependency.fresh", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: security.workflow_actions_sha_pinned — every `uses:` in
+// .github/workflows/*.yml is pinned to a 40-char hex SHA (or sha256 digest
+// for docker:// actions, or a local ./path for reusable workflows). Mutable
+// tags like @v4 / @main are rejected — they are how supply-chain swaps slip
+// in (CVE-2024-25638 class). Pure-regex; zero deps.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("security.workflow_actions_sha_pinned")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runWorkflowPinningGate({ repoRoot });
+  });
+  if (error) {
+    record("security.workflow_actions_sha_pinned", "required", false, {}, error.message, durationMs);
+  } else {
+    record("security.workflow_actions_sha_pinned", "required", result.ok,
+      result.evidence, result.details, durationMs);
   }
 }
 
