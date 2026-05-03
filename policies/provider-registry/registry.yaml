@@ -6,7 +6,7 @@ status:
   lmstudio_local_models: extracted_from_uploaded_lmstudio_text
 counts:
   continue_llm_classes: 62
-  lmstudio_local_models_extracted: 87
+  lmstudio_local_models_extracted: 91
 routing:
   local_private:
     default: lmstudio
