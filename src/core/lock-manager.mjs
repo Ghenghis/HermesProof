@@ -23,6 +23,11 @@ import { EventManager } from "./event-manager.mjs";
 import { QueueManager } from "./queue-manager.mjs";
 
 const DEFAULT_TTL_MINUTES = 90;
+// hermes_doctor is read-only and called frequently by clients (every reconnect,
+// every health-check). The actual probe spans 5 syscalls + a write+rm probe; on
+// busy worktrees that's measurable. v0.5.1 caches the result for DOCTOR_CACHE_TTL_MS
+// per-instance. Cache invalidates on TTL or explicit force_refresh.
+const DOCTOR_CACHE_TTL_MS = 30_000;
 
 export class HermesLockManager {
   constructor({ workspaceRoot, stateDirName } = {}) {
@@ -35,6 +40,8 @@ export class HermesLockManager {
       stateDirName: this.stateDirName,
       eventManager: this.eventManager
     });
+    this._doctorCache = null; // { result, expiresAt, computedAtMs }
+    this._doctorInflight = null; // dedupe concurrent uncached calls
   }
 
   async init() {
@@ -599,8 +606,57 @@ export class HermesLockManager {
    * Pre-flight check used by the hermes_doctor MCP tool.
    * Validates workspace existence, write permissions, env wiring, and
    * surfaces actionable findings without modifying state.
+   *
+   * v0.5.1: results are cached for DOCTOR_CACHE_TTL_MS (30s) per-instance to
+   * avoid the syscalls on every call. Pass `{ force_refresh: true }` (snake- or
+   * camel-case) to bypass and re-probe. The cached result includes a
+   * `cached: true` marker plus `cache_age_ms` for observability.
    */
-  async doctor() {
+  async doctor(options = {}) {
+    const force =
+      options?.force_refresh === true ||
+      options?.forceRefresh === true ||
+      options?.force === true;
+    const now = Date.now();
+    if (!force && this._doctorCache && this._doctorCache.expiresAt > now) {
+      return {
+        ...this._doctorCache.result,
+        cached: true,
+        cache_age_ms: now - this._doctorCache.computedAtMs
+      };
+    }
+    if (!force && this._doctorInflight) {
+      // Concurrent uncached caller — share the in-flight probe rather than
+      // duplicating the syscalls.
+      return await this._doctorInflight;
+    }
+    const probe = (async () => {
+      const fresh = await this._doctorProbe();
+      this._doctorCache = {
+        result: fresh,
+        expiresAt: Date.now() + DOCTOR_CACHE_TTL_MS,
+        computedAtMs: Date.now()
+      };
+      return { ...fresh, cached: false, cache_age_ms: 0 };
+    })();
+    this._doctorInflight = probe;
+    try {
+      return await probe;
+    } finally {
+      this._doctorInflight = null;
+    }
+  }
+
+  /**
+   * Force-clear the doctor cache. Used by tests and explicit invalidation paths
+   * (e.g., after an `init()` that creates the state dir tree). Public so the
+   * MCP server can wire it into mutating ops if it ever wants to.
+   */
+  invalidateDoctorCache() {
+    this._doctorCache = null;
+  }
+
+  async _doctorProbe() {
     const findings = [];
     const checks = [];
 

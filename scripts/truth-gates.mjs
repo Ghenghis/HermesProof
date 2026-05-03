@@ -28,6 +28,10 @@ import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
 import { runMcpScanStaticGate } from "./mcp-scan-static-gate.mjs";
+import {
+  runLicensesScanGate,
+  collectInstalledLicensesViaCheck
+} from "./license-and-deps-gates.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -935,6 +939,35 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
         ? `${result.required_count}/${result.required_count} deliverables present`
         : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
       durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: licenses.scan — every production dep on the SPDX allowlist
+//
+// Required gate. Pulls the live `npx --yes license-checker --production --json`
+// snapshot, normalises SPDX expressions, and fails on any GPL/AGPL/LGPL/SSPL/
+// EUPL/BUSL contact. Conservative-by-design: GPL family stays denied even
+// though it's a valid OSS license — HermesProof itself is MIT and we cannot
+// pull copyleft into the dependency closure without an explicit policy waiver.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("licenses.scan")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const collected = await collectInstalledLicensesViaCheck(repoRoot);
+    if (!collected.ok) {
+      return { collectError: collected.reason };
+    }
+    const gate = runLicensesScanGate({ packageList: collected.packageList });
+    return { gate, package_count: collected.packageList.length };
+  });
+  if (error) {
+    record("licenses.scan", "required", false, {}, error.message, durationMs);
+  } else if (result.collectError) {
+    record("licenses.scan", "required", false, { reason: result.collectError },
+      `license-checker unavailable: ${result.collectError}`, durationMs);
+  } else {
+    record("licenses.scan", "required", result.gate.ok, result.gate.evidence,
+      result.gate.details, durationMs);
   }
 }
 

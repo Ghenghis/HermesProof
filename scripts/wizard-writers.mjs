@@ -50,7 +50,12 @@ export const WRITERS = {
   windsurf: {
     detect: detectOne("windsurf"),
     backup,
-    write: async (opts) => await upsertJsonMcp(opts.paths.windsurf, opts)
+    write: async (opts) => await writeWindsurf(opts)
+  },
+  kilocode: {
+    detect: detectOne("kilocode"),
+    backup,
+    write: async (opts) => await writeKiloCode(opts)
   },
   cursor: {
     detect: detectOne("cursor"),
@@ -59,6 +64,11 @@ export const WRITERS = {
   },
   "vscode-copilot": {
     detect: detectOne("vscode-copilot"),
+    backup,
+    write: async (opts) => await writeVscode(opts)
+  },
+  vscode: {
+    detect: detectOne("vscode"),
     backup,
     write: async (opts) => await writeVscode(opts)
   },
@@ -138,7 +148,8 @@ async function writeCursor({ workspaceRoot, serverEntry, serverName, paths, repo
   const files = [
     { path: paths.cursorMcp, kind: "json" },
     { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof.mdc"), path: path.join(paths.cursorRulesDir, "hermesproof.mdc"), kind: "copy" },
-    { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof-queue-discipline.mdc"), path: path.join(paths.cursorRulesDir, "hermesproof-queue-discipline.mdc"), kind: "copy" }
+    { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof-queue-discipline.mdc"), path: path.join(paths.cursorRulesDir, "hermesproof-queue-discipline.mdc"), kind: "copy" },
+    { src: path.join(repoRoot, "examples", "cursor", "streamhooks", ".cursor", "rules", "stream.mdc"), path: path.join(paths.cursorRulesDir, "stream.mdc"), kind: "copy" }
   ];
   if (dryRun) return { ok: true, status: "planned", files: files.map((f) => f.path) };
   const backups = [];
@@ -152,8 +163,39 @@ async function writeCursor({ workspaceRoot, serverEntry, serverName, paths, repo
   return { ok: true, status: "written", files: files.map((f) => f.path), backups };
 }
 
-async function writeVscode({ workspaceRoot, serverEntry, serverName, paths, dryRun }) {
-  if (dryRun) return planned(paths.vscodeMcp);
+async function writeKiloCode({ paths, repoRoot, dryRun }) {
+  const files = [
+    { src: path.join(repoRoot, "examples", "kilocode", "streamhooks", "rules.toml"), path: paths.kilocodeRules },
+    { src: path.join(repoRoot, "examples", "kilocode", "streamhooks", "system-prompt-snippet.md"), path: path.join(paths.kilocodeDir, "system-prompt-snippet.md") }
+  ];
+  if (dryRun) return { ok: true, status: "planned", files: files.map((f) => f.path) };
+  const backups = [];
+  for (const item of files) {
+    await ensureParent(item.path);
+    const bak = await backup(item.path);
+    if (bak) backups.push(bak);
+    await fs.copyFile(item.src, item.path);
+  }
+  return { ok: true, status: "written", files: files.map((f) => f.path), backups };
+}
+
+async function writeWindsurf(opts) {
+  const mcp = await upsertJsonMcp(opts.paths.windsurf, opts);
+  const rulesSrc = path.join(opts.repoRoot, "examples", "windsurf", "streamhooks", ".windsurfrules");
+  const rulesDest = path.join(opts.workspaceRoot, ".windsurfrules");
+  if (opts.dryRun) return { ok: true, status: "planned", files: [opts.paths.windsurf, rulesDest] };
+  await ensureParent(rulesDest);
+  const rulesBak = await backup(rulesDest);
+  await fs.copyFile(rulesSrc, rulesDest);
+  return { ok: true, status: "written", files: [opts.paths.windsurf, rulesDest], backups: [mcp.backup, rulesBak].filter(Boolean) };
+}
+
+async function writeVscode({ workspaceRoot, serverEntry, serverName, paths, repoRoot, dryRun }) {
+  const files = [
+    paths.vscodeMcp,
+    path.join(workspaceRoot, ".github", "copilot-instructions.md")
+  ];
+  if (dryRun) return { ok: true, status: "planned", files };
   await ensureParent(paths.vscodeMcp);
   const { json, existed } = await readJsonConfig(paths.vscodeMcp, { servers: {} });
   json.servers ||= {};
@@ -165,7 +207,12 @@ async function writeVscode({ workspaceRoot, serverEntry, serverName, paths, dryR
   };
   const bak = existed ? await backup(paths.vscodeMcp) : null;
   await fs.writeFile(paths.vscodeMcp, JSON.stringify(json, null, 2) + "\n", "utf8");
-  return written(paths.vscodeMcp, bak);
+  const instructionsSrc = path.join(repoRoot, "examples", "vscode", "streamhooks", ".github", "copilot-instructions.md");
+  const instructionsDest = files[1];
+  await ensureParent(instructionsDest);
+  const instructionsBak = await backup(instructionsDest);
+  await fs.copyFile(instructionsSrc, instructionsDest);
+  return { ok: true, status: "written", files, backups: [bak, instructionsBak].filter(Boolean) };
 }
 
 async function writeClaudeCode({ workspaceRoot, serverEntry, serverName, dryRun }) {
