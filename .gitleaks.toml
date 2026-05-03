@@ -1,0 +1,50 @@
+title = "HermesProof secret-scan rules"
+extend.useDefault = true
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key (sk-ant-...)"
+regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "deepseek-api-key"
+description = "DeepSeek API key (requires deepseek keyword co-located within 120 chars)"
+regex = '''(?i)deepseek[\s\S]{0,120}sk-[a-zA-Z0-9]{32,48}'''
+keywords = ["deepseek"]
+
+[[rules]]
+id = "huggingface-token"
+description = "Hugging Face token (hf_...)"
+regex = '''hf_[a-zA-Z0-9]{30,}'''
+keywords = ["hf_"]
+
+[[rules]]
+id = "siliconflow-api-key"
+description = "SiliconFlow API key"
+regex = '''sk-[a-zA-Z0-9_-]{40,}'''
+keywords = ["siliconflow"]
+
+[[rules]]
+id = "minimax-api-key"
+description = "MiniMax API key"
+regex = '''(?i)minimax[_-]?(api[_-]?)?key['"\s:=]+([a-zA-Z0-9_.-]{30,})'''
+keywords = ["minimax"]
+
+[[rules]]
+id = "coderabbit-api-key"
+description = "CodeRabbit API key"
+regex = '''(?i)coderabbit[_-]?(api[_-]?)?key['"\s:=]+([a-zA-Z0-9_-]{30,})'''
+keywords = ["coderabbit"]
+
+[allowlist]
+description = "Permitted patterns — synthetic test keys, examples"
+regexes = [
+  '''sk-ant-test-[a-zA-Z0-9-]+''',
+  '''sk-ant-example-key''',
+]
+paths = [
+  '''.*\.example$''',
+  '''node_modules/.*''',
+  '''PROOF/.*''',
+]
