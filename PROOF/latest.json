@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-05-03T13-05-34-542Z",
-  "ts_utc": "2026-05-03T13:05:34.542Z",
-  "duration_ms": 4744,
+  "run_id": "truth_2026-05-03T13-29-36-983Z",
+  "ts_utc": "2026-05-03T13:29:36.983Z",
+  "duration_ms": 4913,
   "ok": true,
   "pass_count": 14,
   "fail_count": 0,
@@ -19,7 +19,7 @@
       "duration_ms": 10,
       "evidence": {
         "file_count": 33,
-        "manifest_sha256": "4c21e13cd373c9ee9b370ba4e816b2fbdb37675a641591152ffc36b6fce725ef"
+        "manifest_sha256": "6d8ba36df75cc20bf1842c5fcc4ebcec757a9cb8e8055d97eecc54bf5d3527ca"
       },
       "details": "33 files hashed"
     },
@@ -27,7 +27,7 @@
       "id": "deps.parity",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 2,
       "evidence": {
         "declared": {
           "@modelcontextprotocol/sdk": "^1.29.0",
@@ -47,21 +47,21 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 1606,
+      "duration_ms": 1639,
       "evidence": {
         "exit_code": 0,
-        "pass_count": 51,
+        "pass_count": 52,
         "fail_count": 0,
-        "stdout_tail": "rejects unknown gateId without spawning anything\nok 40 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 3.068604\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 41 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 1.577932\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 42 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 4.617914\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 43 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 6.156854\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 44 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 6.426264\n  ...\n# Subtest: env file resolver falls through missing vps override to existing general override\nok 45 - env file resolver falls through missing vps override to existing general override\n  ---\n  duration_ms: 1.563191\n  ...\n# Subtest: env file resolver falls through missing explicit override to cwd .env\nok 46 - env file resolver falls through missing explicit override to cwd .env\n  ---\n  duration_ms: 1.538653\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 47 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 1.116092\n  ...\n# Subtest: event_path_cannot_escape_workspace\nok 48 - event_path_cannot_escape_workspace\n  ---\n  duration_ms: 1.833077\n  ...\n# Subtest: prune_events_respects_before_cutoff\nok 49 - prune_events_respects_before_cutoff\n  ---\n  duration_ms: 3.382726\n  ...\n# Subtest: prune_events_never_touches_failed_directory\nok 50 - prune_events_never_touches_failed_directory\n  ---\n  duration_ms: 1.824113\n  ...\n# Subtest: trigger_doctor_passes_on_clean_sandbox\nok 51 - trigger_doctor_passes_on_clean_sandbox\n  ---\n  duration_ms: 27.670444\n  ...\n1..51\n# tests 51\n# suites 0\n# pass 51\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1568.495507\n",
+        "stdout_tail": "er rejects unknown gateId without spawning anything\nok 41 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 2.1509\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 42 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 2.198208\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 43 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 2.886708\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 44 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 10.223754\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 45 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 8.571308\n  ...\n# Subtest: env file resolver falls through missing vps override to existing general override\nok 46 - env file resolver falls through missing vps override to existing general override\n  ---\n  duration_ms: 2.40175\n  ...\n# Subtest: env file resolver falls through missing explicit override to cwd .env\nok 47 - env file resolver falls through missing explicit override to cwd .env\n  ---\n  duration_ms: 3.539972\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 48 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 1.210418\n  ...\n# Subtest: event_path_cannot_escape_workspace\nok 49 - event_path_cannot_escape_workspace\n  ---\n  duration_ms: 2.072553\n  ...\n# Subtest: prune_events_respects_before_cutoff\nok 50 - prune_events_respects_before_cutoff\n  ---\n  duration_ms: 3.824241\n  ...\n# Subtest: prune_events_never_touches_failed_directory\nok 51 - prune_events_never_touches_failed_directory\n  ---\n  duration_ms: 3.555822\n  ...\n# Subtest: trigger_doctor_passes_on_clean_sandbox\nok 52 - trigger_doctor_passes_on_clean_sandbox\n  ---\n  duration_ms: 26.909537\n  ...\n1..52\n# tests 52\n# suites 0\n# pass 52\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1602.75839\n",
         "stderr_tail": ""
       },
-      "details": "pass=51, fail=0, exit=0"
+      "details": "pass=52, fail=0, exit=0"
     },
     {
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 211,
+      "duration_ms": 216,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -112,7 +112,7 @@
       "ok": true,
       "duration_ms": 11,
       "evidence": {
-        "sandbox": "/tmp/truth-events-dir-KQ9UfU",
+        "sandbox": "/tmp/truth-events-dir-p7Vpwp",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -125,9 +125,9 @@
       "id": "tasks.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 5,
+      "duration_ms": 6,
       "evidence": {
-        "sandbox": "/tmp/truth-tasks-dir-ccMo4u",
+        "sandbox": "/tmp/truth-tasks-dir-5Pq7s2",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -141,17 +141,17 @@
       "id": "trigger.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 72,
+      "duration_ms": 73,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-trigger-doctor-nMYicC",
+          "workspace": "/tmp/truth-trigger-doctor-XCJLZn",
           "doctor": {
             "ok": true,
-            "workspace_root": "/tmp/truth-trigger-doctor-nMYicC",
-            "state_dir": "/tmp/truth-trigger-doctor-nMYicC/.hermes3d_orchestrator",
+            "workspace_root": "/tmp/truth-trigger-doctor-XCJLZn",
+            "state_dir": "/tmp/truth-trigger-doctor-XCJLZn/.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
             "node_version": "v20.20.2",
             "platform": "linux",
@@ -213,13 +213,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 162,
+      "duration_ms": 160,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-queue-doctor-R7xRsp",
+          "workspace": "/tmp/truth-queue-doctor-roGiVe",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -257,11 +257,11 @@
       "id": "wizard.dry_run_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 62,
+      "duration_ms": 60,
       "evidence": {
         "exit_code": 0,
         "wrote_state": false,
-        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-O1apxo\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-O1apxo.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
+        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-meGjsU\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ KiloCode\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-meGjsU.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
         "stderr_tail": ""
       },
       "details": "wizard dry-run ok"
@@ -270,9 +270,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 355,
+      "duration_ms": 347,
       "evidence": {
-        "sandbox": "/tmp/truth-gate-sandbox-ErLu9c",
+        "sandbox": "/tmp/truth-gate-sandbox-tUjLxg",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -411,7 +411,7 @@
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 3,
+      "duration_ms": 2,
       "evidence": {
         "required_count": 10,
         "findings": [
@@ -483,7 +483,7 @@
       "id": "licenses.scan",
       "level": "required",
       "ok": true,
-      "duration_ms": 2236,
+      "duration_ms": 2379,
       "evidence": {
         "package_count": 93,
         "allowlist": [
