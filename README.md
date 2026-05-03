@@ -38,46 +38,55 @@ Every edit flows through six gates, leaving an immutable trail behind.
 06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Every push to `main` re-proves the entire chain through 26 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
+Every push to `main` re-proves the entire chain through 35 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
 
 ---
 
 ## ✦ Truth gates
 
-The proof harness — `npm run truth-gates` — runs twenty-six independent verifications in sequence, capturing structured evidence at every step.
+The proof harness — `npm run truth-gates` — runs thirty-five independent verifications in sequence, capturing structured evidence at every step.
 
 <div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running twenty-six gates sequentially" width="100%"/>
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-five gates sequentially" width="100%"/>
 </div>
 
-| #   | Gate                                      | What it proves                                                                       |
-| --- | ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| 01  | `source.integrity_manifest`               | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift           |
-| 02  | `deps.parity`                             | `package.json` declared deps match the installed ones in `node_modules/`             |
-| 03  | `tests.unit`                              | All Node smoke tests pass via direct `node --test` (npm pipe-routing bypassed)       |
-| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 42 MCP tools   |
-| 05  | `doctor.hermes3d`                         | `hermes_doctor` returns `ok: true` against the live workspace                        |
-| 06  | `e2e.multi_agent_flow`                    | 14-step real stdio probe: claim → lock → block → handoff → gate → release            |
-| 07  | `workspace.integrity`                     | No probe files leaked, no unexpected tracked changes in the workspace                |
-| 08  | `clients.config_presence`                 | Claude Desktop, Claude Code, Codex, Windsurf all have `hermes3d-locks` wired         |
-| 09  | `clients.claude_code_live`                | `claude mcp list` reports `hermes3d-locks: ✓ Connected` (round-trip live)            |
-| 10  | `server.tool_description_hygiene`         | Tool descriptions free of prompt-injection markers (OWASP MCP tool poisoning)        |
-| 11  | `evidence.hash_chain_valid`               | Round-trips append + verify, including detection of mid-chain tamper at right index  |
-| 12  | `docs.master_prompt_deliverables_present` | All 10 master-prompt design / handoff documents exist, non-empty, with H1 headings   |
-| 13  | `events.directory_present`                | `events/outbox`, `events/handled`, and `events/failed` exist after workspace init    |
-| 14  | `trigger.doctor_passes`                   | Trigger bridge doctor validates event outbox, schema handling, and review-packet ops |
-| 15  | `tasks.directory_present`                 | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
-| 16  | `queue.doctor_passes`                     | Queue doctor validates enqueue, pick, done, owner affinity, priority, and recovery   |
-| 17  | `wizard.dry_run_passes`                   | Universal setup wizard dry-run plans client wiring without writing state             |
-| 18  | `provider.registry.validate`              | `policies/provider-registry/registry.yaml` schema + per-entry shape + duplicate scan |
-| 19  | `local.models.catalog.validate`           | `lmstudio_local_models.csv` header hygiene; reports invalid rows as findings         |
-| 20  | `continue.llm_classes.validate`           | All 62 expected Continue LLM provider names present in `continue_llm_classes.csv`    |
-| 21  | `kilocode.provider.mapping.validate`      | Stub gate — runs as `not_applicable` until the KiloCode mapping CSV ships            |
-| 22  | `lmstudio.health`                         | LM Studio `LMSTUDIO_BASE_URL` reachable (warn-on-offline, 5s timeout)                |
-| 23  | `ollama.health`                           | Ollama `OLLAMA_BASE_URL` reachable (warn-on-offline, 5s timeout)                     |
-| 24  | `secret.scan`                             | Repo scanned for secrets via gitleaks; falls back to stdlib regex when unavailable   |
-| 25  | `licenses.scan`                           | Every production dep on the SPDX allowlist; GPL/AGPL/LGPL/SSPL/EUPL/BUSL deny-fail   |
-| 26  | `dependency.fresh`                        | Direct deps published within 18 months (advisory; warn at 12mo, skip when offline)   |
+| #   | Gate | What it proves |
+| --- | --- | --- |
+| 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
+| 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
+| 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
+| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 42 MCP tools |
+| 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
+| 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
+| 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
+| 08  | `trigger.doctor_passes` | Trigger bridge doctor validates event outbox, schema handling, and review packets |
+| 09  | `queue.doctor_passes` | Queue doctor validates enqueue, pick, done, owner affinity, priority, and recovery |
+| 10  | `wizard.dry_run_passes` | Universal setup wizard dry-run plans client wiring without writing state |
+| 11  | `e2e.multi_agent_flow` | 14-step real stdio probe: claim -> lock -> block -> handoff -> gate -> release |
+| 12  | `workspace.integrity` | No probe files leaked and no unexpected tracked changes in the workspace |
+| 13  | `clients.config_presence` | Claude Desktop, Claude Code, Codex, and Windsurf configs are wired |
+| 14  | `clients.claude_code_live` | `claude mcp list` reports `hermes3d-locks` connected when local gates are enabled |
+| 15  | `server.tool_description_hygiene` | Tool descriptions are free of prompt-injection markers |
+| 16  | `security.mcp_scan_pass` | Static MCP poisoning scan over `src/server.mjs` passes |
+| 17  | `evidence.hash_chain_valid` | Round-trips append + verify, including detection of mid-chain tamper |
+| 18  | `docs.master_prompt_deliverables_present` | Required design and handoff documents exist, non-empty, with H1 headings |
+| 19  | `provider.registry.validate` | `policies/provider-registry/registry.yaml` schema and duplicate checks pass |
+| 20  | `local.models.catalog.validate` | `lmstudio_local_models.csv` is schema-valid and non-empty |
+| 21  | `continue.llm_classes.validate` | All 62 expected Continue LLM provider names are present |
+| 22  | `kilocode.provider.mapping.validate` | KiloCode provider mapping gate reports applicable status or explicit N/A |
+| 23  | `lmstudio.health` | LM Studio endpoint health probe runs as warn-on-offline |
+| 24  | `ollama.health` | Ollama endpoint health probe runs as warn-on-offline |
+| 25  | `secret.scan` | Repo secret scan runs via gitleaks or stdlib fallback |
+| 26  | `secrets.rotation_evidence_present` | Secret-rotation evidence is present when required |
+| 27  | `sbom.cyclonedx_generated` | CycloneDX SBOM generation succeeds |
+| 28  | `licenses.scan` | Production dependency licenses pass the SPDX allow/deny policy |
+| 29  | `dependency.fresh` | Direct deps freshness check runs with advisory windows |
+| 30  | `security.workflow_actions_sha_pinned` | GitHub Actions are pinned according to workflow hardening policy |
+| 31  | `accessibility.wcag_aa_pass` | Accessibility gate reaches WCAG AA policy status |
+| 32  | `perf.budgets_pass` | Performance budgets gate reaches policy status |
+| 33  | `docs.reflects_changes` | Docs reflection gate verifies user-facing changes are documented |
+| 34  | `release.checksums_present` | Release checksum artifacts are present when required |
+| 35  | `quality.coderabbit_reviewed` | CodeRabbit review gate records reviewed or skipped status |
 
 Outputs:
 
@@ -243,7 +252,7 @@ npm install
 npm run wizard
 
 # 2. Verify the package (no workspace needed yet)
-npm run truth-gates                                            # 26/26 gates pass
+npm run truth-gates                                            # 35/35 gates pass
 npm test                                                       # Node smoke tests pass
 
 # 3. Pick the workspace HermesProof will govern. Examples:

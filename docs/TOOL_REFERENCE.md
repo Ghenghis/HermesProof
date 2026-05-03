@@ -6,16 +6,21 @@ The server exposes 42 MCP tools across coordination, gates, evidence, events, qu
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
 </div>
 
-| Group           | Tools                                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------------------------ |
-| Claim / release | `hermes_claim_task`, `hermes_release_task`                                                                   |
-| Lock            | `hermes_lock_files`, `hermes_release_files`, `hermes_heartbeat`                                              |
-| Handoff         | `hermes_request_handoff`, `hermes_approve_handoff`                                                           |
-| Gate            | `hermes_run_gate`, `hermes_list_gates`                                                                       |
-| Evidence        | `hermes_append_evidence`, `hermes_verify_evidence`                                                           |
-| Events          | `hermes_list_events`, `hermes_emit_event`, `hermes_mark_event_handled`, `hermes_create_blocked_handoff`      |
-| Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`         |
-| Diagnostics     | `hermes_get_state`, `hermes_list_locks`, `hermes_recover_stale_locks`, `hermes_doctor`, `hermes_read_policy` |
+| Group           | Tools                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claim / release | `hermes_claim_task`, `hermes_release_task`                                                                                                  |
+| Lock            | `hermes_lock_files`, `hermes_release_files`, `hermes_heartbeat`, `hermes_list_locks`, `hermes_recover_stale_locks`                         |
+| Handoff         | `hermes_request_handoff`, `hermes_approve_handoff`, `hermes_create_blocked_handoff`                                                         |
+| Gate            | `hermes_run_gate`, `hermes_list_gates`                                                                                                      |
+| Evidence        | `hermes_append_evidence`, `hermes_verify_evidence`                                                                                          |
+| Events          | `hermes_list_events`, `hermes_emit_event`, `hermes_mark_event_handled`                                                                      |
+| Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`                                        |
+| Diagnostics     | `hermes_get_state`, `hermes_doctor`, `hermes_read_policy`                                                                                   |
+| Anonymous       | `hermes_list_agents`, `hermes_anonymous_claim`, `hermes_anonymous_release`, `hermes_anonymous_state`, `hermes_record_outcome`, `hermes_record_task` |
+| Dispatch        | `hermes_dispatch_recommend`                                                                                                                 |
+| USER session    | `hermes_user_grant_session`, `hermes_user_revoke_session`, `hermes_user_check_authorization`                                                |
+| A2A             | `hermes_a2a_create_task`, `hermes_a2a_get_task`, `hermes_a2a_update_task`, `hermes_a2a_list_tasks`                                          |
+| Hermes Agent    | `hermes_agent_health`, `hermes_agent_request_user_session`, `hermes_agent_resolve_blocked`, `hermes_agent_revoke_session`                   |
 
 ---
 
@@ -210,3 +215,195 @@ Non-destructive pre-flight check. Returns:
 ```
 
 The doctor probes write permission with a temporary file in the workspace root and removes it. It does **not** create the state dir tree — that happens only when `init()` is called by the running server.
+
+## hermes_release_task
+
+Marks a claimed task complete after evidence and file releases have been recorded.
+
+```json
+{ "owner": "codex-impl-01", "taskId": "CP-UX-A-CODEX", "note": "PR merged" }
+```
+
+## hermes_release_files
+
+Releases one or more locks held by the caller.
+
+```json
+{ "owner": "codex-impl-01", "files": ["src/example.mjs"], "note": "done" }
+```
+
+## hermes_heartbeat
+
+Refreshes owned locks and claimed task metadata while work is still active.
+
+```json
+{ "owner": "codex-impl-01", "taskId": "CP-UX-A-CODEX" }
+```
+
+## hermes_list_locks
+
+Lists current file locks, including owner, task id, TTL, and stale status.
+
+```json
+{}
+```
+
+## hermes_recover_stale_locks
+
+Recovers only locks whose TTL has expired. This is the explicit stale-recovery path and should be paired with evidence.
+
+```json
+{ "owner": "claude-lead", "files": ["src/example.mjs"], "note": "owner session expired" }
+```
+
+## hermes_list_gates
+
+Lists the gate ids allowlisted for `hermes_run_gate`.
+
+```json
+{}
+```
+
+## hermes_list_agents
+
+Summarizes anonymous-role, reputation, and skill-rotation state for active actors.
+
+```json
+{}
+```
+
+## hermes_anonymous_claim
+
+Claims one anonymous role such as reviewer, implementer, or tester without binding the workflow to a named person.
+
+```json
+{ "role": "reviewer", "actor_id": "codex-review-01", "purpose": "PR review" }
+```
+
+## hermes_anonymous_release
+
+Releases an anonymous role currently held by an actor.
+
+```json
+{ "role": "reviewer", "actor_id": "codex-review-01" }
+```
+
+## hermes_anonymous_state
+
+Returns anonymous-role and USER-session state.
+
+```json
+{}
+```
+
+## hermes_record_outcome
+
+Records an actor outcome for reputation scoring.
+
+```json
+{ "actor_id": "codex-review-01", "outcome": "merge_success", "weight": 1 }
+```
+
+## hermes_record_task
+
+Records a task type in the actor skill histogram used by rotation and routing.
+
+```json
+{ "actor_id": "codex-review-01", "task_type": "review" }
+```
+
+## hermes_dispatch_recommend
+
+Recommends an actor for a requested capability using current reputation and skill history.
+
+```json
+{ "capability": "review", "candidates": ["codex-review-01", "claude-reviewer"] }
+```
+
+## hermes_user_grant_session
+
+Grants a scoped AS_USER session. Human grants require the configured human-secret path; Hermes Agent grants flow through the bridge.
+
+```json
+{ "granted_by": "hermes-agent", "session_id": "session-123", "scope": ["resolve_blocked"] }
+```
+
+## hermes_user_revoke_session
+
+Revokes the active USER session by id.
+
+```json
+{ "session_id": "session-123" }
+```
+
+## hermes_user_check_authorization
+
+Checks whether the active USER session permits a named action.
+
+```json
+{ "action": "resolve_blocked" }
+```
+
+## hermes_a2a_create_task
+
+Creates an Agent-to-Agent task and returns its `task_id`.
+
+```json
+{ "from_agent": "claude-lead", "to_agent": "codex-impl-01", "title": "Review docs", "description": "Audit drift" }
+```
+
+## hermes_a2a_get_task
+
+Reads one A2A task by id.
+
+```json
+{ "task_id": "a2a_123" }
+```
+
+## hermes_a2a_update_task
+
+Transitions an A2A task through the allowed state machine.
+
+```json
+{ "task_id": "a2a_123", "status": "working", "output": "started" }
+```
+
+## hermes_a2a_list_tasks
+
+Lists A2A tasks, optionally filtered by agent or status.
+
+```json
+{ "agent": "codex-impl-01", "status": "working" }
+```
+
+## hermes_agent_health
+
+Checks configured Hermes Agent providers in failover order and reports the first healthy provider.
+
+```json
+{}
+```
+
+## hermes_agent_request_user_session
+
+Asks Hermes Agent to evaluate a requested scope and, on approval, grant a scoped USER session.
+
+```json
+{ "requested_scope": ["resolve_blocked"], "ttl_hours": 8 }
+```
+
+## hermes_agent_resolve_blocked
+
+Asks Hermes Agent to reason about a blocked handoff using the active USER session.
+
+```json
+{ "correlation": "handoff_123", "summary": "Reviewer needs approval", "full_thread": "..." }
+```
+
+## hermes_agent_revoke_session
+
+Revokes the Hermes Agent's own active USER session.
+
+```json
+{}
+```
