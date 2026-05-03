@@ -13,7 +13,7 @@
 
 **🌐 Live site → [ghenghis.github.io/HermesProof](https://ghenghis.github.io/HermesProof/)**
 
-**HermesProof** is the verifiable file-lock and proof layer that lets **Claude · Codex · Windsurf · Cascade** coordinate edits on the **same repository** — without clobbering each other.
+**HermesProof** is the verifiable file-lock, proof, and passive trigger-bridge layer that lets **Claude · Codex · Windsurf · Cascade** coordinate edits on the **same repository** — without clobbering each other.
 
 [Quickstart](#-quickstart) · [Pipeline](#-end-to-end-pipeline) · [Truth Gates](#-truth-gates) · [Architecture](#-architecture) · [Coordination](#-multi-agent-coordination) · [Composition](#-composes-with-other-mcp-servers) · [Docs](#-documentation)
 
@@ -38,16 +38,16 @@ Every edit flows through six gates, leaving an immutable trail behind.
 06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Every push to `main` re-proves the entire chain through 12 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
+Every push to `main` re-proves the entire chain through 14 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
 
 ---
 
 ## ✦ Truth gates
 
-The proof harness — `npm run truth-gates` — runs twelve independent verifications in sequence, capturing structured evidence at every step.
+The proof harness — `npm run truth-gates` — runs fourteen independent verifications in sequence, capturing structured evidence at every step.
 
 <div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running twelve gates sequentially" width="100%"/>
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running fourteen gates sequentially" width="100%"/>
 </div>
 
 | #   | Gate                                      | What it proves                                                                       |
@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs twelve independent verifica
 | 01  | `source.integrity_manifest`               | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift           |
 | 02  | `deps.parity`                             | `package.json` declared deps match the installed ones in `node_modules/`             |
 | 03  | `tests.unit`                              | All 12 unit tests pass via direct `node --test` (npm pipe-routing bypassed)          |
-| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 16 tools       |
+| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 20 tools       |
 | 05  | `doctor.hermes3d`                         | `hermes_doctor` returns `ok: true` against the live workspace                        |
 | 06  | `e2e.multi_agent_flow`                    | 14-step real stdio probe: claim → lock → block → handoff → gate → release            |
 | 07  | `workspace.integrity`                     | No probe files leaked, no unexpected tracked changes in the workspace                |
@@ -64,6 +64,8 @@ The proof harness — `npm run truth-gates` — runs twelve independent verifica
 | 10  | `server.tool_description_hygiene`         | Tool descriptions free of prompt-injection markers (OWASP MCP tool poisoning)        |
 | 11  | `evidence.hash_chain_valid`               | Round-trips append + verify, including detection of mid-chain tamper at right index  |
 | 12  | `docs.master_prompt_deliverables_present` | All 10 master-prompt design / handoff documents exist, non-empty, with H1 headings   |
+| 13  | `events.directory_present`                | `events/outbox`, `events/handled`, and `events/failed` exist after workspace init    |
+| 14  | `trigger.doctor_passes`                   | Trigger bridge doctor validates event outbox, schema handling, and review-packet ops |
 
 Outputs:
 
@@ -79,13 +81,13 @@ Outputs:
 
 ## ✦ Architecture
 
-Single stdio process per workspace, four MCP clients, two persistence surfaces.
+Single stdio process per workspace, four MCP clients, three persistence surfaces.
 
 <div align="center">
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **16 MCP tools** for coordination, gates, and diagnostics:
+The server exposes **20 MCP tools** for coordination, gates, evidence, event outbox operations, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
@@ -93,6 +95,8 @@ LOCK            lock_files          release_files       heartbeat
 HANDOFF         request_handoff     approve_handoff
 GATE            run_gate            list_gates
 EVIDENCE        append_evidence     verify_evidence
+EVENTS          list_events         emit_event          mark_event_handled
+                create_blocked_handoff
 DIAGNOSTICS     get_state           list_locks          recover_stale_locks
                 doctor              read_policy
 ```
@@ -100,6 +104,8 @@ DIAGNOSTICS     get_state           list_locks          recover_stale_locks
 Each tool ships with MCP `2025-11-25` annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients can render approval prompts that match the actual blast radius — read-only listing tools auto-allow, destructive recovery tools always confirm.
 
 Evidence is hash-chained: every entry binds to the previous via `prev_hash` + canonical-JSON `entry_hash` (sha256), so any after-the-fact rewrite is detected by `hermes_verify_evidence`. State lives in `<workspace>/.hermes3d_orchestrator/`:
+
+The v0.4 trigger bridge is deliberately passive. HermesProof writes durable event JSON files and optional review packets that other processes may observe; it does **not** call an LLM API, open a chat, or directly wake Claude, Codex, Windsurf, or any other session.
 
 ```text
 .hermes3d_orchestrator/
@@ -109,8 +115,14 @@ Evidence is hash-chained: every entry binds to the previous via `prev_hash` + ca
 ├── handoffs/           pending + decided handoff requests
 ├── evidence/
 │   └── ledger.ndjson   append-only attestation log
-└── events.ndjson       append-only event stream (lock.acquired, handoff.decided, …)
+├── events/
+│   ├── outbox/         pending event JSON files
+│   ├── handled/        atomically moved after consumer acknowledgement
+│   └── failed/         events that need operator inspection
+└── review_packets/     optional deterministic Markdown review prompts
 ```
+
+Event files use `event_schema_version: 1`, are first written through a same-filesystem atomic rename, and are moved from `outbox/` to `handled/` with `fs.rename` so competing watchers cannot double-handle the same event. Retention is intentionally narrow: handled events may be pruned after an operator-chosen cutoff such as 30 days; failed events are never auto-pruned.
 
 ---
 
@@ -166,7 +178,7 @@ cd HermesProof
 npm install
 
 # 2. Verify the package
-npm run truth-gates                                 # 9/9 gates pass against your local machine
+npm run truth-gates                                 # 14/14 gates pass against your local machine
 npm test                                            # 12 unit tests
 npm run doctor -- --workspace G:\Github\Hermes3D    # non-destructive readiness probe
 
@@ -270,6 +282,7 @@ tool_timeout_sec = 60
 - **[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)** — full system deep-dive with all diagrams
 - **[`docs/LOCK_PROTOCOL.md`](./docs/LOCK_PROTOCOL.md)** — exactly when and how locks are acquired and released
 - **[`docs/TOOL_REFERENCE.md`](./docs/TOOL_REFERENCE.md)** — every MCP tool, with example arguments and responses
+- **[`docs/EVENT_SCHEMA.md`](./docs/EVENT_SCHEMA.md)** — trigger bridge event envelope, lifecycle, concurrency, and retention
 - **[`docs/SECURITY_POLICY.md`](./docs/SECURITY_POLICY.md)** — what the server will and will not do, threat model, allowlist
 - **[`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md)** — composing with filesystem MCP, Codex bridges, claude-flow
 - **[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)** — repair scripts, debugging recipes, release checklist

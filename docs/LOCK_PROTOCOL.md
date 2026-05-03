@@ -45,6 +45,34 @@ No agent edits a file unless it owns the lock for that file. The server enforces
 
 Stale recovery is not a normal collaboration path. Prefer handoff.
 
+## Event semantics
+
+The lock protocol emits passive trigger-bridge events for coordination state changes. Events are durable JSON files under `.hermes3d_orchestrator/events/outbox/`; HermesProof does not directly wake chat sessions, invoke LLM APIs, or route prompts.
+
+Events are emitted for:
+
+```text
+task.claimed
+task.released
+task.blocked
+handoff.created
+handoff.approved
+handoff.denied
+lock.acquired
+lock.released
+lock.recovered
+evidence.appended
+gate.failed
+gate.passed
+pr.opened
+```
+
+`pr.opened` is emitted only when the caller supplies `payload.pr_url`. `evidence.appended` is skipped for internal bookkeeping rows where `data.system` is `event-manager`, which prevents recursive self-emission.
+
+Event files use `event_schema_version: 1` and are created through a temporary file plus same-filesystem rename into `events/outbox/`. Consumers that finish processing should call `hermes_mark_event_handled`, which atomically renames the file into `events/handled/`. Failed events move to `events/failed/` for operator inspection.
+
+See [`EVENT_SCHEMA.md`](./EVENT_SCHEMA.md) for the full envelope and concurrency rules.
+
 ## Ownership naming
 
 Good:

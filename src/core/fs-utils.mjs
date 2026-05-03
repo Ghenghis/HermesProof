@@ -221,6 +221,7 @@ export function normalizeWorkspacePath(workspaceRoot, requestedPath) {
 export function statePaths(workspaceRoot, stateDirName) {
   const dirName = resolveStateDirName(stateDirName);
   const stateDir = path.join(workspaceRoot, dirName);
+  const eventsDir = path.join(stateDir, "events");
   return {
     root: workspaceRoot,
     stateDirName: dirName,
@@ -230,6 +231,11 @@ export function statePaths(workspaceRoot, stateDirName) {
     handoffsDir: path.join(stateDir, "handoffs"),
     evidenceDir: path.join(stateDir, "evidence"),
     gatesDir: path.join(stateDir, "gates"),
+    eventsDir,
+    eventsOutboxDir: path.join(eventsDir, "outbox"),
+    eventsHandledDir: path.join(eventsDir, "handled"),
+    eventsFailedDir: path.join(eventsDir, "failed"),
+    reviewPacketsDir: path.join(stateDir, "review_packets"),
     eventsFile: path.join(stateDir, "events.ndjson"),
     evidenceFile: path.join(stateDir, "evidence", "ledger.ndjson"),
     configFile: path.join(stateDir, "config.json")
@@ -243,6 +249,15 @@ export async function initStateDirs(paths) {
   await ensureDir(paths.handoffsDir);
   await ensureDir(paths.evidenceDir);
   await ensureDir(paths.gatesDir);
+  await ensureDir(paths.eventsOutboxDir);
+  await ensureDir(paths.eventsHandledDir);
+  await ensureDir(paths.eventsFailedDir);
+  await ensureDir(paths.reviewPacketsDir);
+}
+
+export async function moveFileAtomic(source, destination) {
+  await ensureDir(path.dirname(destination));
+  await fs.rename(source, destination);
 }
 
 export function lockDirForPath(paths, normalizedPath) {

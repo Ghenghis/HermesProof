@@ -25,6 +25,7 @@ import url from "node:url";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
+import { ensureEventDirs } from "./generate-review-packet.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -230,12 +231,16 @@ const expectedTools = [
   "hermes_append_evidence",
   "hermes_approve_handoff",
   "hermes_claim_task",
+  "hermes_create_blocked_handoff",
   "hermes_doctor",
+  "hermes_emit_event",
   "hermes_get_state",
   "hermes_heartbeat",
+  "hermes_list_events",
   "hermes_list_gates",
   "hermes_list_locks",
   "hermes_lock_files",
+  "hermes_mark_event_handled",
   "hermes_read_policy",
   "hermes_recover_stale_locks",
   "hermes_release_files",
@@ -283,7 +288,63 @@ if (!shouldSkip("doctor.hermes3d")) {
 }
 
 // ----------------------------------------------------------------------------
-// Gate 6: end-to-end multi-agent integration on a fresh git-initialized sandbox
+// Gate 6: durable event directories are present after initialization
+// ----------------------------------------------------------------------------
+if (!shouldSkip("events.directory_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-events-dir-"));
+    try {
+      const m = new HermesLockManager({ workspaceRoot: sb });
+      await m.init();
+      const paths = await ensureEventDirs(sb);
+      const checks = {};
+      for (const [id, dir] of Object.entries({
+        outbox: paths.outboxDir,
+        handled: paths.handledDir,
+        failed: paths.failedDir
+      })) {
+        checks[id] = (await fs.stat(dir)).isDirectory();
+      }
+      return { sandbox: sb, checks };
+    } finally {
+      await fs.rm(sb, { recursive: true, force: true });
+    }
+  });
+  if (error) {
+    record("events.directory_present", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = Object.values(result.checks).every(Boolean);
+    record("events.directory_present", "required", ok, result,
+      ok ? "outbox/handled/failed present" : "one or more event dirs missing", durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 7: trigger doctor end-to-end sandbox probe
+// ----------------------------------------------------------------------------
+if (!shouldSkip("trigger.doctor_passes")) {
+  const { result, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-trigger-doctor-"));
+    const r = spawnSync(
+      process.platform === "win32" ? "node.exe" : "node",
+      [path.join(repoRoot, "scripts", "trigger-doctor.mjs"), "--workspace", sb],
+      { cwd: repoRoot, encoding: "utf8", shell: false }
+    );
+    let parsed = null;
+    try { parsed = JSON.parse(r.stdout || "{}"); } catch {}
+    await fs.rm(sb, { recursive: true, force: true });
+    return { exit_code: r.status, stdout: r.stdout, stderr: r.stderr, parsed };
+  });
+  const ok = result.exit_code === 0 && result.parsed?.ok === true && result.parsed?.trigger_doctor_schema_version === 1;
+  record("trigger.doctor_passes", "required", ok, {
+    exit_code: result.exit_code,
+    parsed: result.parsed,
+    stderr_tail: (result.stderr || "").slice(-500)
+  }, ok ? "trigger doctor ok" : `exit=${result.exit_code}`, durationMs);
+}
+
+// ----------------------------------------------------------------------------
+// Gate 8: end-to-end multi-agent integration on a fresh git-initialized sandbox
 // ----------------------------------------------------------------------------
 if (!shouldSkip("e2e.multi_agent_flow")) {
   const { result, error, durationMs } = await timed(async () => {

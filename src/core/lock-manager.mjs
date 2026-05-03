@@ -4,6 +4,7 @@ import {
   addMinutesIso,
   appendChainedJsonLine,
   appendJsonLine,
+  ensureDir,
   initStateDirs,
   isExpired,
   lockDirForPath,
@@ -18,6 +19,7 @@ import {
   verifyChainedLog,
   writeJsonAtomic
 } from "./fs-utils.mjs";
+import { EventManager } from "./event-manager.mjs";
 
 const DEFAULT_TTL_MINUTES = 90;
 
@@ -26,10 +28,12 @@ export class HermesLockManager {
     this.workspaceRoot = safeWorkspaceRoot(workspaceRoot);
     this.paths = statePaths(this.workspaceRoot, stateDirName);
     this.stateDirName = this.paths.stateDirName;
+    this.eventManager = new EventManager({ workspaceRoot: this.workspaceRoot, stateDirName: this.stateDirName });
   }
 
   async init() {
     await initStateDirs(this.paths);
+    await this.eventManager.init();
     await this.writeDefaultConfig();
     return this.getStateSummary();
   }
@@ -81,6 +85,40 @@ export class HermesLockManager {
       ts_utc: utcNow(),
       type,
       ...payload
+    });
+    const mapped = mapLegacyEvent(type, payload);
+    if (mapped) await this.eventManager.emitEvent(mapped);
+  }
+
+  async emitManualEvent(args) {
+    return await this.eventManager.emitEvent(args);
+  }
+
+  async listEvents(args) {
+    return await this.eventManager.listEvents(args);
+  }
+
+  async markEventHandled(args) {
+    return await this.eventManager.markEventHandled(args);
+  }
+
+  async emitGateEvent({ owner, result }) {
+    const report = result?.report || {};
+    const ok = result?.ok === true;
+    return await this.eventManager.emitEvent({
+      event_type: ok ? "gate.passed" : "gate.failed",
+      owner,
+      task_id: null,
+      summary: `${report.gate_id || "gate"}: ${ok ? "PASS" : "FAIL"}`,
+      next_actor: ok ? "unassigned" : "claude",
+      recommended_action: ok ? "acknowledge" : "fix_scope",
+      payload: {
+        gate_id: report.gate_id,
+        report_id: report.id,
+        status: result?.status,
+        exit_code: report.exit_code,
+        timed_out: report.timed_out
+      }
     });
   }
 
@@ -409,15 +447,98 @@ export class HermesLockManager {
       data
     };
     const chained = await appendChainedJsonLine(this.paths.evidenceFile, entry);
-    await this.event("evidence.appended", {
-      owner,
-      task_id: taskId || null,
-      evidence_id: entry.id,
-      entry_hash: chained.entry_hash,
-      kind,
-      summary
-    });
+    if (data?.system !== "event-manager") {
+      await this.event("evidence.appended", {
+        owner,
+        task_id: taskId || null,
+        evidence_id: entry.id,
+        entry_hash: chained.entry_hash,
+        kind,
+        summary
+      });
+    }
     return { ok: true, status: "recorded", evidence: chained };
+  }
+
+  async createBlockedHandoff({
+    task_id,
+    owner,
+    reason,
+    blocked_files = [],
+    suggested_correct_paths = [],
+    handoff_path,
+    release_locks = false
+  }) {
+    assertOwner(owner);
+    assertId(task_id, "task_id");
+    if (!reason || typeof reason !== "string") throw new Error("reason is required");
+    if (!handoff_path || typeof handoff_path !== "string") throw new Error("handoff_path is required");
+    const normalizedBlocked = Array.isArray(blocked_files) && blocked_files.length
+      ? this.normalizeFiles(blocked_files)
+      : [];
+    const handoffRel = normalizeWorkspacePath(this.workspaceRoot, handoff_path);
+    const handoffFile = path.join(this.workspaceRoot, handoffRel);
+    const body = [
+      `# Blocked Handoff: ${task_id}`,
+      "",
+      `- **Owner**: ${owner}`,
+      `- **Reason**: ${reason}`,
+      `- **Created UTC**: ${utcNow()}`,
+      "",
+      "## Blocked Files",
+      "",
+      ...listMarkdown(normalizedBlocked),
+      "",
+      "## Suggested Correct Paths",
+      "",
+      ...listMarkdown(suggested_correct_paths),
+      "",
+      "## Next Actor",
+      "",
+      "Claude / human architect should correct the scope or issue a new handoff.",
+      ""
+    ].join("\n");
+    await ensureDir(path.dirname(handoffFile));
+    await fs.writeFile(handoffFile, body, "utf8");
+    const evidence = await this.appendEvidence({
+      owner,
+      taskId: task_id,
+      kind: "block",
+      summary: `Blocked handoff created: ${reason}`,
+      data: {
+        handoff_path: handoffRel,
+        blocked_files: normalizedBlocked,
+        suggested_correct_paths
+      }
+    });
+    let release = null;
+    if (release_locks && normalizedBlocked.length) {
+      release = await this.releaseFiles({ owner, files: normalizedBlocked, note: `blocked handoff ${handoffRel}` });
+    }
+    const emitted = await this.eventManager.emitEvent({
+      event_type: "task.blocked",
+      owner,
+      task_id,
+      files: normalizedBlocked,
+      summary: reason,
+      next_actor: "claude",
+      recommended_action: "fix_scope",
+      payload: {
+        handoff_path: handoffRel,
+        blocked_files: normalizedBlocked,
+        suggested_correct_paths,
+        evidence_id: evidence.evidence.id,
+        release_locks
+      }
+    });
+    return {
+      ok: true,
+      status: "blocked_handoff_created",
+      handoff_path: handoffRel,
+      evidence: evidence.evidence,
+      event: emitted.event,
+      release
+    };
   }
 
   async verifyEvidence() {
@@ -564,4 +685,92 @@ function normalizeTtl(ttlMinutes) {
   const ttl = Number(ttlMinutes || DEFAULT_TTL_MINUTES);
   if (!Number.isFinite(ttl) || ttl < 5 || ttl > 720) return DEFAULT_TTL_MINUTES;
   return ttl;
+}
+
+function listMarkdown(items) {
+  if (!Array.isArray(items) || items.length === 0) return ["- (none)"];
+  return items.map((item) => `- \`${item}\``);
+}
+
+function mapLegacyEvent(type, payload = {}) {
+  const base = {
+    owner: payload.owner || payload.requester || null,
+    task_id: payload.task_id || null,
+    files: payload.files || payload.requested_files || [],
+    payload
+  };
+  if (type === "task.claimed") {
+    return {
+      ...base,
+      event_type: "task.claimed",
+      summary: `Task claimed: ${payload.task_id || ""}`.trim(),
+      next_actor: "unassigned",
+      recommended_action: "acknowledge"
+    };
+  }
+  if (type === "task.released") {
+    return {
+      ...base,
+      event_type: "task.released",
+      summary: `Task released: ${payload.task_id || ""}`.trim(),
+      next_actor: "claude",
+      recommended_action: payload?.pr_url ? "review_pr" : "acknowledge"
+    };
+  }
+  if (type === "lock.acquired") {
+    return {
+      ...base,
+      event_type: "lock.acquired",
+      summary: `Lock acquired: ${(payload.files || []).length} file(s)`,
+      next_actor: "unassigned",
+      recommended_action: "none"
+    };
+  }
+  if (type === "lock.released") {
+    return {
+      ...base,
+      event_type: "lock.released",
+      summary: `Lock released: ${(payload.files || []).length} file(s)`,
+      next_actor: "unassigned",
+      recommended_action: "acknowledge"
+    };
+  }
+  if (type === "lock.stale_recovered") {
+    return {
+      ...base,
+      event_type: "lock.recovered",
+      summary: `Stale locks recovered: ${(payload.files || []).length} file(s)`,
+      next_actor: "human",
+      recommended_action: "acknowledge"
+    };
+  }
+  if (type === "handoff.requested") {
+    return {
+      ...base,
+      owner: payload.requester || null,
+      event_type: "handoff.created",
+      summary: `Handoff requested: ${payload.request_id || ""}`.trim(),
+      next_actor: "human",
+      recommended_action: "review_handoff"
+    };
+  }
+  if (type === "handoff.decided") {
+    return {
+      ...base,
+      event_type: payload.decision === "approve" ? "handoff.approved" : "handoff.denied",
+      summary: `Handoff ${payload.decision}: ${payload.request_id || ""}`.trim(),
+      next_actor: "unassigned",
+      recommended_action: "acknowledge"
+    };
+  }
+  if (type === "evidence.appended") {
+    return {
+      ...base,
+      event_type: "evidence.appended",
+      summary: payload.summary || "Evidence appended",
+      next_actor: "unassigned",
+      recommended_action: "acknowledge"
+    };
+  }
+  return null;
 }

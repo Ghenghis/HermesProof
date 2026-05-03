@@ -18,7 +18,7 @@ await manager.init();
 
 const server = new McpServer({
   name: "hermes3d-lock-orchestrator",
-  version: "0.3.0"
+  version: "0.4.0"
 });
 
 // Tightened owner regex: lowercase + digits + hyphen, must start with a letter,
@@ -30,6 +30,24 @@ const Owner = z
 
 const Files = z.array(z.string().min(1)).min(1).describe("Workspace-relative file paths to lock, release, or hand off.");
 const JsonObject = z.record(z.any()).optional().default({});
+const EventStatus = z.enum(["outbox", "handled", "failed", "all"]).default("outbox");
+const EventType = z.enum([
+  "task.claimed",
+  "task.released",
+  "task.blocked",
+  "handoff.created",
+  "handoff.approved",
+  "handoff.denied",
+  "lock.acquired",
+  "lock.released",
+  "lock.recovered",
+  "evidence.appended",
+  "gate.failed",
+  "gate.passed",
+  "pr.opened"
+]);
+const NextActor = z.enum(["claude", "codex", "human", "unassigned"]).default("unassigned");
+const RecommendedAction = z.enum(["review_pr", "fix_scope", "merge", "review_handoff", "acknowledge", "none"]).default("none");
 
 function toolResult(value) {
   return {
@@ -232,6 +250,91 @@ registerTool(
 );
 
 registerTool(
+  "hermes_list_events",
+  {
+    title: "List durable events",
+    description: "List file-based trigger events from outbox, handled, failed, or all event queues.",
+    inputSchema: {
+      status: EventStatus,
+      limit: z.number().int().min(1).max(500).default(50)
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await manager.listEvents(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_mark_event_handled",
+  {
+    title: "Mark event handled",
+    description: "Atomically move one outbox event to handled after a watcher or reviewer processes it.",
+    inputSchema: {
+      event_id: z.string().min(1),
+      handled_by: Owner,
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await manager.markEventHandled(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_emit_event",
+  {
+    title: "Emit manual event",
+    description: "Insert a durable trigger event. The manager fills event id, timestamp, workspace, branch, and evidence ids.",
+    inputSchema: {
+      event_type: EventType,
+      task_id: z.string().default(""),
+      owner: z.string().default(""),
+      branch: z.string().default(""),
+      files: z.array(z.string()).default([]),
+      summary: z.string().default(""),
+      next_actor: NextActor,
+      recommended_action: RecommendedAction,
+      payload: z.record(z.any()).default({})
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try {
+      const payload = {
+        ...args,
+        task_id: args.task_id || null,
+        owner: args.owner || null,
+        branch: args.branch || null
+      };
+      return toolResult(await manager.emitManualEvent(payload));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_create_blocked_handoff",
+  {
+    title: "Create blocked handoff",
+    description: "Write a blocked handoff markdown file, append evidence, emit task.blocked, and optionally release owned locks.",
+    inputSchema: {
+      task_id: z.string().min(1),
+      owner: Owner,
+      reason: z.string().min(1),
+      blocked_files: z.array(z.string()).default([]),
+      suggested_correct_paths: z.array(z.string()).default([]),
+      handoff_path: z.string().min(1),
+      release_locks: z.boolean().default(false)
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await manager.createBlockedHandoff(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_append_evidence",
   {
     title: "Append evidence record",
@@ -288,7 +391,11 @@ registerTool(
     annotations: { readOnlyHint: false, openWorldHint: true, idempotentHint: false }
   },
   async (args) => {
-    try { return toolResult(await gates.runGate(args)); } catch (err) { return toolError(err); }
+    try {
+      const result = await gates.runGate(args);
+      await manager.emitGateEvent({ owner: args.owner, result });
+      return toolResult(result);
+    } catch (err) { return toolError(err); }
   }
 );
 
