@@ -74,6 +74,15 @@ jobs:
         with:
           subject-path: 'PROOF/latest.json'
 
+      - name: Attest diagram SVG provenance
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success()
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
+        with:
+          subject-path: 'docs/diagrams/*.svg'
+
       - name: Install cosign
         if: |
           github.event_name == 'push' &&

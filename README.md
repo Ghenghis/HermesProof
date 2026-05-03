@@ -38,16 +38,16 @@ Every edit flows through six gates, leaving an immutable trail behind.
 06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Every push to `main` re-proves the entire chain through 25 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
+Every push to `main` re-proves the entire chain through 19 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
 
 ---
 
 ## ✦ Truth gates
 
-The proof harness — `npm run truth-gates` — runs twenty-five independent verifications in sequence, capturing structured evidence at every step.
+The proof harness — `npm run truth-gates` — runs nineteen independent verifications in sequence, capturing structured evidence at every step.
 
 <div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running twenty-five gates sequentially" width="100%"/>
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running nineteen gates sequentially" width="100%"/>
 </div>
 
 | #   | Gate                                      | What it proves                                                                       |
@@ -69,14 +69,8 @@ The proof harness — `npm run truth-gates` — runs twenty-five independent ver
 | 15  | `tasks.directory_present`                 | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
 | 16  | `queue.doctor_passes`                     | Queue doctor validates enqueue, pick, done, owner affinity, priority, and recovery   |
 | 17  | `wizard.dry_run_passes`                   | Universal setup wizard dry-run plans client wiring without writing state             |
-| 18  | `provider.registry.validate`              | `policies/provider-registry/registry.yaml` schema + per-entry shape + duplicate scan |
-| 19  | `local.models.catalog.validate`           | `lmstudio_local_models.csv` header hygiene; reports invalid rows as findings         |
-| 20  | `continue.llm_classes.validate`           | All 62 expected Continue LLM provider names present in `continue_llm_classes.csv`    |
-| 21  | `kilocode.provider.mapping.validate`      | Stub gate — runs as `not_applicable` until the KiloCode mapping CSV ships            |
-| 22  | `lmstudio.health`                         | LM Studio `LMSTUDIO_BASE_URL` reachable (warn-on-offline, 5s timeout)                |
-| 23  | `ollama.health`                           | Ollama `OLLAMA_BASE_URL` reachable (warn-on-offline, 5s timeout)                     |
-| 24  | `secret.scan`                             | Repo scanned for secrets via gitleaks; falls back to stdlib regex when unavailable   |
-| 25  | `licenses.scan`                           | Every production dep on the SPDX allowlist; GPL/AGPL/LGPL/SSPL/EUPL/BUSL deny-fail   |
+| 18  | `licenses.scan`                           | Every production dep on the SPDX allowlist; GPL/AGPL/LGPL/SSPL/EUPL/BUSL deny-fail   |
+| 19  | `dependency.fresh`                        | Direct deps published within 18 months (advisory; warn at 12mo, skip when offline)   |
 
 Outputs:
 
@@ -236,7 +230,7 @@ npm install
 npm run wizard
 
 # 2. Verify the package (no workspace needed yet)
-npm run truth-gates                                            # 25/25 gates pass
+npm run truth-gates                                            # 19/19 gates pass
 npm test                                                       # Node smoke tests pass
 
 # 3. Pick the workspace HermesProof will govern. Examples:
