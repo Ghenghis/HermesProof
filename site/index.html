@@ -5,7 +5,7 @@
 <meta http-equiv="x-ua-compatible" content="ie=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>HermesProof — verifiable multi-agent coordination over MCP</title>
-<meta name="description" content="HermesProof is the file-lock, proof, and passive trigger-bridge layer that lets Claude, Codex, Windsurf and Cascade collaborate on the same repository without clobbering each other. Per-file locks, atomic handoffs, allowlisted gates, hash-chained evidence ledger, durable event outbox, Sigstore-signed proof, and a 14-gate truth bundle re-attested on every push." />
+<meta name="description" content="HermesProof is the file-lock, proof, and passive trigger-bridge layer that lets Claude, Codex, Windsurf and Cascade collaborate on the same repository without clobbering each other. Per-file locks, atomic handoffs, allowlisted gates, hash-chained evidence ledger, durable event outbox, durable task queue, Sigstore-signed proof, and a 17-gate truth bundle re-attested on every push." />
 <meta name="theme-color" content="#0a0e27" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="HermesProof — verifiable multi-agent coordination over MCP" />
@@ -52,8 +52,8 @@
 <!-- ============================================================ HERO -->
 <section class="hero container">
   <div class="hero__pills reveal">
-    <span class="pill pill--green"><span class="dot"></span>truth-gates 14 / 14 PASS</span>
-    <span class="pill pill--purple"><span class="dot"></span>20 MCP tools</span>
+    <span class="pill pill--green"><span class="dot"></span>truth-gates 17 / 17 PASS</span>
+    <span class="pill pill--purple"><span class="dot"></span>24 MCP tools</span>
     <span class="pill pill--cyan"><span class="dot"></span>4 clients wired</span>
     <span class="pill pill--pink"><span class="dot"></span>Sigstore-signed proof</span>
   </div>
@@ -180,7 +180,7 @@
   <div class="section-head reveal">
     <span class="kicker">Truth gates</span>
     <h2>Nine independent attestations. One exit code.</h2>
-    <p><code>npm run truth-gates</code> runs nine verifications in sequence. <strong>Exit 0 only when every required gate passes.</strong> Output is structured (<code>PROOF/latest.json</code>) and human-readable (<code>PROOF_E2E_REPORT.md</code>).</p>
+    <p><code>npm run truth-gates</code> runs seventeen verifications in sequence. <strong>Exit 0 only when every required gate passes.</strong> Output is structured (<code>PROOF/latest.json</code>) and human-readable (<code>PROOF_E2E_REPORT.md</code>).</p>
   </div>
   <div class="diagram reveal">
     <img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline animation showing nine gates running sequentially" />
@@ -209,7 +209,7 @@
       <div class="gate__num">04</div>
       <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       <h4>server.stdio_handshake</h4>
-      <p>Real <code>node src/server.mjs</code> spawns. Performs MCP <code>initialize</code> and <code>tools/list</code>. Returns 15 named tools.</p>
+      <p>Real <code>node src/server.mjs</code> spawns. Performs MCP <code>initialize</code> and <code>tools/list</code>. Returns 24 named tools.</p>
     </div>
     <div class="gate reveal">
       <div class="gate__num">05</div>
@@ -257,7 +257,7 @@
   <div class="grid-3 reveal" style="margin-top: 2rem;">
     <div class="card">
       <h4>4 new MCP tools</h4>
-      <p><code>hermes_emit_event</code> · <code>hermes_list_events</code> · <code>hermes_mark_event_handled</code> · <code>hermes_create_blocked_handoff</code> — total tool count is now <strong>20</strong>.</p>
+      <p><code>hermes_emit_event</code> · <code>hermes_list_events</code> · <code>hermes_mark_event_handled</code> · <code>hermes_create_blocked_handoff</code> — v0.4 brought the total to <strong>20</strong>; v0.5's queue tools push it to <strong>24</strong>.</p>
     </div>
     <div class="card">
       <h4>3 watcher modes</h4>
@@ -278,7 +278,7 @@
 <section id="architecture" class="container">
   <div class="section-head reveal">
     <span class="kicker">Architecture</span>
-    <h2>One stdio process. Twenty tools. Three persistence surfaces.</h2>
+    <h2>One stdio process. Twenty-four tools. Five persistence surfaces.</h2>
     <p>HermesProof is intentionally small — a single Node process per workspace that speaks JSON-RPC over stdio. Its only side effects are inside one hidden directory: locks, tasks, handoffs, evidence, events.</p>
   </div>
   <div class="diagram reveal">
@@ -304,7 +304,15 @@
     </div>
     <div class="tool-group reveal">
       <h4>EVIDENCE</h4>
-      <ul><li>hermes_append_evidence</li></ul>
+      <ul><li>hermes_append_evidence</li><li>hermes_verify_evidence</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>EVENTS</h4>
+      <ul><li>hermes_emit_event</li><li>hermes_list_events</li><li>hermes_mark_event_handled</li><li>hermes_create_blocked_handoff</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>QUEUE</h4>
+      <ul><li>hermes_enqueue_task</li><li>hermes_list_pending_tasks</li><li>hermes_pick_task</li><li>hermes_recover_stale_tasks</li></ul>
     </div>
     <div class="tool-group reveal">
       <h4>DIAGNOSTICS</h4>
@@ -475,7 +483,7 @@
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 14/14 gates against your machine
+npm run truth-gates                                                # 17/17 gates against your machine
 npm test                                                           # 12 unit tests
 npm run doctor -- --workspace G:\Github\my-project                 # readiness probe (read-only) — change path to YOUR repo
 
@@ -489,7 +497,7 @@ claude mcp list                                                    # expect "her
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 14/14 gates against your machine
+npm run truth-gates                                                # 17/17 gates against your machine
 npm test                                                           # 12 unit tests
 npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
 
@@ -503,7 +511,7 @@ claude mcp list                                                    # expect "her
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 14/14 gates against your machine
+npm run truth-gates                                                # 17/17 gates against your machine
 npm test                                                           # 12 unit tests
 npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
 
@@ -587,8 +595,8 @@ tool_timeout_sec = 60
     <h2>Small surface. Strong guarantees.</h2>
   </div>
   <div class="stats">
-    <div class="stat reveal"><div class="stat__num"><span data-count-to="9">0</span></div><div class="stat__label">Truth gates</div></div>
-    <div class="stat reveal"><div class="stat__num"><span data-count-to="15">0</span></div><div class="stat__label">MCP tools</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="17">0</span></div><div class="stat__label">Truth gates</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="24">0</span></div><div class="stat__label">MCP tools</div></div>
     <div class="stat reveal"><div class="stat__num"><span data-count-to="4">0</span></div><div class="stat__label">Clients wired</div></div>
     <div class="stat reveal"><div class="stat__num"><span data-count-to="14.2" data-decimals="1" data-suffix="s">0</span></div><div class="stat__label">Full proof time</div></div>
     <div class="stat reveal"><div class="stat__num"><span data-count-to="12">0</span></div><div class="stat__label">Unit tests</div></div>
