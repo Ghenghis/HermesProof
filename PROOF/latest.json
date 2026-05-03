@@ -1,25 +1,25 @@
 {
-  "run_id": "truth_2026-05-03T04-11-06-059Z",
-  "ts_utc": "2026-05-03T04:11:06.059Z",
-  "duration_ms": 17552,
+  "run_id": "truth_2026-05-03T04-14-26-922Z",
+  "ts_utc": "2026-05-03T04:14:26.922Z",
+  "duration_ms": 2552,
   "ok": true,
-  "pass_count": 16,
+  "pass_count": 12,
   "fail_count": 0,
   "warn_count": 0,
-  "skip_count": 0,
-  "hermes3d_workspace": "G:\\Github\\hermesproof-queue-sandbox-v05",
-  "node_version": "v25.8.2",
-  "platform": "win32",
-  "repo_root": "G:\\Github\\hermes3d-mcp-lock-orchestrator",
+  "skip_count": 4,
+  "hermes3d_workspace": "/home/runner/work/HermesProof/HermesProof",
+  "node_version": "v20.20.2",
+  "platform": "linux",
+  "repo_root": "/home/runner/work/HermesProof/HermesProof",
   "gates": [
     {
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 12,
+      "duration_ms": 8,
       "evidence": {
         "file_count": 21,
-        "manifest_sha256": "2fe86360a774e2037381ee4e5564a2a021dbf1b7dff6de2639a1c50a87291a51"
+        "manifest_sha256": "a0249e8fa933b83c4b4b615c0304f9b09a8b978e464351f2dcde8f454773ff4b"
       },
       "details": "21 files hashed"
     },
@@ -27,7 +27,7 @@
       "id": "deps.parity",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 2,
       "evidence": {
         "declared": {
           "@modelcontextprotocol/sdk": "^1.29.0",
@@ -45,12 +45,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 3326,
+      "duration_ms": 1712,
       "evidence": {
         "exit_code": 0,
         "pass_count": 41,
         "fail_count": 0,
-        "stdout_tail": "orTask streams without loading the whole ledger (30.4967ms)\n✔ listEvents respects limit without reading all files (101.4548ms)\n✔ watch-events webhook timeout aborts cleanly (584.6307ms)\n✔ task envelope validates task_schema_version=1 (55.7917ms)\n✔ enqueue creates pending task with priority and owner pattern (55.3876ms)\n✔ list_pending returns priority desc and FIFO within priority (127.5067ms)\n✔ pick atomically claims one task under concurrent callers (93.9243ms)\n✔ pick respects target_owner_pattern (52.1846ms)\n✔ invalid owner pattern is rejected at enqueue time (14.1532ms)\n✔ enqueue is idempotent for the same task id (52.1447ms)\n✔ queue lifecycle emits task.enqueued and task.claimed events (85.8057ms)\n✔ task.recovered event fires on stale recovery (126.2462ms)\n✔ recover_stale_tasks ignores not-yet-expired claims (81.4244ms)\n✔ queue heartbeat extends claimed task record (96.2637ms)\n✔ task path cannot escape workspace (15.4064ms)\n✔ path escape attempts are rejected with workspace-relative error (28.7495ms)\n✔ owner can refresh its own existing lock without conflict (318.38ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (136.5524ms)\n✔ heartbeat extends expiry of held locks (166.719ms)\n✔ stale lock recovery archives metadata and clears the lock (264.8383ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.3874ms)\n✔ gate runner rejects cwd that escapes the workspace (1.224ms)\n✔ doctor() reports errors when workspace_root does not exist (1.9616ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (13.7753ms)\n✔ custom state dir name is honored end-to-end (12.6506ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.1266ms)\n✔ event_path_cannot_escape_workspace (2.6644ms)\n✔ prune_events_respects_before_cutoff (6.3255ms)\n✔ prune_events_never_touches_failed_directory (3.8897ms)\n✔ trigger_doctor_passes_on_clean_sandbox (440.2609ms)\nℹ tests 41\nℹ suites 0\nℹ pass 41\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3268.5995\n",
+        "stdout_tail": "y wrong owner is blocked, not silently allowed\n  ---\n  duration_ms: 23.369117\n  ...\n# Subtest: heartbeat extends expiry of held locks\nok 30 - heartbeat extends expiry of held locks\n  ---\n  duration_ms: 35.381978\n  ...\n# Subtest: stale lock recovery archives metadata and clears the lock\nok 31 - stale lock recovery archives metadata and clears the lock\n  ---\n  duration_ms: 40.397254\n  ...\n# Subtest: gate runner rejects unknown gateId without spawning anything\nok 32 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 1.869584\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 33 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 2.68659\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 34 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 3.110671\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 35 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 13.425348\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 36 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 19.790094\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 37 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 1.392233\n  ...\n# Subtest: event_path_cannot_escape_workspace\nok 38 - event_path_cannot_escape_workspace\n  ---\n  duration_ms: 1.771006\n  ...\n# Subtest: prune_events_respects_before_cutoff\nok 39 - prune_events_respects_before_cutoff\n  ---\n  duration_ms: 3.480171\n  ...\n# Subtest: prune_events_never_touches_failed_directory\nok 40 - prune_events_never_touches_failed_directory\n  ---\n  duration_ms: 2.059296\n  ...\n# Subtest: trigger_doctor_passes_on_clean_sandbox\nok 41 - trigger_doctor_passes_on_clean_sandbox\n  ---\n  duration_ms: 29.487933\n  ...\n1..41\n# tests 41\n# suites 0\n# pass 41\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1672.158203\n",
         "stderr_tail": ""
       },
       "details": "pass=41, fail=0, exit=0"
@@ -59,7 +59,7 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 252,
+      "duration_ms": 213,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -96,56 +96,21 @@
     },
     {
       "id": "doctor.hermes3d",
-      "level": "required",
+      "level": "skipped",
       "ok": true,
-      "duration_ms": 4,
+      "duration_ms": 0,
       "evidence": {
-        "ok": true,
-        "workspace_root": "G:\\Github\\hermesproof-queue-sandbox-v05",
-        "state_dir": "G:\\Github\\hermesproof-queue-sandbox-v05\\.hermes3d_orchestrator",
-        "state_dir_name": ".hermes3d_orchestrator",
-        "node_version": "v25.8.2",
-        "platform": "win32",
-        "checks": [
-          {
-            "id": "workspace_exists",
-            "ok": true
-          },
-          {
-            "id": "workspace_writable",
-            "ok": true
-          },
-          {
-            "id": "env_workspace_set",
-            "ok": false
-          },
-          {
-            "id": "git_repo",
-            "ok": true
-          },
-          {
-            "id": "node_version",
-            "ok": true
-          }
-        ],
-        "findings": [
-          {
-            "level": "warn",
-            "check": "env_workspace_set",
-            "message": "Neither MCP_LOCK_WORKSPACE nor HERMES3D_WORKSPACE is set; falling back to process.cwd().",
-            "fix": "Set one of those env vars to your project root in the MCP client config."
-          }
-        ]
+        "reason": "explicitly skipped via --skip or --ci"
       },
-      "details": "ok=true, 1 finding(s)"
+      "details": "skipped"
     },
     {
       "id": "events.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 19,
+      "duration_ms": 11,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-events-dir-D4ApsY",
+        "sandbox": "/tmp/truth-events-dir-sSBrE0",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -158,9 +123,9 @@
       "id": "tasks.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 18,
+      "duration_ms": 5,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-tasks-dir-tJ9i1j",
+        "sandbox": "/tmp/truth-tasks-dir-u4eN6q",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -174,20 +139,20 @@
       "id": "trigger.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 252,
+      "duration_ms": 75,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-kHmimj",
+          "workspace": "/tmp/truth-trigger-doctor-g3FedS",
           "doctor": {
             "ok": true,
-            "workspace_root": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-kHmimj",
-            "state_dir": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-kHmimj\\.hermes3d_orchestrator",
+            "workspace_root": "/tmp/truth-trigger-doctor-g3FedS",
+            "state_dir": "/tmp/truth-trigger-doctor-g3FedS/.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
-            "node_version": "v25.8.2",
-            "platform": "win32",
+            "node_version": "v20.20.2",
+            "platform": "linux",
             "checks": [
               {
                 "id": "workspace_exists",
@@ -244,13 +209,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 785,
+      "duration_ms": 170,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-queue-doctor-CHApHz",
+          "workspace": "/tmp/truth-queue-doctor-HKScom",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -288,9 +253,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 1107,
+      "duration_ms": 342,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-jgTaTx",
+        "sandbox": "/tmp/truth-gate-sandbox-t3ANXr",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -356,72 +321,43 @@
     },
     {
       "id": "workspace.integrity",
-      "level": "required",
+      "level": "skipped",
       "ok": true,
-      "duration_ms": 44,
+      "duration_ms": 0,
       "evidence": {
-        "state_dir_name": ".hermes3d_orchestrator",
-        "hermes3d_state_dir_present": false,
-        "probe_files_left": 0,
-        "tracked_modifications": [],
-        "install_related_modifications": [],
-        "unexpected_modifications": [],
-        "untracked_paths": [],
-        "unexpected_untracked": []
+        "reason": "explicitly skipped via --skip or --ci"
       },
-      "details": "probes=0, install_mods=0, unexpected_mods=0, unexpected_untracked=0"
+      "details": "skipped"
     },
     {
       "id": "clients.config_presence",
-      "level": "required",
+      "level": "skipped",
       "ok": true,
-      "duration_ms": 2,
+      "duration_ms": 0,
       "evidence": {
-        "claude_desktop": {
-          "path": "C:\\Users\\Admin\\AppData\\Roaming\\Claude\\claude_desktop_config.json",
-          "exists": true,
-          "present": true,
-          "server_count": 2
-        },
-        "windsurf": {
-          "path": "C:\\Users\\Admin\\.codeium\\windsurf\\mcp_config.json",
-          "exists": true,
-          "present": true,
-          "server_count": 10
-        },
-        "codex": {
-          "path": "C:\\Users\\Admin\\.codex\\config.toml",
-          "exists": true,
-          "present": true
-        },
-        "claude_code": {
-          "path": "C:\\Users\\Admin\\.claude.json",
-          "exists": true,
-          "present": true
-        }
+        "reason": "explicitly skipped via --skip or --ci"
       },
-      "details": "all 4 present"
+      "details": "skipped"
     },
     {
       "id": "clients.claude_code_live",
-      "level": "required",
+      "level": "skipped",
       "ok": true,
-      "duration_ms": 11709,
+      "duration_ms": 0,
       "evidence": {
-        "exit_code": 0,
-        "matched_line": "hermes3d-locks: node G:\\Github\\hermes3d-mcp-lock-orchestrator\\src\\server.mjs - ✓ Connected"
+        "reason": "explicitly skipped via --skip or --ci"
       },
-      "details": "Connected"
+      "details": "skipped"
     },
     {
       "id": "server.tool_description_hygiene",
       "level": "required",
       "ok": true,
-      "duration_ms": 2,
+      "duration_ms": 1,
       "evidence": {
         "findings": [],
         "file": "src/server.mjs",
-        "bytes": 17412
+        "bytes": 17002
       },
       "details": "0 suspicious patterns"
     },
@@ -429,7 +365,7 @@
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 12,
+      "duration_ms": 4,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -465,61 +401,61 @@
           {
             "path": "docs/README_MASTER_SPEC.md",
             "ok": true,
-            "size_bytes": 5253,
+            "size_bytes": 5172,
             "has_h1": true
           },
           {
             "path": "docs/README_COVERAGE_MATRIX.md",
             "ok": true,
-            "size_bytes": 6481,
+            "size_bytes": 6412,
             "has_h1": true
           },
           {
             "path": "docs/VISUAL_ASSET_SPEC.md",
             "ok": true,
-            "size_bytes": 5728,
+            "size_bytes": 5632,
             "has_h1": true
           },
           {
             "path": "docs/SVG_ANIMATION_SPEC.md",
             "ok": true,
-            "size_bytes": 5269,
+            "size_bytes": 5147,
             "has_h1": true
           },
           {
             "path": "docs/HERMES3D_SOURCE_AUDIT.md",
             "ok": true,
-            "size_bytes": 9501,
+            "size_bytes": 9352,
             "has_h1": true
           },
           {
             "path": "docs/HERMESPROOF_SETUP_AUDIT.md",
             "ok": true,
-            "size_bytes": 8750,
+            "size_bytes": 8595,
             "has_h1": true
           },
           {
             "path": "docs/CODEX_IMPLEMENTATION_HANDOFF.md",
             "ok": true,
-            "size_bytes": 7094,
+            "size_bytes": 6934,
             "has_h1": true
           },
           {
             "path": "docs/CLAUDE_REVIEW_TEAM_PROMPT.md",
             "ok": true,
-            "size_bytes": 7110,
+            "size_bytes": 6986,
             "has_h1": true
           },
           {
             "path": "docs/ACCEPTANCE_GATES.md",
             "ok": true,
-            "size_bytes": 6061,
+            "size_bytes": 5970,
             "has_h1": true
           },
           {
             "path": "handoffs/HANDOFF_TO_CODEX_README_VISUALS.md",
             "ok": true,
-            "size_bytes": 6284,
+            "size_bytes": 6128,
             "has_h1": true
           }
         ]

@@ -1,33 +1,33 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-05-03T04-11-06-059Z`
-- **Timestamp (UTC)**: 2026-05-03T04:11:06.059Z
-- **Duration**: 17.55s
-- **Hermes3D workspace**: `G:\Github\hermesproof-queue-sandbox-v05`
-- **Node**: v25.8.2 on win32
+- **Run id**: `truth_2026-05-03T04-14-26-922Z`
+- **Timestamp (UTC)**: 2026-05-03T04:14:26.922Z
+- **Duration**: 2.55s
+- **Hermes3D workspace**: `/home/runner/work/HermesProof/HermesProof`
+- **Node**: v20.20.2 on linux
 - **Result**: ✅ ALL REQUIRED GATES PASS
 
-Pass / Fail / Warn / Skip: **16 / 0 / 0 / 0**
+Pass / Fail / Warn / Skip: **12 / 0 / 0 / 4**
 
 ## Gate results
 
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| `source.integrity_manifest` | required | ✅ pass | 12 ms | 21 files hashed |
-| `deps.parity` | required | ✅ pass | 1 ms | all 2 deps installed |
-| `tests.unit` | required | ✅ pass | 3326 ms | pass=41, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 252 ms | 24 tools |
-| `doctor.hermes3d` | required | ✅ pass | 4 ms | ok=true, 1 finding(s) |
-| `events.directory_present` | required | ✅ pass | 19 ms | outbox/handled/failed present |
-| `tasks.directory_present` | required | ✅ pass | 18 ms | pending/claimed/blocked/done present |
-| `trigger.doctor_passes` | required | ✅ pass | 252 ms | trigger doctor ok |
-| `queue.doctor_passes` | required | ✅ pass | 785 ms | queue doctor ok |
-| `e2e.multi_agent_flow` | required | ✅ pass | 1107 ms | 14/14 checks; 15 ledger, 11 events |
-| `workspace.integrity` | required | ✅ pass | 44 ms | probes=0, install_mods=0, unexpected_mods=0, unexpected_untracked=0 |
-| `clients.config_presence` | required | ✅ pass | 2 ms | all 4 present |
-| `clients.claude_code_live` | required | ✅ pass | 11709 ms | Connected |
-| `server.tool_description_hygiene` | required | ✅ pass | 2 ms | 0 suspicious patterns |
-| `evidence.hash_chain_valid` | required | ✅ pass | 12 ms | positive=true, negative_detected_at_idx_1=true |
+| `source.integrity_manifest` | required | ✅ pass | 8 ms | 21 files hashed |
+| `deps.parity` | required | ✅ pass | 2 ms | all 2 deps installed |
+| `tests.unit` | required | ✅ pass | 1712 ms | pass=41, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 213 ms | 24 tools |
+| `doctor.hermes3d` | skipped | ✅ pass | 0 ms | skipped |
+| `events.directory_present` | required | ✅ pass | 11 ms | outbox/handled/failed present |
+| `tasks.directory_present` | required | ✅ pass | 5 ms | pending/claimed/blocked/done present |
+| `trigger.doctor_passes` | required | ✅ pass | 75 ms | trigger doctor ok |
+| `queue.doctor_passes` | required | ✅ pass | 170 ms | queue doctor ok |
+| `e2e.multi_agent_flow` | required | ✅ pass | 342 ms | 14/14 checks; 15 ledger, 11 events |
+| `workspace.integrity` | skipped | ✅ pass | 0 ms | skipped |
+| `clients.config_presence` | skipped | ✅ pass | 0 ms | skipped |
+| `clients.claude_code_live` | skipped | ✅ pass | 0 ms | skipped |
+| `server.tool_description_hygiene` | required | ✅ pass | 1 ms | 0 suspicious patterns |
+| `evidence.hash_chain_valid` | required | ✅ pass | 4 ms | positive=true, negative_detected_at_idx_1=true |
 | `docs.master_prompt_deliverables_present` | required | ✅ pass | 3 ms | 10/10 deliverables present |
 
 ## Machine-readable report
@@ -39,9 +39,9 @@ Full evidence including evidence ledgers, tool call shapes, manifest hashes, and
 ## Reproduce
 
 ```powershell
-cd G:\\Github\\hermes3d-mcp-lock-orchestrator
+cd /home/runner/work/HermesProof/HermesProof
 npm install
-node scripts/truth-gates.mjs --workspace "G:\Github\hermesproof-queue-sandbox-v05"
+node scripts/truth-gates.mjs --workspace "/home/runner/work/HermesProof/HermesProof"
 ```
 
 Exit code 0 means every required gate passed; non-zero means at least one required gate failed.
