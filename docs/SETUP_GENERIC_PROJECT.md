@@ -31,7 +31,21 @@ npm test
 
 ## Wire it to your project
 
-Run the bootstrapper. It is idempotent and never prompts.
+Recommended path: run the interactive wizard. It validates the workspace path,
+detects supported MCP clients, writes timestamped backups before changing any
+config, bootstraps `.hermes3d_orchestrator/`, and prints the first agent prompt.
+
+```powershell
+npm run wizard
+```
+
+For unattended installs, pass the workspace and clients explicitly:
+
+```powershell
+npm run wizard -- --workspace "C:\path\to\YourProject" --clients codex,claude-code --yes
+```
+
+Manual/reference path: run the bootstrapper. It is idempotent and never prompts.
 
 ```powershell
 npm run init-project -- --workspace "C:\path\to\YourProject"
@@ -64,6 +78,9 @@ npm run init-project -- `
 | `HERMES3D_WORKSPACE` | optional  | Legacy alias for `MCP_LOCK_WORKSPACE`. Honored when the new name is unset. |
 
 ## Per-client wiring
+
+The wizard is the recommended way to wire clients. The manual command below is
+kept for operators who need to inspect or paste config by hand.
 
 Run:
 

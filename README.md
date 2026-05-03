@@ -38,16 +38,16 @@ Every edit flows through six gates, leaving an immutable trail behind.
 06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Every push to `main` re-proves the entire chain through 16 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
+Every push to `main` re-proves the entire chain through 17 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
 
 ---
 
 ## ✦ Truth gates
 
-The proof harness — `npm run truth-gates` — runs sixteen independent verifications in sequence, capturing structured evidence at every step.
+The proof harness — `npm run truth-gates` — runs seventeen independent verifications in sequence, capturing structured evidence at every step.
 
 <div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running sixteen gates sequentially" width="100%"/>
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running seventeen gates sequentially" width="100%"/>
 </div>
 
 | #   | Gate                                      | What it proves                                                                       |
@@ -68,6 +68,7 @@ The proof harness — `npm run truth-gates` — runs sixteen independent verific
 | 14  | `trigger.doctor_passes`                   | Trigger bridge doctor validates event outbox, schema handling, and review-packet ops |
 | 15  | `tasks.directory_present`                 | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
 | 16  | `queue.doctor_passes`                     | Queue doctor validates enqueue, pick, done, owner affinity, priority, and recovery   |
+| 17  | `wizard.dry_run_passes`                   | Universal setup wizard dry-run plans client wiring without writing state             |
 
 Outputs:
 
@@ -223,8 +224,11 @@ git clone https://github.com/Ghenghis/HermesProof.git
 cd HermesProof
 npm install
 
+# Fastest path: run the universal setup wizard.
+npm run wizard
+
 # 2. Verify the package (no workspace needed yet)
-npm run truth-gates                                            # 16/16 gates pass
+npm run truth-gates                                            # 17/17 gates pass
 npm test                                                       # Node smoke tests pass
 
 # 3. Pick the workspace HermesProof will govern. Examples:

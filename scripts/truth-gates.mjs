@@ -117,6 +117,15 @@ async function sha256(file) {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
+async function fileExists(file) {
+  try {
+    await fs.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function listFiles(dir) {
   const out = [];
   async function walk(d) {
@@ -397,6 +406,39 @@ if (!shouldSkip("queue.doctor_passes")) {
     parsed: result.parsed,
     stderr_tail: (result.stderr || "").slice(-500)
   }, ok ? "queue doctor ok" : `exit=${result.exit_code}`, durationMs);
+}
+
+if (!shouldSkip("wizard.dry_run_passes")) {
+  const { result, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-wizard-"));
+    const r = spawnSync(
+      process.platform === "win32" ? "node.exe" : "node",
+      [
+        path.join(repoRoot, "scripts", "wizard.mjs"),
+        "--dry-run",
+        "--workspace", sb,
+        "--clients", "codex",
+        "--no-truth-gates",
+        "--yes"
+      ],
+      { cwd: repoRoot, encoding: "utf8", shell: false }
+    );
+    const stateDir = path.join(sb, ".hermes3d_orchestrator");
+    const wroteState = await fileExists(stateDir);
+    await fs.rm(sb, { recursive: true, force: true });
+    return { exit_code: r.status, stdout: r.stdout, stderr: r.stderr, wroteState };
+  });
+  const ok = result.exit_code === 0 &&
+    result.wroteState === false &&
+    result.stdout.includes("Detected:") &&
+    result.stdout.includes("Wire all detected?") &&
+    result.stdout.includes("Done");
+  record("wizard.dry_run_passes", "required", ok, {
+    exit_code: result.exit_code,
+    wrote_state: result.wroteState,
+    stdout_tail: (result.stdout || "").slice(-1000),
+    stderr_tail: (result.stderr || "").slice(-500)
+  }, ok ? "wizard dry-run ok" : `exit=${result.exit_code}`, durationMs);
 }
 
 // ----------------------------------------------------------------------------
