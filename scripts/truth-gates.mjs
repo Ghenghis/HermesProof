@@ -27,6 +27,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { checkSecretRotationEvidence } from "./secret-rotation-evidence.mjs";
 import { runMcpScanStaticGate } from "./mcp-scan-static-gate.mjs";
 import { writeSbomToProof } from "./sbom-generator.mjs";
 import {
@@ -229,6 +230,7 @@ if (!shouldSkip("tests.unit")) {
           "--test",
           "scripts/coordination-smoke-test.mjs",
           "scripts/hardening-smoke-test.mjs",
+          "scripts/secret-rotation-smoke-test.mjs",
           "scripts/mcp-scan-static-gate.test.mjs"
         ],
         { cwd: repoRoot, encoding: "utf8", shell: false }
@@ -947,14 +949,32 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
 }
 
 // ----------------------------------------------------------------------------
+// Gate: secrets.rotation_evidence_present — metadata-only check that the
+// configured Hermes3D env file (G:\private\.env or HERMES3D_ENV_FILE) has
+// been modified within HERMES_SECRET_MAX_AGE_DAYS (default 90). Never reads
+// the file's contents — only fs.stat.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("secrets.rotation_evidence_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await checkSecretRotationEvidence();
+  });
+  if (error) {
+    record("secrets.rotation_evidence_present", "warn", false, {}, error.message, durationMs);
+  } else {
+    const level = "warn";
+    record(
+      "secrets.rotation_evidence_present",
+      level,
+      result.ok,
+      result.evidence,
+      result.details,
+      durationMs
+    );
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Gate: sbom.cyclonedx_generated — emit CycloneDX 1.5 SBOM at PROOF/sbom.json
-//
-// Required gate. Walks `node_modules/` and writes a deterministic CycloneDX
-// 1.5 JSON SBOM (sorted by name+version, sha256-pinned per package.json) to
-// `PROOF/sbom.json`. Pure stdlib; zero new runtime deps. The SBOM is
-// suitable for downstream supply-chain tooling (Grype, Trivy, etc.) and
-// gets carried alongside the cosign-signed PROOF/latest.json on every
-// successful main-branch run.
 // ----------------------------------------------------------------------------
 if (!shouldSkip("sbom.cyclonedx_generated")) {
   const { result, error, durationMs } = await timed(async () => {
