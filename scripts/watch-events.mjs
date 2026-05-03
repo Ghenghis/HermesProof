@@ -3,6 +3,11 @@ import { pathToFileURL } from "node:url";
 import { EventManager } from "../src/core/event-manager.mjs";
 import { generateReviewPacket } from "./generate-review-packet.mjs";
 
+function webhookTimeoutMs() {
+  const parsed = Number(process.env.HERMESPROOF_WEBHOOK_TIMEOUT_MS || 10000);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10000;
+}
+
 function parseArgs(argv) {
   const out = { poll: 30, markHandled: false, writeReviewPackets: false };
   for (let i = 0; i < argv.length; i++) {
@@ -45,13 +50,28 @@ export async function watchEvents({
       );
       let posted = false;
       if (webhookUrl) {
-        const response = await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(event)
-        });
-        posted = response.status >= 200 && response.status < 300;
-        console.log(`[HermesProof] webhook ${event.event_id} status=${response.status}`);
+        const timeoutMs = webhookTimeoutMs();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(event),
+            signal: controller.signal
+          });
+          posted = response.status >= 200 && response.status < 300;
+          console.log(`[HermesProof] webhook ${event.event_id} status=${response.status}`);
+        } catch (err) {
+          posted = false;
+          if (err.name === "AbortError") {
+            console.error(`[HermesProof] webhook timeout ${event.event_id} after ${timeoutMs}ms`);
+          } else {
+            console.error(`[HermesProof] webhook failed ${event.event_id}: ${err.message}`);
+          }
+        } finally {
+          clearTimeout(timer);
+        }
       }
       if (markHandled && (!webhookUrl || posted)) {
         await manager.markEventHandled({

@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
+import { EventManager } from "../src/core/event-manager.mjs";
+import { statePaths } from "../src/core/fs-utils.mjs";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { ensureEventDirs, generateReviewPacket, validateEventEnvelope } from "./generate-review-packet.mjs";
 import { markEventHandled } from "./watch-events.mjs";
@@ -258,4 +262,110 @@ test("review_packet_includes_task_id_owner_next_actor_recommendation", async () 
   assert.match(text, /codex-impl-01/);
   assert.match(text, /claude/);
   assert.match(text, /review_pr/);
+});
+
+test("evidenceIdsForTask streams without loading the whole ledger", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const paths = statePaths(workspaceRoot);
+  await fs.mkdir(path.dirname(paths.evidenceFile), { recursive: true });
+  const targetTask = "CP-LARGE-LEDGER";
+  const matches = new Map([
+    [7, "ev_match_1"],
+    [1500, "ev_match_2"],
+    [4999, "ev_match_3"]
+  ]);
+  const lines = [];
+  for (let i = 0; i < 5000; i++) {
+    const id = matches.get(i) || `ev_other_${i}`;
+    lines.push(JSON.stringify({
+      id,
+      task_id: matches.has(i) ? targetTask : "OTHER-TASK",
+      entry_hash: crypto.createHash("sha256").update(String(i)).digest("hex")
+    }));
+  }
+  await fs.writeFile(paths.evidenceFile, `${lines.join("\n")}\n`, "utf8");
+
+  const before = process.memoryUsage().heapUsed;
+  const ids = await new EventManager({ workspaceRoot }).evidenceIdsForTask(targetTask);
+  const after = process.memoryUsage().heapUsed;
+  console.log(`[perf] evidenceIdsForTask heap_delta=${after - before}`);
+  assert.deepEqual(ids, ["ev_match_1", "ev_match_2", "ev_match_3"]);
+});
+
+test("listEvents respects limit without reading all files", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const paths = await ensureEventDirs(workspaceRoot);
+  for (let i = 0; i < 200; i++) {
+    const eventId = `evt_20260503T000000${String(i).padStart(3, "0")}Z_${i.toString(16).padStart(6, "0")}`;
+    await fs.writeFile(path.join(paths.handledDir, `${eventId}.json`), JSON.stringify({
+      event_schema_version: 1,
+      event_id: eventId,
+      event_type: "task.released",
+      created_utc: `2026-05-03T00:00:${String(i % 60).padStart(2, "0")}.000Z`,
+      workspace_root: workspaceRoot,
+      task_id: `TASK-${i}`,
+      owner: "codex-impl-01",
+      branch: "feat/test",
+      files: [],
+      summary: "handled event",
+      evidence_ids: [],
+      next_actor: "claude",
+      recommended_action: "review_pr",
+      payload: {}
+    }, null, 2), "utf8");
+  }
+
+  const listed = await new EventManager({ workspaceRoot }).listEvents({ status: "handled", limit: 5 });
+  assert.equal(listed.events.length, 5);
+  assert.equal(listed.count, 200);
+  assert.deepEqual(listed.events.map((event) => event.task_id), ["TASK-0", "TASK-1", "TASK-2", "TASK-3", "TASK-4"]);
+});
+
+test("watch-events webhook timeout aborts cleanly", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const { event, file } = await emitTestEvent(workspaceRoot);
+  const server = http.createServer(() => {
+    // Intentionally never responds; the watcher must abort its fetch.
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const script = path.resolve("scripts/watch-events.mjs");
+  const started = Date.now();
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [script, "--workspace", workspaceRoot, "--once", "--mark-handled"], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          HERMESPROOF_WEBHOOK_URL: `http://127.0.0.1:${port}`,
+          HERMESPROOF_WEBHOOK_TIMEOUT_MS: "500"
+        },
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      let stdout = "";
+      let stderr = "";
+      const killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error("watch-events hung past timeout"));
+      }, 3000);
+      child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+      child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+      child.on("error", (err) => {
+        clearTimeout(killTimer);
+        reject(err);
+      });
+      child.on("exit", (code) => {
+        clearTimeout(killTimer);
+        resolve({ code, stdout, stderr });
+      });
+    });
+    assert.equal(result.code, 0);
+    assert.match(result.stderr, /webhook timeout/);
+    assert.ok(Date.now() - started < 3000);
+    assert.equal((await fs.stat(file)).isFile(), true);
+    const paths = await ensureEventDirs(workspaceRoot);
+    await assert.rejects(fs.stat(path.join(paths.handledDir, `${event.event_id}.json`)));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
+import readline from "node:readline";
 import {
   appendChainedJsonLine,
   canonicalJSON,
@@ -111,21 +113,27 @@ export class EventManager {
     await this.init();
     const statuses = status === "all" ? ["outbox", "handled", "failed"] : [status];
     for (const value of statuses) validateStatus(value);
+    const allFiles = [];
+    const bounded = Math.max(1, Math.min(500, Number(limit || 50)));
     const events = [];
     for (const value of statuses) {
       const dir = this.dirForStatus(value);
-      const files = await fs.readdir(dir).catch(() => []);
-      for (const file of files.filter((name) => name.endsWith(".json"))) {
-        const event = await readJson(path.join(dir, file), null);
-        if (event) events.push({ status: value, ...event });
+      const names = await fs.readdir(dir).catch(() => []);
+      for (const name of names) {
+        if (name.endsWith(".json")) {
+          allFiles.push({ status: value, name, path: path.join(dir, name) });
+        }
       }
     }
-    events.sort((a, b) =>
-      String(a.created_utc || "").localeCompare(String(b.created_utc || "")) ||
-      String(a.event_id || "").localeCompare(String(b.event_id || ""))
+    allFiles.sort((a, b) =>
+      a.name.localeCompare(b.name) ||
+      a.status.localeCompare(b.status)
     );
-    const bounded = Math.max(1, Math.min(500, Number(limit || 50)));
-    return { ok: true, status, count: events.length, events: events.slice(0, bounded) };
+    for (const item of allFiles.slice(0, bounded)) {
+      const event = await readJson(item.path, null);
+      if (event) events.push({ status: item.status, ...event });
+    }
+    return { ok: true, status, count: allFiles.length, events };
   }
 
   async markEventHandled({ event_id, handled_by, note = "" }) {
@@ -181,11 +189,31 @@ export class EventManager {
   }
 
   async evidenceIdsForTask(taskId) {
-    const entries = await readEvidenceEntries(this.paths.evidenceFile);
-    return entries
-      .filter((entry) => entry && entry.task_id === taskId && typeof entry.entry_hash === "string")
-      .map((entry) => entry.id)
-      .filter(Boolean);
+    const ids = [];
+    const stream = createReadStream(this.paths.evidenceFile, { encoding: "utf8" });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    try {
+      for await (const line of rl) {
+        if (!line) continue;
+        let entry;
+        try { entry = JSON.parse(line); } catch { continue; }
+        if (
+          entry &&
+          entry.task_id === taskId &&
+          typeof entry.entry_hash === "string" &&
+          entry.id
+        ) {
+          ids.push(entry.id);
+        }
+      }
+    } catch (err) {
+      if (err.code === "ENOENT") return [];
+      throw err;
+    } finally {
+      rl.close();
+      stream.destroy();
+    }
+    return ids;
   }
 
   eventPath(status, eventId) {

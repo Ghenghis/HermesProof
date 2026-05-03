@@ -90,6 +90,8 @@ node scripts\watch-events.mjs --workspace G:\Github\Hermes3D --write-review-pack
 
 The watcher is passive. By default it prints pending events. With `--write-review-packets`, it writes deterministic Markdown packets under `.hermes3d_orchestrator/review_packets/` and leaves the source event in `events/outbox/`. If `HERMESPROOF_WEBHOOK_URL` is set, the watcher may POST event JSON to that URL; HermesProof itself still does not call a model or wake a chat session.
 
+v0.4.1 hardens the trigger bridge for larger workspaces: task-bound evidence ids are resolved with a streaming ledger read, event listing sorts timestamp-prefixed filenames before reading only the requested page, and webhook delivery uses a 10 second timeout by default (`HERMESPROOF_WEBHOOK_TIMEOUT_MS` can override it). `hermes_list_events` now reports `count` as the total matching event files, not just the number returned under the requested limit.
+
 ### Prune handled events
 
 Handled events can be pruned once operators no longer need them for routine audit lookups. A conservative default is 30 days:
