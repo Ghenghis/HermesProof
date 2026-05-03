@@ -161,19 +161,20 @@ export class AnonymousOrchestrator {
       throw new Error("session_id must be a string ≥ 8 chars");
     }
     const state = await this._readState();
-    if (state.active_user_session && state.active_user_session.expires_at > Date.now()) {
+    const now = Date.now();
+    if (state.active_user_session && state.active_user_session.expires_at > now) {
       throw new Error("an active user session exists; revoke it first");
     }
     const session = {
       session_id,
       granted_by,
       scope: scope ?? null,
-      issued_at: Date.now(),
-      expires_at: Date.now() + (ttl_ms ?? USER_SESSION_TTL_MS),
-      hash: crypto.createHash("sha256").update(`${granted_by}:${session_id}:${Date.now()}`).digest("hex"),
+      issued_at: now,
+      expires_at: now + (ttl_ms ?? USER_SESSION_TTL_MS),
+      hash: crypto.createHash("sha256").update(`${granted_by}:${session_id}:${now}`).digest("hex"),
     };
     state.active_user_session = session;
-    state.history.push({ kind: "user_session_grant", granted_by, session_id, ts: Date.now() });
+    state.history.push({ kind: "user_session_grant", granted_by, session_id, ts: now });
     state.history = state.history.slice(-200);
     await this._writeState(state);
     await this._appendEvidence({ kind: "user_session_grant", granted_by, session_id, hash: session.hash });

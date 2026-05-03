@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs seventeen independent verif
 | 01  | `source.integrity_manifest`               | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift           |
 | 02  | `deps.parity`                             | `package.json` declared deps match the installed ones in `node_modules/`             |
 | 03  | `tests.unit`                              | All Node smoke tests pass via direct `node --test` (npm pipe-routing bypassed)       |
-| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 24 tools       |
+| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 34 tools       |
 | 05  | `doctor.hermes3d`                         | `hermes_doctor` returns `ok: true` against the live workspace                        |
 | 06  | `e2e.multi_agent_flow`                    | 14-step real stdio probe: claim → lock → block → handoff → gate → release            |
 | 07  | `workspace.integrity`                     | No probe files leaked, no unexpected tracked changes in the workspace                |
@@ -90,7 +90,7 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **24 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, and diagnostics:
+The server exposes **34 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
