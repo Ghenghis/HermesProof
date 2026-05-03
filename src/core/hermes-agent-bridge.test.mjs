@@ -92,6 +92,27 @@ describe("HermesAgentBridge USER session hardening", () => {
     assert.equal(orchestrator.grants.length, 0);
   });
 
+  it("rejects invalid ttl before provider call or grant", async () => {
+    for (const ttl_hours of [0, -1, 49, 1.5, Number.NaN]) {
+      const orchestrator = makeOrchestrator();
+      const bridge = new TestBridge({
+        orchestrator,
+        scope: ["resolve_blocked"],
+      });
+
+      const result = await bridge.requestUserSession({
+        requested_scope: ["resolve_blocked"],
+        ttl_hours,
+      });
+
+      assert.equal(result.ok, false);
+      assert.match(result.reason, /ttl_hours must be a positive integer no greater than 48/);
+      assert.equal(bridge.healthCalls, 0);
+      assert.equal(bridge.askCalls.length, 0);
+      assert.equal(orchestrator.grants.length, 0);
+    }
+  });
+
   it("resolves registry providers from merged providers in failover order", () => {
     const bridge = new HermesAgentBridge({
       orchestrator: makeOrchestrator(),
