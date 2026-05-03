@@ -27,12 +27,16 @@
   "license": "MIT",
   "bin": {
     "hermesproof": "src/server.mjs",
+    "hermesproof-supervised": "scripts/mcp-supervisor.mjs",
     "hermesproof-wizard": "scripts/wizard.mjs"
   },
   "scripts": {
     "start": "node src/server.mjs",
+    "start:supervised": "node scripts/mcp-supervisor.mjs",
     "mcp:dev": "node src/server.mjs",
-    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/registry-validate-smoke-test.mjs scripts/secret-rotation-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs",
+    "mcp:supervised": "node scripts/mcp-supervisor.mjs",
+    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/registry-validate-smoke-test.mjs scripts/mcp-supervisor-smoke-test.mjs scripts/secret-rotation-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs",
+    "smoke:supervisor": "node --test scripts/mcp-supervisor-smoke-test.mjs",
     "smoke": "node --test scripts/coordination-smoke-test.mjs",
     "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
     "smoke:perf": "node --test scripts/perf-v0.5.1-smoke-test.mjs",
