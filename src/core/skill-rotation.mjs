@@ -13,6 +13,7 @@
  */
 
 import { writeJsonAtomic, ensureDir, readJson } from "./fs-utils.mjs";
+import { makeMutex } from "./mutex.mjs";
 import path from "node:path";
 
 const KNOWN_TASK_TYPES = ["gate", "lock", "review", "handoff", "build", "docs", "test", "infra"];
@@ -23,6 +24,10 @@ export class SkillRotation {
     if (!workspaceRoot) throw new Error("SkillRotation requires workspaceRoot");
     this.stateDir = path.join(workspaceRoot, stateDirName);
     this.stateFile = path.join(this.stateDir, "skill_rotation.json");
+    // Serialize concurrent recordTask calls — pre-fix, parallel callers
+    // could race on read-modify-write and drop count increments. The
+    // 2026-05-03 audit cross-confirmed this gap (5/5 lanes).
+    this._mutex = makeMutex();
   }
 
   async init() {
@@ -50,27 +55,29 @@ export class SkillRotation {
     if (!actor_id || !task_type) {
       throw new Error("actor_id and task_type are required");
     }
-    const state = await this._read();
-    const now = Date.now();
-    if (!state.actors[actor_id]) {
-      state.actors[actor_id] = { task_counts: {}, last_active_ts: now, total_tasks: 0 };
-    }
-    const rec = state.actors[actor_id];
-    rec.task_counts[task_type] = (rec.task_counts[task_type] ?? 0) + 1;
-    rec.last_active_ts = now;
-    rec.total_tasks = (rec.total_tasks ?? 0) + 1;
-
-    // Prune stale actors if roster is large
-    const actorIds = Object.keys(state.actors);
-    if (actorIds.length > TRIM_AFTER) {
-      const cutoff = now - 24 * 60 * 60 * 1000;
-      for (const id of actorIds) {
-        if (state.actors[id].last_active_ts < cutoff) delete state.actors[id];
+    return this._mutex(async () => {
+      const state = await this._read();
+      const now = Date.now();
+      if (!state.actors[actor_id]) {
+        state.actors[actor_id] = { task_counts: {}, last_active_ts: now, total_tasks: 0 };
       }
-    }
+      const rec = state.actors[actor_id];
+      rec.task_counts[task_type] = (rec.task_counts[task_type] ?? 0) + 1;
+      rec.last_active_ts = now;
+      rec.total_tasks = (rec.total_tasks ?? 0) + 1;
 
-    await this._write(state);
-    return { ok: true, actor_id, task_type, total_tasks: rec.total_tasks };
+      // Prune stale actors if roster is large
+      const actorIds = Object.keys(state.actors);
+      if (actorIds.length > TRIM_AFTER) {
+        const cutoff = now - 24 * 60 * 60 * 1000;
+        for (const id of actorIds) {
+          if (state.actors[id].last_active_ts < cutoff) delete state.actors[id];
+        }
+      }
+
+      await this._write(state);
+      return { ok: true, actor_id, task_type, total_tasks: rec.total_tasks };
+    });
   }
 
   /**

@@ -17,6 +17,7 @@ import {
   utcNow,
   writeJsonAtomic
 } from "./fs-utils.mjs";
+import { makeMutex } from "./mutex.mjs";
 
 export const EVENT_SCHEMA_VERSION = 1;
 
@@ -53,6 +54,12 @@ export class EventManager {
     if (!workspaceRoot) throw new Error("workspaceRoot is required");
     this.workspaceRoot = path.resolve(workspaceRoot);
     this.paths = statePaths(this.workspaceRoot, stateDirName);
+    // Serialize concurrent markEventHandled / failEvent — each does
+    // read + atomic-rename + write + ledger-append in sequence; without
+    // the mutex two concurrent calls for the same event_id can both pass
+    // the "already handled" check, then race on the rename. The
+    // 2026-05-03 audit cross-confirmed this gap.
+    this._eventMutex = makeMutex();
   }
 
   async init() {
@@ -142,52 +149,56 @@ export class EventManager {
     await this.init();
     assertEventId(event_id);
     if (!handled_by || typeof handled_by !== "string") throw new Error("handled_by is required");
-    const source = this.eventPath("outbox", event_id);
-    const handled = this.eventPath("handled", event_id);
-    const failed = this.eventPath("failed", event_id);
-    if (await pathExists(handled)) {
-      return { ok: true, status: "event_already_handled", event_id, path: handled };
-    }
-    if (await pathExists(failed)) {
-      return { ok: false, status: "event_already_failed", event_id, path: failed };
-    }
-    const event = await readJson(source, null);
-    if (!event) return { ok: false, status: "missing", message: `event not found in outbox: ${event_id}` };
-    if (event.event_schema_version !== EVENT_SCHEMA_VERSION) {
-      event.error = "unknown_schema_version";
-      event.failed_utc = utcNow();
-      event.failed_by = handled_by;
-      await writeJsonAtomic(source, event);
-      await moveFileAtomic(source, failed);
-      return { ok: false, status: "unknown_schema_version", event_id, path: failed };
-    }
-    await moveFileAtomic(source, handled);
-    event.handled_utc = utcNow();
-    event.handled_by = handled_by;
-    event.handled_note = note;
-    await writeJsonAtomic(handled, event);
-    await this.appendBookkeepingEvidence(event, {
-      kind: "event-handled",
-      summary: `Handled event ${event_id}`,
-      handled_by,
-      note
+    return this._eventMutex(async () => {
+      const source = this.eventPath("outbox", event_id);
+      const handled = this.eventPath("handled", event_id);
+      const failed = this.eventPath("failed", event_id);
+      if (await pathExists(handled)) {
+        return { ok: true, status: "event_already_handled", event_id, path: handled };
+      }
+      if (await pathExists(failed)) {
+        return { ok: false, status: "event_already_failed", event_id, path: failed };
+      }
+      const event = await readJson(source, null);
+      if (!event) return { ok: false, status: "missing", message: `event not found in outbox: ${event_id}` };
+      if (event.event_schema_version !== EVENT_SCHEMA_VERSION) {
+        event.error = "unknown_schema_version";
+        event.failed_utc = utcNow();
+        event.failed_by = handled_by;
+        await writeJsonAtomic(source, event);
+        await moveFileAtomic(source, failed);
+        return { ok: false, status: "unknown_schema_version", event_id, path: failed };
+      }
+      await moveFileAtomic(source, handled);
+      event.handled_utc = utcNow();
+      event.handled_by = handled_by;
+      event.handled_note = note;
+      await writeJsonAtomic(handled, event);
+      await this.appendBookkeepingEvidence(event, {
+        kind: "event-handled",
+        summary: `Handled event ${event_id}`,
+        handled_by,
+        note
+      });
+      return { ok: true, status: "handled", event, path: handled };
     });
-    return { ok: true, status: "handled", event, path: handled };
   }
 
   async failEvent({ event_id, failed_by = "event-manager", error = "processing_failed" }) {
     await this.init();
     assertEventId(event_id);
-    const source = this.eventPath("outbox", event_id);
-    const failed = this.eventPath("failed", event_id);
-    const event = await readJson(source, null);
-    if (!event) return { ok: false, status: "missing", event_id };
-    await moveFileAtomic(source, failed);
-    event.failed_utc = utcNow();
-    event.failed_by = failed_by;
-    event.error = error;
-    await writeJsonAtomic(failed, event);
-    return { ok: true, status: "failed", event, path: failed };
+    return this._eventMutex(async () => {
+      const source = this.eventPath("outbox", event_id);
+      const failed = this.eventPath("failed", event_id);
+      const event = await readJson(source, null);
+      if (!event) return { ok: false, status: "missing", event_id };
+      await moveFileAtomic(source, failed);
+      event.failed_utc = utcNow();
+      event.failed_by = failed_by;
+      event.error = error;
+      await writeJsonAtomic(failed, event);
+      return { ok: true, status: "failed", event, path: failed };
+    });
   }
 
   async evidenceIdsForTask(taskId) {

@@ -21,6 +21,7 @@ import {
 } from "./fs-utils.mjs";
 import { EventManager } from "./event-manager.mjs";
 import { QueueManager } from "./queue-manager.mjs";
+import { makeMutex } from "./mutex.mjs";
 
 const DEFAULT_TTL_MINUTES = 90;
 // hermes_doctor is read-only and called frequently by clients (every reconnect,
@@ -42,6 +43,11 @@ export class HermesLockManager {
     });
     this._doctorCache = null; // { result, expiresAt, computedAtMs }
     this._doctorInflight = null; // dedupe concurrent uncached calls
+    // Serialize concurrent heartbeat calls — pre-fix, two heartbeats from
+    // the same owner could read the same metadata, both push a "heartbeat"
+    // history entry, and last-writer-wins on the disk write would drop
+    // one entry. The 2026-05-03 audit cross-confirmed this gap.
+    this._heartbeatMutex = makeMutex();
   }
 
   async init() {
@@ -322,25 +328,27 @@ export class HermesLockManager {
 
   async heartbeat({ owner, taskId = "" }) {
     assertOwner(owner);
-    const locks = await this.listLocks();
-    const touched = [];
-    for (const lock of locks.locks) {
-      if (lock.owner === owner && (!taskId || lock.task_id === taskId)) {
-        const lockDir = lockDirForPath(this.paths, lock.file);
-        const metadataFile = lockMetadataFile(lockDir);
-        const metadata = await readJson(metadataFile, null);
-        if (!metadata) continue;
-        metadata.heartbeat_utc = utcNow();
-        metadata.expires_utc = addMinutesIso(DEFAULT_TTL_MINUTES);
-        metadata.history = metadata.history || [];
-        metadata.history.push({ ts_utc: utcNow(), type: "heartbeat", owner, task_id: taskId || null });
-        await writeJsonAtomic(metadataFile, metadata);
-        touched.push(lock.file);
+    return this._heartbeatMutex(async () => {
+      const locks = await this.listLocks();
+      const touched = [];
+      for (const lock of locks.locks) {
+        if (lock.owner === owner && (!taskId || lock.task_id === taskId)) {
+          const lockDir = lockDirForPath(this.paths, lock.file);
+          const metadataFile = lockMetadataFile(lockDir);
+          const metadata = await readJson(metadataFile, null);
+          if (!metadata) continue;
+          metadata.heartbeat_utc = utcNow();
+          metadata.expires_utc = addMinutesIso(DEFAULT_TTL_MINUTES);
+          metadata.history = metadata.history || [];
+          metadata.history.push({ ts_utc: utcNow(), type: "heartbeat", owner, task_id: taskId || null });
+          await writeJsonAtomic(metadataFile, metadata);
+          touched.push(lock.file);
+        }
       }
-    }
-    const touchedTasks = await this.queueManager.heartbeat({ owner, taskId });
-    await this.event("heartbeat", { owner, task_id: taskId || null, files: touched });
-    return { ok: true, status: "heartbeat", touched, touched_tasks: touchedTasks };
+      const touchedTasks = await this.queueManager.heartbeat({ owner, taskId });
+      await this.event("heartbeat", { owner, task_id: taskId || null, files: touched });
+      return { ok: true, status: "heartbeat", touched, touched_tasks: touchedTasks };
+    });
   }
 
   async listLocks() {
