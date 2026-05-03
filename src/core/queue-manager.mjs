@@ -16,6 +16,10 @@ import { EventManager } from "./event-manager.mjs";
 export const TASK_SCHEMA_VERSION = 1;
 const DEFAULT_TTL_MINUTES = 120;
 const TASK_STATES = ["pending", "claimed", "blocked", "done"];
+// v0.5.1 perf: cap parallel readJson() calls inside readTasks() so a directory
+// with thousands of tasks doesn't open thousands of FDs at once. 16 keeps us
+// fast on SSDs and below the default ulimit on every supported platform.
+export const READ_TASKS_CONCURRENCY = 16;
 
 export class QueueManager {
   constructor({ workspaceRoot, stateDirName, eventManager } = {}) {
@@ -26,9 +30,17 @@ export class QueueManager {
       workspaceRoot: this.workspaceRoot,
       stateDirName: this.paths.stateDirName
     });
+    this._initialized = false;
+    // v0.5.1 perf: O(1) heartbeat-by-id. Map<task_id, { file, owner }>. Kept in
+    // sync with the on-disk `tasks/claimed/` directory by claimPendingTask,
+    // completeTask, blockTask, and recoverStaleTasks. Reconciled with disk on
+    // init() and on every recoverStaleTasks call so stale entries cannot linger
+    // across server restarts or external mutations.
+    this._claimedIndex = new Map();
   }
 
   async init() {
+    if (this._initialized) return;
     for (const dir of [
       this.paths.tasksPendingDir,
       this.paths.tasksClaimedDir,
@@ -38,6 +50,23 @@ export class QueueManager {
       await ensureDir(dir);
     }
     await this.eventManager.init();
+    await this._reconcileClaimedIndex();
+    this._initialized = true;
+  }
+
+  /**
+   * Rebuild the in-memory `_claimedIndex` from disk. Called from `init()` and
+   * from `recoverStaleTasks()` so the index never drifts from the filesystem,
+   * even across crashes or external mutations.
+   */
+  async _reconcileClaimedIndex() {
+    const next = new Map();
+    const items = await this.readTasks("claimed");
+    for (const { file, task } of items) {
+      if (!isTaskVersion(task)) continue;
+      next.set(task.task_id, { file, owner: task.claimed_by || null });
+    }
+    this._claimedIndex = next;
   }
 
   async enqueueTask({
@@ -161,6 +190,7 @@ export class QueueManager {
     const done = this.taskPath("done", id);
     await moveFileAtomic(source, done);
     await writeJsonAtomic(done, claimed);
+    this._claimedIndex.delete(id); // v0.5.1: keep heartbeat index in sync.
     await this.eventManager.emitEvent({
       event_type: "task.released",
       task_id: id,
@@ -189,6 +219,7 @@ export class QueueManager {
     const blocked = this.taskPath("blocked", id);
     await moveFileAtomic(source, blocked);
     await writeJsonAtomic(blocked, claimed);
+    this._claimedIndex.delete(id); // v0.5.1: keep heartbeat index in sync.
     await this.eventManager.emitEvent({
       event_type: "task.blocked",
       task_id: id,
@@ -202,6 +233,14 @@ export class QueueManager {
     return { ok: true, status: "blocked", task: claimed };
   }
 
+  /**
+   * Recover stale (TTL-expired) tasks back to pending.
+   *
+   * v0.5.1: each task is processed in its own try/catch so a single failure
+   * (filesystem race, IO error, malformed JSON) cannot abort the whole batch.
+   * The result now includes a `failures` array describing per-task errors.
+   * After processing, the in-memory `_claimedIndex` is reconciled with disk.
+   */
   async recoverStaleTasks({ owner, files = [], note = "" }) {
     assertOwner(owner);
     await this.init();
@@ -209,62 +248,129 @@ export class QueueManager {
       ? new Set(files.map((value) => normalizeTaskId(value)))
       : null;
     const recovered = [];
-    for (const item of await this.readTasks("claimed")) {
+    const failures = [];
+    const items = await this.readTasks("claimed");
+    for (const item of items) {
       const task = item.task;
       if (!isTaskVersion(task)) continue;
       if (requested && !requested.has(task.task_id)) continue;
       if (!isTaskExpired(task)) continue;
-      task.claimed_by = null;
-      task.claimed_utc = null;
-      task.heartbeat_utc = null;
-      task.recovered_by = owner;
-      task.recovered_utc = utcNow();
-      task.recovery_note = note;
-      const pending = this.taskPath("pending", task.task_id);
-      await moveFileAtomic(item.file, pending);
-      await writeJsonAtomic(pending, task);
-      await this.eventManager.emitEvent({
-        event_type: "task.recovered",
-        task_id: task.task_id,
-        owner,
-        files: task.files_hint || [],
-        summary: `Stale task recovered: ${task.task_id}`,
-        next_actor: "unassigned",
-        recommended_action: "acknowledge",
-        payload: { task_id: task.task_id, note }
-      });
-      recovered.push(task.task_id);
+      try {
+        task.claimed_by = null;
+        task.claimed_utc = null;
+        task.heartbeat_utc = null;
+        task.recovered_by = owner;
+        task.recovered_utc = utcNow();
+        task.recovery_note = note;
+        const pending = this.taskPath("pending", task.task_id);
+        await moveFileAtomic(item.file, pending);
+        await writeJsonAtomic(pending, task);
+        await this.eventManager.emitEvent({
+          event_type: "task.recovered",
+          task_id: task.task_id,
+          owner,
+          files: task.files_hint || [],
+          summary: `Stale task recovered: ${task.task_id}`,
+          next_actor: "unassigned",
+          recommended_action: "acknowledge",
+          payload: { task_id: task.task_id, note }
+        });
+        recovered.push(task.task_id);
+      } catch (err) {
+        // Per-task failure: collect and continue. The whole batch must not
+        // abort because one task hit a transient error.
+        failures.push({
+          task_id: task.task_id,
+          error: err && err.message ? err.message : String(err),
+          code: err && err.code ? err.code : null
+        });
+      }
     }
-    return { ok: true, status: "recovered", recovered };
+    // Reconcile the heartbeat index against disk so any tasks moved out of
+    // claimed/ are dropped from the Map.
+    await this._reconcileClaimedIndex();
+    return {
+      ok: failures.length === 0,
+      status: failures.length === 0 ? "recovered" : "partial",
+      recovered,
+      failures
+    };
   }
 
+  /**
+   * Refresh the heartbeat timestamp on one or all tasks owned by `owner`.
+   *
+   * v0.5.1: when a `taskId` is supplied we go directly to the file via the
+   * in-memory `_claimedIndex` (O(1)) instead of scanning the whole `claimed/`
+   * directory. The Map is kept in sync by claim/complete/block/recover.
+   * If the Map says the task isn't claimed by us we still verify against disk
+   * (the index could be stale across server restarts before init() finishes).
+   */
   async heartbeat({ owner, taskId = "" }) {
     assertOwner(owner);
     await this.init();
-    const touched = [];
     const now = utcNow();
+    const touched = [];
+    if (taskId) {
+      const id = normalizeTaskId(taskId);
+      const indexed = this._claimedIndex.get(id);
+      // Fast path: index says we own it. Read+write the single file, no scan.
+      if (indexed && indexed.owner === owner) {
+        const task = await readJson(indexed.file, null);
+        if (task && isTaskVersion(task) && task.claimed_by === owner) {
+          task.heartbeat_utc = now;
+          await writeJsonAtomic(indexed.file, task);
+          touched.push(task.task_id);
+          return touched;
+        }
+        // Index drifted (manual edit, prior crash). Drop and fall through.
+        this._claimedIndex.delete(id);
+      }
+      // Cold path: index miss but caller asked for a specific id. Read the
+      // canonical file directly — still O(1) — instead of scanning.
+      const file = this.taskPath("claimed", id);
+      const task = await readJson(file, null);
+      if (task && isTaskVersion(task) && task.claimed_by === owner) {
+        task.heartbeat_utc = now;
+        await writeJsonAtomic(file, task);
+        touched.push(task.task_id);
+        // Keep the index hot for next call.
+        this._claimedIndex.set(task.task_id, { file, owner });
+      }
+      return touched;
+    }
+    // Batch path (no taskId): walk all claimed tasks. This stays an O(n) scan
+    // because the caller wants every task they own — there's no way to
+    // shortcut "everything I own" without the same set of reads.
     for (const item of await this.readTasks("claimed")) {
       const task = item.task;
       if (!isTaskVersion(task)) continue;
       if (task.claimed_by !== owner) continue;
-      if (taskId && task.task_id !== taskId) continue;
       task.heartbeat_utc = now;
       await writeJsonAtomic(item.file, task);
       touched.push(task.task_id);
+      this._claimedIndex.set(task.task_id, { file: item.file, owner });
     }
     return touched;
   }
 
+  /**
+   * v0.5.1: parallel reads with bounded concurrency (READ_TASKS_CONCURRENCY).
+   * Unbounded Promise.all on a directory with thousands of files would open
+   * thousands of FDs at once. The bounded queue keeps us under the per-process
+   * ulimit while still exploiting parallelism on SSDs/NVMe.
+   */
   async readTasks(state) {
     const dir = this.dirForState(state);
-    const names = await fs.readdir(dir).catch(() => []);
-    const items = [];
-    for (const name of names.filter((value) => value.endsWith(".json")).sort()) {
+    const names = (await fs.readdir(dir).catch(() => []))
+      .filter((value) => value.endsWith(".json"))
+      .sort();
+    if (names.length === 0) return [];
+    return await mapWithConcurrency(names, READ_TASKS_CONCURRENCY, async (name) => {
       const file = path.join(dir, name);
       const task = await readJson(file, null);
-      if (task) items.push({ file, task });
-    }
-    return items;
+      return task ? { file, task } : null;
+    }).then((arr) => arr.filter(Boolean));
   }
 
   async readTask(state, id) {
@@ -317,6 +423,8 @@ export class QueueManager {
     } finally {
       if (guardOwned) await fs.rm(guard, { recursive: true, force: true });
     }
+    // v0.5.1: register in the heartbeat index so heartbeat({ taskId }) is O(1).
+    this._claimedIndex.set(task.task_id, { file: claimed, owner });
     await this.eventManager.emitEvent({
       event_type: "task.claimed",
       task_id: task.task_id,
@@ -414,4 +522,31 @@ function isTaskExpired(task) {
   if (!base) return false;
   const expiresAt = Date.parse(base) + normalizeTtl(task.ttl_minutes) * 60_000;
   return Number.isFinite(expiresAt) && expiresAt < Date.now();
+}
+
+/**
+ * Run `mapper` over `items` with at most `concurrency` in-flight calls. Returns
+ * an array in the same order as the input. Hand-rolled to avoid an extra
+ * runtime dep (`p-limit`-style). Errors short-circuit the whole batch — the
+ * caller is responsible for try/catch inside the mapper if it wants
+ * partial-success semantics.
+ *
+ * Exported for tests so we can verify the bounded behavior without touching
+ * the filesystem.
+ */
+export async function mapWithConcurrency(items, concurrency, mapper) {
+  const limit = Math.max(1, Math.min(concurrency | 0 || 1, items.length || 1));
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      results[idx] = await mapper(items[idx], idx);
+    }
+  }
+  const workers = [];
+  for (let i = 0; i < limit; i++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
 }
