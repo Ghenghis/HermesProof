@@ -27,6 +27,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { writeSbomToProof } from "./sbom-generator.mjs";
 import {
   runProviderRegistryValidate,
   runLocalModelsCatalogValidate,
@@ -938,6 +939,7 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
 }
 
 // ----------------------------------------------------------------------------
+<<<<<<< HEAD
 // Gate: provider.registry.validate — schema + completeness of registry.yaml
 // ----------------------------------------------------------------------------
 if (!shouldSkip("provider.registry.validate")) {
@@ -1114,6 +1116,29 @@ if (!shouldSkip("secret.scan")) {
     detailParts.push(`SCANNER ERROR: ${result.error || result.parse_error || `exit=${result.exit_code}`}`);
   detailParts.push(`${result.findings?.length || 0} finding(s)`);
   record("secret.scan", "required", ok, result, detailParts.join(": "), durationMs);
+}
+
+// ----------------------------------------------------------------------------
+// Gate: sbom.cyclonedx_generated — emit CycloneDX 1.5 SBOM at PROOF/sbom.json
+// ----------------------------------------------------------------------------
+if (!shouldSkip("sbom.cyclonedx_generated")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await writeSbomToProof(repoRoot);
+  });
+  if (error) {
+    record("sbom.cyclonedx_generated", "required", false, {}, error.message, durationMs);
+  } else if (!result.ok) {
+    record("sbom.cyclonedx_generated", "required", false, { reason: result.reason },
+      `sbom generation failed: ${result.reason}`, durationMs);
+  } else {
+    record("sbom.cyclonedx_generated", "required", true, {
+      path: result.path,
+      components: result.components,
+      sha256: result.sha256,
+      serial_number: result.serialNumber,
+      spec_version: "1.5"
+    }, `${result.components} components @ ${result.path}`, durationMs);
+  }
 }
 
 // ----------------------------------------------------------------------------
