@@ -27,7 +27,7 @@ Thumbs.db
 .env.*
 !.env.example
 
-# 2026-05-03 hardening: catch secret-bearing variants the standard .env pattern misses
+# 2026-05-03 hardening: explicit local env variants plus catch-all suffixes
 .env.txt
 .env.bak
 .env.old
@@ -42,3 +42,5 @@ Thumbs.db
 !.env.example
 !.env.vps.example
 !.env.deploy.example
+!.env.production.example
+!.env.staging.example

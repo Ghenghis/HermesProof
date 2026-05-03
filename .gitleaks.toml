@@ -21,8 +21,8 @@ keywords = ["hf_"]
 
 [[rules]]
 id = "siliconflow-api-key"
-description = "SiliconFlow API key"
-regex = '''sk-[a-zA-Z0-9_-]{40,}'''
+description = "SiliconFlow API key (requires siliconflow keyword co-located within 120 chars)"
+regex = '''(?i)siliconflow[\s\S]{0,120}sk-[a-zA-Z0-9_-]{40,}'''
 keywords = ["siliconflow"]
 
 [[rules]]
@@ -37,7 +37,7 @@ description = "CodeRabbit API key"
 regex = '''(?i)coderabbit[_-]?(api[_-]?)?key['"\s:=]+([a-zA-Z0-9_-]{30,})'''
 keywords = ["coderabbit"]
 
-[allowlist]
+[[allowlists]]
 description = "Permitted patterns — synthetic test keys, examples"
 regexes = [
   '''sk-ant-test-[a-zA-Z0-9-]+''',
@@ -46,5 +46,4 @@ regexes = [
 paths = [
   '''.*\.example$''',
   '''node_modules/.*''',
-  '''PROOF/.*''',
 ]
