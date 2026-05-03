@@ -13,6 +13,7 @@ import { ensureEventDirs, generateReviewPacket, validateEventEnvelope } from "./
 import { markEventHandled } from "./watch-events.mjs";
 import {
   runLicensesScanGate,
+  runDependencyFreshGate,
   LICENSE_ALLOWLIST,
   LICENSE_DENYLIST
 } from "./license-and-deps-gates.mjs";
@@ -752,4 +753,60 @@ test("licenses.scan passes a fixture package list of allowlisted licenses", () =
   assert.equal(out.ok, true);
   assert.equal(out.evidence.denylisted_packages.length, 0);
   assert.equal(out.evidence.unknown_packages.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// dependency.fresh truth-gate unit tests
+//
+// All inputs are fixtures — these tests MUST NOT touch the real npm registry.
+// The harness does that in a separate gate.
+// ---------------------------------------------------------------------------
+test("dependency.fresh emits warn for a fixture dep aged 12-18 months", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  // Mock dep: published ~14 months ago — should warn but NOT fail.
+  const fakePublished = new Date(now.getTime() - 14 * 30 * 24 * 60 * 60 * 1000).toISOString();
+  const pkgJson = { dependencies: { "fake-aging-pkg": "^1.0.0" } };
+  const fetchLatest = async () => ({ latestVersion: "1.0.0", publishedAt: fakePublished });
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, false);
+  assert.equal(out.ok, true, "12-18mo old dep must NOT fail the gate (warn only)");
+  assert.equal(out.evidence.warn_count, 1);
+  assert.equal(out.evidence.stale_count, 0);
+  assert.equal(out.evidence.details[0].status, "warn");
+  assert.equal(out.evidence.details[0].name, "fake-aging-pkg");
+});
+
+test("dependency.fresh fails when a direct dep is older than 18 months", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  const fakePublished = new Date(now.getTime() - 24 * 30 * 24 * 60 * 60 * 1000).toISOString();
+  const pkgJson = { dependencies: { "ancient-pkg": "^1.0.0" } };
+  const fetchLatest = async () => ({ latestVersion: "1.0.0", publishedAt: fakePublished });
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, false);
+  assert.equal(out.ok, false);
+  assert.equal(out.evidence.stale_count, 1);
+});
+
+test("dependency.fresh skips cleanly when registry is unreachable", async () => {
+  const now = new Date("2026-05-03T00:00:00Z");
+  const pkgJson = { dependencies: { offline: "^1.0.0" } };
+  const fetchLatest = async () => {
+    const err = new Error("getaddrinfo ENOTFOUND registry.npmjs.org");
+    err.code = "ENETWORK";
+    throw err;
+  };
+  const out = await runDependencyFreshGate({ pkgJson, fetchLatest, now });
+  assert.equal(out.skip, true);
+  assert.equal(out.ok, true);
+  assert.match(out.details, /no network/);
+});
+
+test("dependency.fresh passes when there are no direct dependencies", async () => {
+  const out = await runDependencyFreshGate({
+    pkgJson: { dependencies: {} },
+    fetchLatest: async () => { throw new Error("must not be called"); }
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.skip, false);
+  assert.equal(out.evidence.direct_deps_count, 0);
 });
