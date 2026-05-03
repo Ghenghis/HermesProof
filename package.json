@@ -1,6 +1,6 @@
 {
   "name": "hermesproof",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "HermesProof — verifiable multi-agent coordination over MCP. Per-file locks, atomic handoffs, allowlisted gates, evidence ledger, and truth-gate proof bundle.",
