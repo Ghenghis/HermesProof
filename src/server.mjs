@@ -8,6 +8,7 @@ import { HermesLockManager } from "./core/lock-manager.mjs";
 import { GateRunner } from "./core/gate-runner.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
+import { loadRegistryProviders } from "./core/registry-providers.mjs";
 
 // Env-file resolution precedence (HermesProof v0.6):
 //   1. HERMES3D_PROFILE=vps + HERMES3D_VPS_ENV_FILE  (deploy mode)
@@ -41,6 +42,14 @@ const stateDirName = process.env.MCP_LOCK_STATE_DIR || undefined;
 const manager = new HermesLockManager({ workspaceRoot, stateDirName });
 const gates = new GateRunner({ workspaceRoot });
 const anon = new AnonymousOrchestrator({ workspaceRoot, stateDirName });
+// Auto-load any of the 62 Continue LLM provider classes from
+// policies/provider-registry/registry.yaml. Per the user's directive: don't
+// exclude any providers. The 6 hardcoded built-ins remain the fast path; the
+// registry extends the failover chain with whatever else has API keys in env.
+const registryLoad = await loadRegistryProviders({ workspaceRoot }).catch((err) => {
+  console.error("[hermesproof] registry load failed (non-fatal):", err?.message);
+  return { ok: false, providers: [] };
+});
 const hermesAgent = new HermesAgentBridge({
   orchestrator: anon,
   enabled: process.env.HERMES_AGENT_ENABLED === "1",
@@ -48,6 +57,7 @@ const hermesAgent = new HermesAgentBridge({
     ? process.env.HERMES_AGENT_SCOPE.split(",").map((s) => s.trim())
     : null,
   projectGoals: process.env.HERMES_AGENT_PROJECT_GOALS || null,
+  registryProviders: registryLoad.providers || [],
 });
 await manager.init();
 await anon.init();

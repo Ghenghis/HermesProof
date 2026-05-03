@@ -118,7 +118,9 @@ const PROVIDERS = {
 
 // User preference (per 2026-05-03 conversation): DeepSeek + MiniMax are the
 // preferred cloud brains; SiliconFlow is the third cloud; LM Studio / Ollama
-// / Hipfire are local fallbacks.
+// / Hipfire are local fallbacks. The registry layer (registry-providers.mjs)
+// can extend this with any of the 62 Continue LLM provider classes when the
+// user supplies the corresponding API key in env.
 const DEFAULT_FAILOVER = ["deepseek", "minimax", "siliconflow", "lm_studio", "ollama", "hipfire"];
 
 function resolveProviderEndpoint(p) {
@@ -146,6 +148,8 @@ export class HermesAgentBridge {
    * @param {string[]} [options.scope]
    * @param {string} [options.projectGoals]
    * @param {object} [options.modelOverrides] - { providerName: modelId }
+   * @param {Array} [options.registryProviders] - extra providers loaded from
+   *   policies/provider-registry/registry.yaml; appended to failover list.
    */
   constructor({
     orchestrator,
@@ -154,6 +158,7 @@ export class HermesAgentBridge {
     scope = null,
     projectGoals = null,
     modelOverrides = {},
+    registryProviders = [],
   } = {}) {
     if (!orchestrator) throw new Error("HermesAgentBridge requires an orchestrator");
     this.orchestrator = orchestrator;
@@ -162,7 +167,16 @@ export class HermesAgentBridge {
     this.scope = scope;
     this.projectGoals = projectGoals;
     this.modelOverrides = modelOverrides;
+    this.registryProviders = registryProviders;
     this.activeSessionId = null;
+    // Merge registry providers into the PROVIDERS map (don't shadow built-ins).
+    this._mergedProviders = { ...PROVIDERS };
+    for (const rp of registryProviders) {
+      if (this._mergedProviders[rp.name]) continue; // built-in wins
+      this._mergedProviders[rp.name] = rp;
+      // Extend failover order with the new providers (only if not already present)
+      if (!this.failoverOrder.includes(rp.name)) this.failoverOrder = [...this.failoverOrder, rp.name];
+    }
   }
 
   _resolvedProviders() {
