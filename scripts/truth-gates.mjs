@@ -27,6 +27,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { checkSecretRotationEvidence } from "./secret-rotation-evidence.mjs";
 import { runMcpScanStaticGate } from "./mcp-scan-static-gate.mjs";
 import { writeSbomToProof } from "./sbom-generator.mjs";
 import {
@@ -244,6 +245,7 @@ if (!shouldSkip("tests.unit")) {
           "scripts/coordination-smoke-test.mjs",
           "scripts/hardening-smoke-test.mjs",
           "scripts/registry-validate-smoke-test.mjs",
+          "scripts/secret-rotation-smoke-test.mjs",
           "scripts/mcp-scan-static-gate.test.mjs"
         ],
         { cwd: repoRoot, encoding: "utf8", shell: false }
@@ -1138,6 +1140,31 @@ if (!shouldSkip("secret.scan")) {
     detailParts.push(`SCANNER ERROR: ${result.error || result.parse_error || `exit=${result.exit_code}`}`);
   detailParts.push(`${result.findings?.length || 0} finding(s)`);
   record("secret.scan", "required", ok, result, detailParts.join(": "), durationMs);
+}
+
+// ----------------------------------------------------------------------------
+// Gate: secrets.rotation_evidence_present — metadata-only check that the
+// configured Hermes3D env file (G:\private\.env or HERMES3D_ENV_FILE) has
+// been modified within HERMES_SECRET_MAX_AGE_DAYS (default 90). Never reads
+// the file's contents — only fs.stat.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("secrets.rotation_evidence_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await checkSecretRotationEvidence();
+  });
+  if (error) {
+    record("secrets.rotation_evidence_present", "warn", false, {}, error.message, durationMs);
+  } else {
+    const level = "warn";
+    record(
+      "secrets.rotation_evidence_present",
+      level,
+      result.ok,
+      result.evidence,
+      result.details,
+      durationMs
+    );
+  }
 }
 
 // ----------------------------------------------------------------------------
