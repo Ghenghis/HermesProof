@@ -108,7 +108,14 @@ const EventType = z.enum([
 ]);
 const NextActor = z.enum(["claude", "codex", "human", "unassigned"]).default("unassigned");
 const RecommendedAction = z.enum(["review_pr", "fix_scope", "merge", "review_handoff", "acknowledge", "none"]).default("none");
-const TaskId = z.string().regex(/^[A-Za-z0-9._-]{2,128}$/, "task id must match ^[A-Za-z0-9._-]{2,128}$");
+const LegacyPathId = z
+  .string()
+  .min(2)
+  .max(128)
+  .regex(/^[A-Za-z0-9._-]+$/, "id must match ^[A-Za-z0-9._-]+$")
+  .refine((id) => !id.includes(".."), "id must not contain parent refs");
+const TaskId = LegacyPathId.describe("Stable task id safe for use as a state-file path component.");
+const OptionalTaskId = z.union([LegacyPathId, z.literal("")]).default("");
 
 function toolResult(value) {
   return {
@@ -161,7 +168,7 @@ registerTool(
     inputSchema: {
       owner: Owner,
       role: z.string().default("agent"),
-      taskId: z.string().optional().describe("Stable task id, e.g. CP-UX-A-CODEX."),
+      taskId: TaskId.optional().describe("Stable task id, e.g. CP-UX-A-CODEX."),
       title: z.string().default(""),
       files: z.array(z.string()).default([]),
       reason: z.string().default("")
@@ -180,7 +187,7 @@ registerTool(
     description: "Release a task after all locked files have been released and evidence appended.",
     inputSchema: {
       owner: Owner,
-      taskId: z.string().min(1),
+      taskId: TaskId,
       note: z.string().default("")
     },
     annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
@@ -198,7 +205,7 @@ registerTool(
     inputSchema: {
       owner: Owner,
       role: z.string().default("agent"),
-      taskId: z.string().default(""),
+      taskId: OptionalTaskId,
       files: Files,
       reason: z.string().default(""),
       ttlMinutes: z.number().int().min(5).max(720).default(90)
@@ -234,7 +241,7 @@ registerTool(
     description: "Refresh locks for a running task/session so other agents know the owner is still active.",
     inputSchema: {
       owner: Owner,
-      taskId: z.string().default("")
+      taskId: OptionalTaskId
     },
     annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
   },
@@ -266,7 +273,7 @@ registerTool(
       currentOwner: Owner,
       files: Files,
       reason: z.string().default(""),
-      taskId: z.string().default("")
+      taskId: OptionalTaskId
     },
     annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: true }
   },
@@ -282,7 +289,7 @@ registerTool(
     description: "Approve or deny a handoff request. Only the current lock owner can approve. Approval transfers lock ownership; denial keeps the lock.",
     inputSchema: {
       owner: Owner,
-      requestId: z.string().min(1),
+      requestId: LegacyPathId,
       decision: z.enum(["approve", "deny"]).default("approve"),
       note: z.string().default("")
     },
@@ -380,7 +387,7 @@ registerTool(
     title: "Create blocked handoff",
     description: "Write a blocked handoff markdown file, append evidence, emit task.blocked, and optionally release owned locks.",
     inputSchema: {
-      task_id: z.string().min(1),
+      task_id: TaskId,
       owner: Owner,
       reason: z.string().min(1),
       blocked_files: z.array(z.string()).default([]),
