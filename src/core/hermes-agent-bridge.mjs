@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 /**
  * HermesAgentBridge — connects HermesProof to the Hermes Agent reasoning loop.
  *
@@ -150,6 +152,15 @@ function intersectScope(requestedScope, configuredScope) {
   return requestedScope.filter((cap) => configured.has(cap));
 }
 
+function redactText(value, max = 800) {
+  const text = String(value || "").trim();
+  return text.length <= max ? text : `${text.slice(0, max)}...`;
+}
+
+function shortHash(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 16);
+}
+
 export class HermesAgentBridge {
   /**
    * @param {object} options
@@ -280,6 +291,17 @@ export class HermesAgentBridge {
     });
 
     if (!decision.ok) return decision;
+    await this.orchestrator._appendEvidence({
+      kind: "hermes_agent_decision",
+      task: "user_session_authorization",
+      requested_scope: requestedScope,
+      final_scope: finalScope,
+      verdict: decision.verdict,
+      rationale: redactText(decision.rationale),
+      provider_used: decision.provider_used || null,
+      model_used: decision.model_used || null,
+      ts_utc: new Date().toISOString(),
+    });
     if (decision.verdict !== "approve") {
       return { ok: false, reason: `agent declined: ${decision.rationale}` };
     }
@@ -313,13 +335,24 @@ export class HermesAgentBridge {
     if (!auth.allowed) {
       return { ok: false, reason: `not authorized: ${auth.reason}` };
     }
-    return this._askAgent({
+    const decision = await this._askAgent({
       task: "resolve_blocked_handoff",
       project_goals: this.projectGoals,
       correlation,
       summary,
       thread: full_thread,
     });
+    if (decision.ok) {
+      await this.orchestrator._appendEvidence({
+        kind: "hermes_agent_blocked_resolution",
+        correlation,
+        summary_hash: shortHash(summary),
+        verdict: decision.verdict,
+        rationale: redactText(decision.rationale),
+        ts_utc: new Date().toISOString(),
+      });
+    }
+    return decision;
   }
 
   /**
