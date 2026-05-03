@@ -50,7 +50,7 @@ Design choices:
 
 Combines ReputationTracker and SkillRotation into a composite routing score:
 
-```
+```text
 composite = reputation_score × 0.5
           + recency_bonus    × 0.3   (1.0 if active in last 10 min, else 0.5)
           - load_penalty     × 0.2   (this_actor_count / max_actor_count for type)
@@ -63,7 +63,7 @@ Exposed via `hermes_dispatch_recommend(task_type, candidates[])`. Returns `{ act
 Implements the [Google A2A](https://github.com/google/A2A) task lifecycle as file-persisted MCP-accessible state. Tasks live at `.hermes3d_orchestrator/a2a_tasks.json`.
 
 State machine:
-```
+```text
 submitted → working → completed
                     → failed
                     → input_required → working
@@ -88,7 +88,7 @@ This is called a "stub" because:
 | `hermes_a2a_update_task` | Transition A2A task status |
 | `hermes_a2a_list_tasks` | List A2A tasks with optional filters |
 
-Tool count: 20 existing (v0.6 main) + 8 new = 28 tools (or 34 after PR #20 anonymous orchestrator tools land).
+Tool count: 42 MCP tools, confirmed from the live `tools/list` response on the v0.7 branch.
 
 ---
 
@@ -124,7 +124,7 @@ Once PR #20 (anonymous orchestrator + Hermes Agent bridge) is merged:
 - Eight new tools increase the capability surface for CI gates and downstream tooling.
 
 **Negative / Mitigations:**
-- Five new state files (skill_rotation.json, reputation.json, a2a_tasks.json) added alongside existing orchestrator state. Bounded by pruning / 24h TTL.
+- Three new state files (skill_rotation.json, reputation.json, a2a_tasks.json) added alongside existing orchestrator state. Bounded by pruning / 24h TTL.
 - `hermes_list_agents` is O(n×m) over actors × candidates if `task_type` is provided. Bounded in practice (< 100 active agents in any realistic session).
 - Dispatch is advisory, not enforced — agents can ignore recommendations. This is intentional (preserve anonymous coordination spirit).
 
