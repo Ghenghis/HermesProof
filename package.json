@@ -32,11 +32,12 @@
   "scripts": {
     "start": "node src/server.mjs",
     "mcp:dev": "node src/server.mjs",
-    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/anonymous-orchestrator-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs",
+    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/anonymous-orchestrator-smoke-test.mjs scripts/secret-rotation-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs",
     "smoke": "node --test scripts/coordination-smoke-test.mjs",
     "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
     "smoke:perf": "node --test scripts/perf-v0.5.1-smoke-test.mjs",
     "smoke:anonymous": "node --test scripts/anonymous-orchestrator-smoke-test.mjs",
+    "smoke:secret-rotation": "node --test scripts/secret-rotation-smoke-test.mjs",
     "stream:validate": "node scripts/stream-validate.mjs",
     "stream:watchdog": "node scripts/stream-watchdog.mjs",
     "stream:backup": "node scripts/stream-backup.mjs",
