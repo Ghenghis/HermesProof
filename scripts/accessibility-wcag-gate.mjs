@@ -103,11 +103,38 @@ export async function runAxeOnSitePath(htmlPath) {
 
 /**
  * Reduce raw axe results to the gate verdict.
- *   - "critical" + "serious" violations are blockers.
- *   - "moderate" + "minor" violations are surfaced as warnings only.
- *   - "incomplete" rules (axe couldn't determine) are surfaced as warnings.
+ *
+ * Block-on:
+ *   - "critical" + "serious" violations
+ *   - "incomplete" results with WCAG-AA tag where axe believed it serious
+ *     or critical (color-contrast under JSDOM is the canonical case).
+ *     The 2026-05-03 audit (Codex) flagged that previously every incomplete
+ *     was treated as warn-only, allowing serious color-contrast holes to
+ *     pass with a green badge. Closed here per HermesProof
+ *     weakness-correction discipline.
+ *
+ * Warnings (don't block):
+ *   - "moderate" + "minor" violations
+ *   - "incomplete" results that are advisory or non-AA
+ *
+ * Recognised AA tags: wcag2aa, wcag2a, wcag21aa, wcag21a (all four imply
+ * WCAG AA conformance is being asserted by axe).
  */
-export function classifyAxeResults(axeResults) {
+const WCAG_AA_TAGS = new Set(["wcag2aa", "wcag2a", "wcag21aa", "wcag21a"]);
+
+function isWcagAa(item) {
+  const tags = item?.tags || [];
+  return tags.some((t) => WCAG_AA_TAGS.has(t));
+}
+
+function isSerious(impact) {
+  return impact === "critical" || impact === "serious";
+}
+
+export function classifyAxeResults(axeResults, options = {}) {
+  const {
+    blockOnSeriousIncomplete = true, // 2026-05-03 default per Codex audit
+  } = options;
   const violations = axeResults.violations || [];
   const incomplete = axeResults.incomplete || [];
 
@@ -123,25 +150,37 @@ export function classifyAxeResults(axeResults) {
       node_count: (v.nodes || []).length,
       sample_nodes: (v.nodes || []).slice(0, 3).map((n) => ({
         target: n.target,
-        html: (n.html || "").slice(0, 200)
-      }))
+        html: (n.html || "").slice(0, 200),
+      })),
     };
-    if (v.impact === "critical" || v.impact === "serious") {
+    if (isSerious(v.impact)) {
       blockers.push(entry);
     } else {
       warnings.push(entry);
     }
   }
   for (const i of incomplete) {
-    warnings.push({
+    const entry = {
       id: i.id,
       impact: i.impact || "incomplete",
       help: i.help,
       help_url: i.helpUrl,
       tags: i.tags,
       node_count: (i.nodes || []).length,
-      kind: "incomplete"
-    });
+      kind: "incomplete",
+    };
+    // Block on serious/critical INCOMPLETE WCAG-AA findings — these are
+    // genuine unverified-but-likely-failing checks (e.g. color-contrast in
+    // JSDOM where axe couldn't measure). Treating them as warnings hides
+    // real defects behind a green badge.
+    if (blockOnSeriousIncomplete && isSerious(i.impact) && isWcagAa(i)) {
+      blockers.push({
+        ...entry,
+        block_reason: "serious WCAG-AA incomplete result; verify with browser-backed axe (Playwright)",
+      });
+    } else {
+      warnings.push(entry);
+    }
   }
   return {
     ok: blockers.length === 0,
@@ -152,8 +191,8 @@ export function classifyAxeResults(axeResults) {
       incomplete_count: incomplete.length,
       blocker_count: blockers.length,
       warning_count: warnings.length,
-      pass_count: (axeResults.passes || []).length
-    }
+      pass_count: (axeResults.passes || []).length,
+    },
   };
 }
 
