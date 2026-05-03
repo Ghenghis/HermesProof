@@ -22,6 +22,7 @@
  */
 
 import { writeJsonAtomic, ensureDir, readJson } from "./fs-utils.mjs";
+import { makeMutex } from "./mutex.mjs";
 import path from "node:path";
 
 const WINDOW_SIZE = 30; // rolling window of last 30 events
@@ -38,6 +39,10 @@ export class ReputationTracker {
     if (!workspaceRoot) throw new Error("ReputationTracker requires workspaceRoot");
     this.stateDir = path.join(workspaceRoot, stateDirName);
     this.stateFile = path.join(this.stateDir, "reputation.json");
+    // Serialize concurrent recordOutcome calls — pre-fix, parallel CI
+    // recordings could race on read-modify-write and drop events.
+    // Cross-confirmed by 2026-05-03 audit (5/5 lanes flagged).
+    this._mutex = makeMutex();
   }
 
   async init() {
@@ -71,23 +76,25 @@ export class ReputationTracker {
     if (!(outcome in OUTCOME_DELTAS)) {
       throw new Error(`unknown outcome: ${outcome}. Valid: ${Object.keys(OUTCOME_DELTAS).join(", ")}`);
     }
-    const state = await this._read();
-    if (!state.actors[actor_id]) {
-      state.actors[actor_id] = { score: 1.0, events: [], total_outcomes: 0 };
-    }
-    const rec = state.actors[actor_id];
-    const delta = OUTCOME_DELTAS[outcome];
-    const event = { ts: Date.now(), outcome, delta, context: context ?? null };
-    rec.events.push(event);
-    if (rec.events.length > WINDOW_SIZE) rec.events = rec.events.slice(-WINDOW_SIZE);
-    rec.total_outcomes = (rec.total_outcomes ?? 0) + 1;
-    // Recompute from rolling window (start at 1.0 as baseline)
-    rec.score = Math.max(
-      0,
-      1.0 + rec.events.reduce((sum, e) => sum + e.delta, 0)
-    );
-    await this._write(state);
-    return { ok: true, actor_id, outcome, delta, new_score: rec.score };
+    return this._mutex(async () => {
+      const state = await this._read();
+      if (!state.actors[actor_id]) {
+        state.actors[actor_id] = { score: 1.0, events: [], total_outcomes: 0 };
+      }
+      const rec = state.actors[actor_id];
+      const delta = OUTCOME_DELTAS[outcome];
+      const event = { ts: Date.now(), outcome, delta, context: context ?? null };
+      rec.events.push(event);
+      if (rec.events.length > WINDOW_SIZE) rec.events = rec.events.slice(-WINDOW_SIZE);
+      rec.total_outcomes = (rec.total_outcomes ?? 0) + 1;
+      // Recompute from rolling window (start at 1.0 as baseline)
+      rec.score = Math.max(
+        0,
+        1.0 + rec.events.reduce((sum, e) => sum + e.delta, 0)
+      );
+      await this._write(state);
+      return { ok: true, actor_id, outcome, delta, new_score: rec.score };
+    });
   }
 
   /**

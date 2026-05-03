@@ -12,6 +12,7 @@ import {
   writeJsonAtomic
 } from "./fs-utils.mjs";
 import { EventManager } from "./event-manager.mjs";
+import { makeMutex } from "./mutex.mjs";
 
 export const TASK_SCHEMA_VERSION = 1;
 const DEFAULT_TTL_MINUTES = 120;
@@ -37,6 +38,11 @@ export class QueueManager {
     // init() and on every recoverStaleTasks call so stale entries cannot linger
     // across server restarts or external mutations.
     this._claimedIndex = new Map();
+    // Serialize concurrent heartbeats — without this, two simultaneous
+    // heartbeat() calls for the same owner can both read+write the same
+    // task file, dropping one heartbeat_utc update. The 2026-05-03 audit
+    // cross-confirmed this gap.
+    this._heartbeatMutex = makeMutex();
   }
 
   async init() {
@@ -309,49 +315,51 @@ export class QueueManager {
   async heartbeat({ owner, taskId = "" }) {
     assertOwner(owner);
     await this.init();
-    const now = utcNow();
-    const touched = [];
-    if (taskId) {
-      const id = normalizeTaskId(taskId);
-      const indexed = this._claimedIndex.get(id);
-      // Fast path: index says we own it. Read+write the single file, no scan.
-      if (indexed && indexed.owner === owner) {
-        const task = await readJson(indexed.file, null);
+    return this._heartbeatMutex(async () => {
+      const now = utcNow();
+      const touched = [];
+      if (taskId) {
+        const id = normalizeTaskId(taskId);
+        const indexed = this._claimedIndex.get(id);
+        // Fast path: index says we own it. Read+write the single file, no scan.
+        if (indexed && indexed.owner === owner) {
+          const task = await readJson(indexed.file, null);
+          if (task && isTaskVersion(task) && task.claimed_by === owner) {
+            task.heartbeat_utc = now;
+            await writeJsonAtomic(indexed.file, task);
+            touched.push(task.task_id);
+            return touched;
+          }
+          // Index drifted (manual edit, prior crash). Drop and fall through.
+          this._claimedIndex.delete(id);
+        }
+        // Cold path: index miss but caller asked for a specific id. Read the
+        // canonical file directly — still O(1) — instead of scanning.
+        const file = this.taskPath("claimed", id);
+        const task = await readJson(file, null);
         if (task && isTaskVersion(task) && task.claimed_by === owner) {
           task.heartbeat_utc = now;
-          await writeJsonAtomic(indexed.file, task);
+          await writeJsonAtomic(file, task);
           touched.push(task.task_id);
-          return touched;
+          // Keep the index hot for next call.
+          this._claimedIndex.set(task.task_id, { file, owner });
         }
-        // Index drifted (manual edit, prior crash). Drop and fall through.
-        this._claimedIndex.delete(id);
+        return touched;
       }
-      // Cold path: index miss but caller asked for a specific id. Read the
-      // canonical file directly — still O(1) — instead of scanning.
-      const file = this.taskPath("claimed", id);
-      const task = await readJson(file, null);
-      if (task && isTaskVersion(task) && task.claimed_by === owner) {
+      // Batch path (no taskId): walk all claimed tasks. This stays an O(n) scan
+      // because the caller wants every task they own — there's no way to
+      // shortcut "everything I own" without the same set of reads.
+      for (const item of await this.readTasks("claimed")) {
+        const task = item.task;
+        if (!isTaskVersion(task)) continue;
+        if (task.claimed_by !== owner) continue;
         task.heartbeat_utc = now;
-        await writeJsonAtomic(file, task);
+        await writeJsonAtomic(item.file, task);
         touched.push(task.task_id);
-        // Keep the index hot for next call.
-        this._claimedIndex.set(task.task_id, { file, owner });
+        this._claimedIndex.set(task.task_id, { file: item.file, owner });
       }
       return touched;
-    }
-    // Batch path (no taskId): walk all claimed tasks. This stays an O(n) scan
-    // because the caller wants every task they own — there's no way to
-    // shortcut "everything I own" without the same set of reads.
-    for (const item of await this.readTasks("claimed")) {
-      const task = item.task;
-      if (!isTaskVersion(task)) continue;
-      if (task.claimed_by !== owner) continue;
-      task.heartbeat_utc = now;
-      await writeJsonAtomic(item.file, task);
-      touched.push(task.task_id);
-      this._claimedIndex.set(task.task_id, { file: item.file, owner });
-    }
-    return touched;
+    });
   }
 
   /**

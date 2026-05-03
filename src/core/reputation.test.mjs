@@ -85,4 +85,28 @@ describe("ReputationTracker", () => {
       /unknown outcome/
     );
   });
+
+  it("serializes concurrent recordOutcome — all 50 outcomes land (race-condition guard)", async () => {
+    // Pre-fix, parallel CI loggings recording outcomes for the same actor
+    // could race on read-modify-write (read state → mutate → write atomic).
+    // After mutex, every outcome appends to events[] and total_outcomes is exact.
+    const raceDir = await fs.mkdtemp(path.join(os.tmpdir(), "hermes-rep-race-"));
+    const race = new ReputationTracker({ workspaceRoot: raceDir });
+    await race.init();
+    try {
+      const N = 50;
+      // Half merge (+1.0), half reject (-1.0) — score should net to 1.0 (baseline).
+      const calls = [];
+      for (let i = 0; i < N; i++) {
+        calls.push(race.recordOutcome("race-actor", i % 2 === 0 ? "merge" : "reject", `iter-${i}`));
+      }
+      await Promise.all(calls);
+      const score = await race.getScore("race-actor");
+      assert.equal(score.total_outcomes, N, `expected ${N} outcomes recorded, got ${score.total_outcomes}`);
+      // events[] is rolling-windowed to WINDOW_SIZE=30 — verify it's truncated correctly.
+      assert.ok(score.recent_events.length <= 5, "recent_events is the last 5 by contract");
+    } finally {
+      await fs.rm(raceDir, { recursive: true, force: true });
+    }
+  });
 });

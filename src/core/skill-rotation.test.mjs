@@ -63,4 +63,29 @@ describe("SkillRotation", () => {
     assert.notEqual(rec, "gate");
     assert.ok(KNOWN_TASK_TYPES.includes(rec));
   });
+
+  it("serializes concurrent recordTask — exact total_tasks count under 50-parallel load", async () => {
+    // Pre-fix, two concurrent recordTask calls could read+mutate+write the
+    // same actor entry, dropping count increments. With the mutex every
+    // call serializes; total_tasks must equal the exact number of calls.
+    const raceDir = await fs.mkdtemp(path.join(os.tmpdir(), "hermes-sr-race-"));
+    const race = new SkillRotation({ workspaceRoot: raceDir });
+    await race.init();
+    try {
+      const N = 50;
+      const calls = [];
+      for (let i = 0; i < N; i++) {
+        // Mix of task types to also exercise the per-type histogram increments.
+        const type = ["gate", "lock", "review", "build", "docs"][i % 5];
+        calls.push(race.recordTask("race-actor", type));
+      }
+      await Promise.all(calls);
+      const actor = await race.getActor("race-actor");
+      assert.equal(actor.total_tasks, N, `expected ${N} total_tasks, got ${actor.total_tasks}`);
+      const histSum = Object.values(actor.task_counts).reduce((a, b) => a + b, 0);
+      assert.equal(histSum, N, `task_counts histogram should sum to ${N}, got ${histSum}`);
+    } finally {
+      await fs.rm(raceDir, { recursive: true, force: true });
+    }
+  });
 });
