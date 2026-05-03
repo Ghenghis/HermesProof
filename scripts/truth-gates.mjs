@@ -27,6 +27,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { checkSecretRotationEvidence } from "./secret-rotation-evidence.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -908,6 +909,37 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
         ? `${result.required_count}/${result.required_count} deliverables present`
         : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
       durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: secrets.rotation_evidence_present — metadata-only check that the
+// configured Hermes3D env file (G:\private\.env or HERMES3D_ENV_FILE) has
+// been modified within HERMES_SECRET_MAX_AGE_DAYS (default 90). Never reads
+// the file's contents — only fs.stat. If the env file does not exist (e.g.
+// running on CI where G:\private\.env is not present), the gate is recorded
+// as a WARN with reason=env_file_missing rather than failing.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("secrets.rotation_evidence_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await checkSecretRotationEvidence();
+  });
+  if (error) {
+    record("secrets.rotation_evidence_present", "warn", false, {}, error.message, durationMs);
+  } else {
+    // env_file_missing -> WARN level, ok=true (not_applicable on CI)
+    // stale            -> WARN level, ok=false
+    // fresh            -> WARN level, ok=true
+    // stat_error       -> WARN level, ok=false
+    const level = "warn";
+    record(
+      "secrets.rotation_evidence_present",
+      level,
+      result.ok,
+      result.evidence,
+      result.details,
+      durationMs
+    );
   }
 }
 
