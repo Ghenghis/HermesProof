@@ -1,8 +1,8 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-05-03T02-39-14-855Z`
-- **Timestamp (UTC)**: 2026-05-03T02:39:14.855Z
-- **Duration**: 1.66s
+- **Run id**: `truth_2026-05-03T03-01-34-085Z`
+- **Timestamp (UTC)**: 2026-05-03T03:01:34.085Z
+- **Duration**: 1.01s
 - **Hermes3D workspace**: `/home/runner/work/HermesProof/HermesProof`
 - **Node**: v20.20.2 on linux
 - **Result**: ✅ ALL REQUIRED GATES PASS
@@ -13,20 +13,20 @@ Pass / Fail / Warn / Skip: **10 / 0 / 0 / 4**
 
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| `source.integrity_manifest` | required | ✅ pass | 13 ms | 18 files hashed |
-| `deps.parity` | required | ✅ pass | 2 ms | all 2 deps installed |
-| `tests.unit` | required | ✅ pass | 921 ms | pass=26, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 232 ms | 20 tools |
+| `source.integrity_manifest` | required | ✅ pass | 7 ms | 18 files hashed |
+| `deps.parity` | required | ✅ pass | 1 ms | all 2 deps installed |
+| `tests.unit` | required | ✅ pass | 377 ms | pass=26, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 209 ms | 20 tools |
 | `doctor.hermes3d` | skipped | ✅ pass | 0 ms | skipped |
-| `events.directory_present` | required | ✅ pass | 12 ms | outbox/handled/failed present |
-| `trigger.doctor_passes` | required | ✅ pass | 80 ms | trigger doctor ok |
-| `e2e.multi_agent_flow` | required | ✅ pass | 380 ms | 14/14 checks; 15 ledger, 11 events |
+| `events.directory_present` | required | ✅ pass | 9 ms | outbox/handled/failed present |
+| `trigger.doctor_passes` | required | ✅ pass | 68 ms | trigger doctor ok |
+| `e2e.multi_agent_flow` | required | ✅ pass | 327 ms | 14/14 checks; 15 ledger, 11 events |
 | `workspace.integrity` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.config_presence` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.claude_code_live` | skipped | ✅ pass | 0 ms | skipped |
 | `server.tool_description_hygiene` | required | ✅ pass | 1 ms | 0 suspicious patterns |
-| `evidence.hash_chain_valid` | required | ✅ pass | 6 ms | positive=true, negative_detected_at_idx_1=true |
-| `docs.master_prompt_deliverables_present` | required | ✅ pass | 3 ms | 10/10 deliverables present |
+| `evidence.hash_chain_valid` | required | ✅ pass | 3 ms | positive=true, negative_detected_at_idx_1=true |
+| `docs.master_prompt_deliverables_present` | required | ✅ pass | 2 ms | 10/10 deliverables present |
 
 ## Machine-readable report
 
