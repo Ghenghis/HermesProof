@@ -11,6 +11,11 @@ import { statePaths } from "../src/core/fs-utils.mjs";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { ensureEventDirs, generateReviewPacket, validateEventEnvelope } from "./generate-review-packet.mjs";
 import { markEventHandled } from "./watch-events.mjs";
+import {
+  runLicensesScanGate,
+  LICENSE_ALLOWLIST,
+  LICENSE_DENYLIST
+} from "./license-and-deps-gates.mjs";
 
 const repoRoot = process.cwd();
 
@@ -659,3 +664,46 @@ async function pathExists(file) {
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// licenses.scan truth-gate unit tests
+//
+// All inputs are fixtures — these tests MUST NOT touch the real npm registry
+// or invoke license-checker. The harness does that in a separate gate.
+// ---------------------------------------------------------------------------
+test("licenses.scan rejects a fixture package list that contains GPL-3.0", () => {
+  const packageList = [
+    { name: "left-pad", version: "1.3.0", licenses: "MIT" },
+    { name: "evil-copyleft", version: "0.0.1", licenses: "GPL-3.0" },
+    { name: "ok-apache", version: "2.5.0", licenses: "Apache-2.0" },
+    { name: "dual-licensed", version: "1.0.0", licenses: "(MIT OR Apache-2.0)" },
+    { name: "review-needed", version: "0.1.0", licenses: "WTFPL" },
+    { name: "mystery", version: "9.9.9", licenses: "Custom-Internal" }
+  ];
+  const out = runLicensesScanGate({ packageList });
+  assert.equal(out.ok, false, "denied package must fail the gate");
+  assert.equal(out.evidence.denylisted_packages.length, 1);
+  assert.equal(out.evidence.denylisted_packages[0].name, "evil-copyleft");
+  assert.deepEqual(out.evidence.denylisted_packages[0].denied, ["GPL-3.0"]);
+  // Allowed paths still classified
+  assert.equal(out.evidence.licenses_by_package["left-pad"].status, "allowed");
+  assert.equal(out.evidence.licenses_by_package["dual-licensed"].status, "allowed");
+  assert.equal(out.evidence.licenses_by_package["review-needed"].status, "review");
+  assert.equal(out.evidence.licenses_by_package["mystery"].status, "unknown");
+  // Allowlist + denylist surfaced as evidence (auditable)
+  assert.deepEqual(out.evidence.allowlist, LICENSE_ALLOWLIST);
+  assert.deepEqual(out.evidence.denylist, LICENSE_DENYLIST);
+});
+
+test("licenses.scan passes a fixture package list of allowlisted licenses", () => {
+  const packageList = [
+    { name: "a", version: "1.0.0", licenses: "MIT" },
+    { name: "b", version: "1.0.0", licenses: "Apache-2.0" },
+    { name: "c", version: "1.0.0", licenses: "BSD-3-Clause" },
+    { name: "d", version: "1.0.0", licenses: "ISC" }
+  ];
+  const out = runLicensesScanGate({ packageList });
+  assert.equal(out.ok, true);
+  assert.equal(out.evidence.denylisted_packages.length, 0);
+  assert.equal(out.evidence.unknown_packages.length, 0);
+});
