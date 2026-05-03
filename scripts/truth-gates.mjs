@@ -27,6 +27,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import {
+  runLicensesScanGate,
+  runDependencyFreshGate,
+  collectInstalledLicensesViaCheck,
+  fetchLatestFromNpm,
+  readPackageJson
+} from "./license-and-deps-gates.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -908,6 +915,63 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
         ? `${result.required_count}/${result.required_count} deliverables present`
         : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
       durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: licenses.scan — every production dep on the SPDX allowlist
+//
+// Required gate. Pulls the live `npx --yes license-checker --production --json`
+// snapshot, normalises SPDX expressions, and fails on any GPL/AGPL/LGPL/SSPL/
+// EUPL/BUSL contact. Conservative-by-design: GPL family stays denied even
+// though it's a valid OSS license — HermesProof itself is MIT and we cannot
+// pull copyleft into the dependency closure without an explicit policy waiver.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("licenses.scan")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const collected = await collectInstalledLicensesViaCheck(repoRoot);
+    if (!collected.ok) {
+      return { collectError: collected.reason };
+    }
+    const gate = runLicensesScanGate({ packageList: collected.packageList });
+    return { gate, package_count: collected.packageList.length };
+  });
+  if (error) {
+    record("licenses.scan", "required", false, {}, error.message, durationMs);
+  } else if (result.collectError) {
+    record("licenses.scan", "required", false, { reason: result.collectError },
+      `license-checker unavailable: ${result.collectError}`, durationMs);
+  } else {
+    record("licenses.scan", "required", result.gate.ok, result.gate.evidence,
+      result.gate.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: dependency.fresh — direct deps published within 18 months
+//
+// Advisory (warn-level) gate. Skipped automatically when offline (npm
+// registry unreachable) so CI without net does not flap. FAIL ages at 18mo,
+// WARN between 12-18mo, PASS otherwise. Threshold tunable via
+// HERMES3D_DEP_FRESH_MONTHS / HERMES3D_DEP_WARN_MONTHS env vars.
+// Registry queries are bounded by the helper's per-request 5s timeout and
+// the full pass exits early on the first ENETWORK to keep CI flap-free.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("dependency.fresh")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const pkgJson = await readPackageJson(repoRoot);
+    return await runDependencyFreshGate({
+      pkgJson,
+      fetchLatest: (name) => fetchLatestFromNpm(name)
+    });
+  });
+  if (error) {
+    record("dependency.fresh", "warn", false, {}, error.message, durationMs);
+  } else if (result.skip) {
+    // Skipped at gate level (offline) — surface as skipped, not warn-fail.
+    record("dependency.fresh", "skipped", true, result.evidence, result.details, durationMs);
+  } else {
+    record("dependency.fresh", "warn", result.ok, result.evidence, result.details, durationMs);
   }
 }
 

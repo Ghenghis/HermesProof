@@ -538,12 +538,17 @@ registerTool(
   "hermes_doctor",
   {
     title: "Doctor (pre-flight checks)",
-    description: "Run non-destructive pre-flight checks: workspace exists, state dir is writable, env vars set, git presence, Node version. Returns findings with suggested fixes.",
-    inputSchema: {},
+    description: "Run non-destructive pre-flight checks: workspace exists, state dir is writable, env vars set, git presence, Node version. Returns findings with suggested fixes. Result is cached for 30s; pass force_refresh=true to re-probe.",
+    inputSchema: {
+      force_refresh: z.boolean().optional()
+        .describe("Bypass the 30s in-memory cache and re-probe the environment. Default false.")
+    },
     annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
   },
-  async () => {
-    try { return toolResult(await manager.doctor()); } catch (err) { return toolError(err); }
+  async (args) => {
+    try {
+      return toolResult(await manager.doctor({ force_refresh: args?.force_refresh === true }));
+    } catch (err) { return toolError(err); }
   }
 );
 
