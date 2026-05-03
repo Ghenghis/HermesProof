@@ -38,24 +38,24 @@ Every edit flows through six gates, leaving an immutable trail behind.
 06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Every push to `main` re-proves the entire chain through 14 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
+Every push to `main` re-proves the entire chain through 16 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
 
 ---
 
 ## ✦ Truth gates
 
-The proof harness — `npm run truth-gates` — runs fourteen independent verifications in sequence, capturing structured evidence at every step.
+The proof harness — `npm run truth-gates` — runs sixteen independent verifications in sequence, capturing structured evidence at every step.
 
 <div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running fourteen gates sequentially" width="100%"/>
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running sixteen gates sequentially" width="100%"/>
 </div>
 
 | #   | Gate                                      | What it proves                                                                       |
 | --- | ----------------------------------------- | ------------------------------------------------------------------------------------ |
 | 01  | `source.integrity_manifest`               | SHA-256 manifest of `src/` + `scripts/` — tampering surfaces as hash drift           |
 | 02  | `deps.parity`                             | `package.json` declared deps match the installed ones in `node_modules/`             |
-| 03  | `tests.unit`                              | All 12 unit tests pass via direct `node --test` (npm pipe-routing bypassed)          |
-| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 20 tools       |
+| 03  | `tests.unit`                              | All Node smoke tests pass via direct `node --test` (npm pipe-routing bypassed)       |
+| 04  | `server.stdio_handshake`                  | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 24 tools       |
 | 05  | `doctor.hermes3d`                         | `hermes_doctor` returns `ok: true` against the live workspace                        |
 | 06  | `e2e.multi_agent_flow`                    | 14-step real stdio probe: claim → lock → block → handoff → gate → release            |
 | 07  | `workspace.integrity`                     | No probe files leaked, no unexpected tracked changes in the workspace                |
@@ -66,6 +66,8 @@ The proof harness — `npm run truth-gates` — runs fourteen independent verifi
 | 12  | `docs.master_prompt_deliverables_present` | All 10 master-prompt design / handoff documents exist, non-empty, with H1 headings   |
 | 13  | `events.directory_present`                | `events/outbox`, `events/handled`, and `events/failed` exist after workspace init    |
 | 14  | `trigger.doctor_passes`                   | Trigger bridge doctor validates event outbox, schema handling, and review-packet ops |
+| 15  | `tasks.directory_present`                 | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
+| 16  | `queue.doctor_passes`                     | Queue doctor validates enqueue, pick, done, owner affinity, priority, and recovery   |
 
 Outputs:
 
@@ -81,13 +83,13 @@ Outputs:
 
 ## ✦ Architecture
 
-Single stdio process per workspace, four MCP clients, three persistence surfaces.
+Single stdio process per workspace, four MCP clients, durable queue and proof state.
 
 <div align="center">
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **20 MCP tools** for coordination, gates, evidence, event outbox operations, and diagnostics:
+The server exposes **24 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
@@ -97,6 +99,8 @@ GATE            run_gate            list_gates
 EVIDENCE        append_evidence     verify_evidence
 EVENTS          list_events         emit_event          mark_event_handled
                 create_blocked_handoff
+QUEUE           enqueue_task        list_pending_tasks  pick_task
+                recover_stale_tasks
 DIAGNOSTICS     get_state           list_locks          recover_stale_locks
                 doctor              read_policy
 ```
@@ -111,7 +115,11 @@ The v0.4 trigger bridge is deliberately passive. HermesProof writes durable even
 .hermes3d_orchestrator/
 ├── locks/              one directory per locked file (mkdir EEXIST = atomic acquire)
 │   └── <hash>/metadata.json
-├── tasks/              active task records
+├── tasks/
+│   ├── pending/        queued tasks awaiting pickup
+│   ├── claimed/        atomically claimed queue tasks
+│   ├── blocked/        malformed or scope-blocked queue tasks
+│   └── done/           completed queue tasks
 ├── handoffs/           pending + decided handoff requests
 ├── evidence/
 │   └── ledger.ndjson   append-only attestation log
@@ -123,6 +131,8 @@ The v0.4 trigger bridge is deliberately passive. HermesProof writes durable even
 ```
 
 Event files use `event_schema_version: 1`, are first written through a same-filesystem atomic rename, and are moved from `outbox/` to `handled/` with `fs.rename` so competing watchers cannot double-handle the same event. Retention is intentionally narrow: handled events may be pruned after an operator-chosen cutoff such as 30 days; failed events are never auto-pruned.
+
+Queue task files use `task_schema_version: 1`. `hermes_pick_task` claims the highest-priority owner-matching task by atomically moving it from `tasks/pending/` to `tasks/claimed/`; `hermes_release_task` moves queued work to `tasks/done/`; stale claims can be explicitly returned to pending with `hermes_recover_stale_tasks`.
 
 ---
 
@@ -214,8 +224,8 @@ cd HermesProof
 npm install
 
 # 2. Verify the package (no workspace needed yet)
-npm run truth-gates                                            # 14/14 gates pass
-npm test                                                       # 12 unit tests
+npm run truth-gates                                            # 16/16 gates pass
+npm test                                                       # Node smoke tests pass
 
 # 3. Pick the workspace HermesProof will govern. Examples:
 #       Windows:  $WORKSPACE = "G:\Github\my-project"

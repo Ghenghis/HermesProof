@@ -369,3 +369,151 @@ test("watch-events webhook timeout aborts cleanly", async () => {
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("task envelope validates task_schema_version=1", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  const enqueued = await m.enqueueTask({ task_id: "QUEUE-SCHEMA", title: "Schema", enqueued_by: "claude-lead" });
+  assert.equal(enqueued.ok, true);
+  assert.equal(enqueued.task.task_schema_version, 1);
+});
+
+test("enqueue creates pending task with priority and owner pattern", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  const enqueued = await m.enqueueTask({
+    task_id: "QUEUE-PENDING",
+    title: "Pending",
+    priority: 7,
+    target_owner_pattern: "^codex-.*$",
+    files_hint: ["src/tabs/Dashboard.tsx"],
+    enqueued_by: "claude-lead"
+  });
+  assert.equal(enqueued.ok, true);
+  const paths = statePaths(workspaceRoot);
+  const saved = JSON.parse(await fs.readFile(path.join(paths.tasksPendingDir, "QUEUE-PENDING.json"), "utf8"));
+  assert.equal(saved.priority, 7);
+  assert.equal(saved.target_owner_pattern, "^codex-.*$");
+  assert.deepEqual(saved.files_hint, ["src/tabs/Dashboard.tsx"]);
+});
+
+test("list_pending returns priority desc and FIFO within priority", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await m.enqueueTask({ task_id: "QUEUE-LOW", priority: 1, enqueued_by: "claude-lead" });
+  await m.enqueueTask({ task_id: "QUEUE-HIGH-1", priority: 5, enqueued_by: "claude-lead" });
+  await m.enqueueTask({ task_id: "QUEUE-HIGH-2", priority: 5, enqueued_by: "claude-lead" });
+  const listed = await m.listPendingTasks({});
+  assert.deepEqual(listed.tasks.map((task) => task.task_id), ["QUEUE-HIGH-1", "QUEUE-HIGH-2", "QUEUE-LOW"]);
+});
+
+test("pick atomically claims one task under concurrent callers", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await m.enqueueTask({ task_id: "QUEUE-ATOMIC", enqueued_by: "claude-lead" });
+  const results = await Promise.all([
+    m.pickTask({ owner: "codex-impl-01", prefer_task_id: "QUEUE-ATOMIC" }),
+    m.pickTask({ owner: "codex-impl-02", prefer_task_id: "QUEUE-ATOMIC" })
+  ]);
+  assert.equal(results.filter((result) => result.ok).length, 1);
+  assert.equal(results.filter((result) => !result.ok).length, 1);
+  assert.ok(["task_already_claimed", "no_pending_tasks_for_owner"].includes(results.find((result) => !result.ok).status));
+});
+
+test("pick respects target_owner_pattern", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await m.enqueueTask({
+    task_id: "QUEUE-AFFINITY",
+    target_owner_pattern: "^claude-.*$",
+    enqueued_by: "claude-lead"
+  });
+  const mismatch = await m.pickTask({ owner: "codex-impl-01", prefer_task_id: "QUEUE-AFFINITY" });
+  assert.equal(mismatch.ok, false);
+  assert.equal(mismatch.status, "task_owner_mismatch");
+});
+
+test("invalid owner pattern is rejected at enqueue time", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await assert.rejects(
+    m.enqueueTask({ task_id: "QUEUE-BAD-REGEX", target_owner_pattern: "[" }),
+    /invalid_owner_pattern/
+  );
+});
+
+test("enqueue is idempotent for the same task id", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  const first = await m.enqueueTask({ task_id: "QUEUE-IDEMPOTENT", title: "First", enqueued_by: "claude-lead" });
+  const second = await m.enqueueTask({ task_id: "QUEUE-IDEMPOTENT", title: "Second", enqueued_by: "claude-lead" });
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(second.idempotent, true);
+  assert.equal(second.task.title, "First");
+});
+
+test("queue lifecycle emits task.enqueued and task.claimed events", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await m.enqueueTask({ task_id: "QUEUE-EVENTS", enqueued_by: "claude-lead" });
+  await m.pickTask({ owner: "codex-impl-01", prefer_task_id: "QUEUE-EVENTS" });
+  const types = await listOutboxTypes(workspaceRoot);
+  assert.ok(types.includes("task.enqueued"));
+  assert.ok(types.includes("task.claimed"));
+});
+
+test("task.recovered event fires on stale recovery", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await m.enqueueTask({ task_id: "QUEUE-RECOVER", ttl_minutes: 1, enqueued_by: "claude-lead" });
+  const picked = await m.pickTask({ owner: "codex-impl-01", prefer_task_id: "QUEUE-RECOVER" });
+  picked.task.claimed_utc = new Date(Date.now() - 120_000).toISOString();
+  picked.task.heartbeat_utc = picked.task.claimed_utc;
+  const paths = statePaths(workspaceRoot);
+  await fs.writeFile(path.join(paths.tasksClaimedDir, "QUEUE-RECOVER.json"), JSON.stringify(picked.task, null, 2), "utf8");
+  const recovered = await m.recoverStaleTasks({ owner: "claude-lead" });
+  assert.deepEqual(recovered.recovered, ["QUEUE-RECOVER"]);
+  assert.ok((await listOutboxTypes(workspaceRoot)).includes("task.recovered"));
+});
+
+test("recover_stale_tasks ignores not-yet-expired claims", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await m.enqueueTask({ task_id: "QUEUE-FRESH", ttl_minutes: 120, enqueued_by: "claude-lead" });
+  await m.pickTask({ owner: "codex-impl-01", prefer_task_id: "QUEUE-FRESH" });
+  const recovered = await m.recoverStaleTasks({ owner: "claude-lead" });
+  assert.deepEqual(recovered.recovered, []);
+});
+
+test("queue heartbeat extends claimed task record", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await m.enqueueTask({ task_id: "QUEUE-HEARTBEAT", enqueued_by: "claude-lead" });
+  const picked = await m.pickTask({ owner: "codex-impl-01", prefer_task_id: "QUEUE-HEARTBEAT" });
+  const paths = statePaths(workspaceRoot);
+  picked.task.heartbeat_utc = "2026-01-01T00:00:00.000Z";
+  await fs.writeFile(path.join(paths.tasksClaimedDir, "QUEUE-HEARTBEAT.json"), JSON.stringify(picked.task, null, 2), "utf8");
+  const hb = await m.heartbeat({ owner: "codex-impl-01", taskId: "QUEUE-HEARTBEAT" });
+  const saved = JSON.parse(await fs.readFile(path.join(paths.tasksClaimedDir, "QUEUE-HEARTBEAT.json"), "utf8"));
+  assert.deepEqual(hb.touched_tasks, ["QUEUE-HEARTBEAT"]);
+  assert.notEqual(saved.heartbeat_utc, picked.task.heartbeat_utc);
+});
+
+test("task path cannot escape workspace", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const m = new HermesLockManager({ workspaceRoot });
+  await m.init();
+  await assert.rejects(m.enqueueTask({ task_id: "../escape" }), /task_id/);
+});

@@ -1,12 +1,12 @@
 # HermesProof — Maintenance & Best Practices
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running fourteen gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running sixteen gates sequentially" width="100%"/>
 </div>
 
 This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees.
 
-The single best diagnostic is `npm run truth-gates` — it surfaces fourteen independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
+The single best diagnostic is `npm run truth-gates` — it surfaces sixteen independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
 
 ## Code-quality conventions
 
@@ -103,6 +103,14 @@ node scripts\prune-events.mjs --workspace G:\Github\Hermes3D --before $cutoff
 ```
 
 The prune script only deletes `events/handled/*.json` older than the cutoff. It must never delete `events/outbox/` or `events/failed/`; failed events require manual inspection because they usually mean a consumer rejected the schema, failed a webhook, or found a malformed payload.
+
+### Queue pickup and stale tasks
+
+```powershell
+node scripts\queue-doctor.mjs --workspace G:\Github\Hermes3D
+```
+
+Queued work lives under `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done`. Agents should call `hermes_pick_task` at session start, then use `hermes_heartbeat` while working. If an owner disappears, `hermes_recover_stale_tasks` moves expired claimed tasks back to pending and emits `task.recovered`. Recovery is explicit and audited; HermesProof never auto-requeues a task in the background.
 
 ### Generate a review packet manually
 

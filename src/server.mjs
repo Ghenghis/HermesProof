@@ -18,7 +18,7 @@ await manager.init();
 
 const server = new McpServer({
   name: "hermes3d-lock-orchestrator",
-  version: "0.4.0"
+  version: "0.5.0"
 });
 
 // Tightened owner regex: lowercase + digits + hyphen, must start with a letter,
@@ -32,9 +32,11 @@ const Files = z.array(z.string().min(1)).min(1).describe("Workspace-relative fil
 const JsonObject = z.record(z.any()).optional().default({});
 const EventStatus = z.enum(["outbox", "handled", "failed", "all"]).default("outbox");
 const EventType = z.enum([
+  "task.enqueued",
   "task.claimed",
   "task.released",
   "task.blocked",
+  "task.recovered",
   "handoff.created",
   "handoff.approved",
   "handoff.denied",
@@ -48,6 +50,7 @@ const EventType = z.enum([
 ]);
 const NextActor = z.enum(["claude", "codex", "human", "unassigned"]).default("unassigned");
 const RecommendedAction = z.enum(["review_pr", "fix_scope", "merge", "review_handoff", "acknowledge", "none"]).default("none");
+const TaskId = z.string().regex(/^[A-Za-z0-9._-]{2,128}$/, "task id must match ^[A-Za-z0-9._-]{2,128}$");
 
 function toolResult(value) {
   return {
@@ -331,6 +334,79 @@ registerTool(
   },
   async (args) => {
     try { return toolResult(await manager.createBlockedHandoff(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_enqueue_task",
+  {
+    title: "Enqueue task",
+    description: "Add a durable queue task under tasks/pending. Re-enqueueing the same task id is a no-op success.",
+    inputSchema: {
+      task_id: TaskId,
+      title: z.string().default(""),
+      summary: z.string().default(""),
+      handoff_path: z.string().default(""),
+      branch_hint: z.string().default(""),
+      files_hint: z.array(z.string()).default([]),
+      priority: z.number().min(-100).max(100).default(0),
+      target_owner_pattern: z.string().default(".*"),
+      ttl_minutes: z.number().int().min(1).max(10080).default(120),
+      data: z.record(z.any()).default({})
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await manager.enqueueTask(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_list_pending_tasks",
+  {
+    title: "List pending tasks",
+    description: "List durable queue tasks sorted by priority descending, then enqueue time ascending.",
+    inputSchema: {
+      owner_filter: z.string().default(""),
+      limit: z.number().int().min(1).max(500).default(50)
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await manager.listPendingTasks(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_pick_task",
+  {
+    title: "Pick task",
+    description: "Atomically claim the highest-priority pending task matching the owner pattern.",
+    inputSchema: {
+      owner: Owner,
+      prefer_task_id: TaskId.optional()
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await manager.pickTask(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_recover_stale_tasks",
+  {
+    title: "Recover stale tasks",
+    description: "Move expired claimed queue tasks back to pending and emit task.recovered events.",
+    inputSchema: {
+      owner: Owner,
+      files: z.array(TaskId).default([]),
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await manager.recoverStaleTasks(args)); } catch (err) { return toolError(err); }
   }
 );
 

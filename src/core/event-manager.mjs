@@ -21,9 +21,11 @@ import {
 export const EVENT_SCHEMA_VERSION = 1;
 
 export const EVENT_TYPES = new Set([
+  "task.enqueued",
   "task.claimed",
   "task.released",
   "task.blocked",
+  "task.recovered",
   "handoff.created",
   "handoff.approved",
   "handoff.denied",
