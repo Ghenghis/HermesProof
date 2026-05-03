@@ -6,6 +6,8 @@ import { config as loadDotenv } from "dotenv";
 import { resolveEnvFile } from "./core/env-file.mjs";
 import { HermesLockManager } from "./core/lock-manager.mjs";
 import { GateRunner } from "./core/gate-runner.mjs";
+import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
+import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
 
 // Env-file resolution precedence (HermesProof v0.6):
 //   1. HERMES3D_PROFILE=vps + HERMES3D_VPS_ENV_FILE  (deploy mode)
@@ -38,7 +40,17 @@ const workspaceRoot =
 const stateDirName = process.env.MCP_LOCK_STATE_DIR || undefined;
 const manager = new HermesLockManager({ workspaceRoot, stateDirName });
 const gates = new GateRunner({ workspaceRoot });
+const anon = new AnonymousOrchestrator({ workspaceRoot, stateDirName });
+const hermesAgent = new HermesAgentBridge({
+  orchestrator: anon,
+  enabled: process.env.HERMES_AGENT_ENABLED === "1",
+  scope: process.env.HERMES_AGENT_SCOPE
+    ? process.env.HERMES_AGENT_SCOPE.split(",").map((s) => s.trim())
+    : null,
+  projectGoals: process.env.HERMES_AGENT_PROJECT_GOALS || null,
+});
 await manager.init();
+await anon.init();
 
 const server = new McpServer({
   name: "hermes3d-lock-orchestrator",
@@ -522,6 +534,154 @@ registerTool(
   },
   async () => {
     try { return toolResult(await manager.doctor()); } catch (err) { return toolError(err); }
+  }
+);
+
+// === Anonymous orchestrator + Hermes Agent USER bridge tools ===
+
+const RoleEnum = z.enum(["BUILDER", "CRITIC", "SCRIBE", "GATE-SMITH", "DOC-KEEPER", "WATCHDOG"]);
+
+registerTool(
+  "hermes_anonymous_claim",
+  {
+    title: "Claim an anonymous role",
+    description: "Claim one of the anonymous coordination roles (BUILDER, CRITIC, SCRIBE, GATE-SMITH, DOC-KEEPER, WATCHDOG). Roles are claimed per-actor with a 30min TTL; renewing reclaims with a fresh TTL.",
+    inputSchema: { role: RoleEnum, actor_id: Owner, purpose: z.string().min(2).max(280).optional() },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async ({ role, actor_id, purpose }) => {
+    try { return toolResult(await anon.claimRole({ role, actor_id, purpose })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_anonymous_release",
+  {
+    title: "Release an anonymous role",
+    description: "Release a previously-claimed role. Idempotent — releasing a non-claimed role is a no-op.",
+    inputSchema: { role: RoleEnum, actor_id: Owner },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async ({ role, actor_id }) => {
+    try { return toolResult(await anon.releaseRole({ role, actor_id })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_anonymous_state",
+  {
+    title: "Read anonymous orchestrator state",
+    description: "Read-only view of active role claims and (redacted) active user session. Hash field is redacted.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false }
+  },
+  async () => {
+    try { return toolResult(await anon.getState()); } catch (err) { return toolError(err); }
+  }
+);
+
+const GrantedBy = z.enum(["human", "hermes-agent", "ci"]);
+
+registerTool(
+  "hermes_user_grant_session",
+  {
+    title: "Grant an AS_USER session",
+    description: "Grant an AS_USER session that authorizes a bounded set of actions. granted_by may be 'human' (real user), 'hermes-agent' (the bridged delegate), or 'ci' (automation). Only one active session at a time; revoke before granting a new one.",
+    inputSchema: {
+      granted_by: GrantedBy,
+      session_id: z.string().min(8).max(128),
+      scope: z.array(z.string().min(1)).optional().describe("Whitelist of action capability strings; null/missing = all actions"),
+      ttl_ms: z.number().int().positive().max(48 * 60 * 60 * 1000).optional()
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async ({ granted_by, session_id, scope, ttl_ms }) => {
+    try { return toolResult(await anon.grantUserSession({ granted_by, session_id, scope, ttl_ms })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_user_revoke_session",
+  {
+    title: "Revoke the active AS_USER session",
+    description: "Revoke an active AS_USER session by id. No-op if session_id doesn't match the currently active session.",
+    inputSchema: { session_id: z.string().min(8).max(128) },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
+  },
+  async ({ session_id }) => {
+    try { return toolResult(await anon.revokeUserSession({ session_id })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_user_check_authorization",
+  {
+    title: "Check AS_USER authorization for an action",
+    description: "Returns { allowed, reason, granted_by } for the given action name against the currently active AS_USER session. Lazy-clears expired sessions.",
+    inputSchema: { action: z.string().min(1).max(128) },
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false }
+  },
+  async ({ action }) => {
+    try { return toolResult(await anon.checkUserAuthorization(action)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_agent_health",
+  {
+    title: "Hermes Agent bridge health probe",
+    description: "Probes the configured DeepSeek/MiniMax/SiliconFlow/LM-Studio providers in failover order. Returns the first healthy provider + model. Bridge is disabled by default (set HERMES_AGENT_ENABLED=1).",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true }
+  },
+  async () => {
+    try { return toolResult(await hermesAgent.healthCheck()); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_agent_request_user_session",
+  {
+    title: "Have Hermes Agent request a USER session",
+    description: "Asks the Hermes Agent (DeepSeek v4 → MiniMax → SiliconFlow → LM Studio) to reason about the requested scope against project goals; on 'approve', grants an AS_USER session in the orchestrator. The agent's verdict and rationale are evidenced.",
+    inputSchema: {
+      requested_scope: z.array(z.string().min(1)).min(1),
+      ttl_hours: z.number().int().positive().max(48).optional()
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+  },
+  async ({ requested_scope, ttl_hours }) => {
+    try { return toolResult(await hermesAgent.requestUserSession({ requested_scope, ttl_hours })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_agent_resolve_blocked",
+  {
+    title: "Hermes Agent resolves a BLOCKED escalation",
+    description: "Asks Hermes Agent to reason about a BLOCKED handoff and emit a verdict (approve/decline/defer). Requires an active AS_USER session for the agent (call hermes_agent_request_user_session first).",
+    inputSchema: {
+      correlation: z.string().min(1).max(256),
+      summary: z.string().min(1).max(2000),
+      full_thread: z.string().min(1).max(20000)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+  },
+  async ({ correlation, summary, full_thread }) => {
+    try { return toolResult(await hermesAgent.resolveBlocked({ correlation, summary, full_thread })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_agent_revoke_session",
+  {
+    title: "Hermes Agent revokes its own USER session",
+    description: "Hermes Agent surrenders its delegated authority. After this, AS_USER actions require either the human or a fresh agent grant.",
+    inputSchema: {},
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
+  },
+  async () => {
+    try { return toolResult(await hermesAgent.revokeOwnSession()); } catch (err) { return toolError(err); }
   }
 );
 
