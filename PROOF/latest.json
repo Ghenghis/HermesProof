@@ -1,27 +1,27 @@
 {
-  "run_id": "truth_2026-05-03T17-54-38-824Z",
-  "ts_utc": "2026-05-03T17:54:38.824Z",
-  "duration_ms": 4302,
+  "run_id": "truth_2026-05-03T12-10-06-383Z",
+  "ts_utc": "2026-05-03T12:10:06.383Z",
+  "duration_ms": 15779,
   "ok": true,
-  "pass_count": 24,
+  "pass_count": 14,
   "fail_count": 0,
-  "warn_count": 2,
+  "warn_count": 0,
   "skip_count": 4,
-  "hermes3d_workspace": "/home/runner/work/HermesProof/HermesProof",
-  "node_version": "v20.20.2",
-  "platform": "linux",
-  "repo_root": "/home/runner/work/HermesProof/HermesProof",
+  "hermes3d_workspace": "G:\\Github\\Hermes3D",
+  "node_version": "v25.8.2",
+  "platform": "win32",
+  "repo_root": "G:\\_codex_worktrees\\HermesProof-gate-a11y",
   "gates": [
     {
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 20,
+      "duration_ms": 15,
       "evidence": {
-        "file_count": 57,
-        "manifest_sha256": "97ba4291d888758e63616611902d1608b5f1fdd07d289d93f72a98e14e85bc13"
+        "file_count": 28,
+        "manifest_sha256": "d10b233b13723eb5c439c8ceeeb75d5fd5ea4610f0a7dfb4386a276d35a6e4ca"
       },
-      "details": "57 files hashed"
+      "details": "28 files hashed"
     },
     {
       "id": "deps.parity",
@@ -47,49 +47,36 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 1979,
+      "duration_ms": 7526,
       "evidence": {
         "exit_code": 0,
-        "pass_count": 124,
+        "pass_count": 61,
         "fail_count": 0,
-        "stdout_tail": "  ---\n  duration_ms: 0.336411\n  ...\n# Subtest: resolveEnvFilePath — VPS var only takes effect when profile=vps\nok 116 - resolveEnvFilePath — VPS var only takes effect when profile=vps\n  ---\n  duration_ms: 0.327885\n  ...\n# Subtest: checkSecretRotationEvidence — fresh mtime returns ok:true\nok 117 - checkSecretRotationEvidence — fresh mtime returns ok:true\n  ---\n  duration_ms: 16.098644\n  ...\n# Subtest: checkSecretRotationEvidence — stale mtime returns ok:false reason=stale\nok 118 - checkSecretRotationEvidence — stale mtime returns ok:false reason=stale\n  ---\n  duration_ms: 1.859856\n  ...\n# Subtest: checkSecretRotationEvidence — missing env file returns ok:true reason=env_file_missing\nok 119 - checkSecretRotationEvidence — missing env file returns ok:true reason=env_file_missing\n  ---\n  duration_ms: 2.05952\n  ...\n# Subtest: checkSecretRotationEvidence — non-ENOENT stat error returns ok:false reason=stat_error\nok 120 - checkSecretRotationEvidence — non-ENOENT stat error returns ok:false reason=stat_error\n  ---\n  duration_ms: 0.614923\n  ...\n# Subtest: checkSecretRotationEvidence — never reads file contents (only stat is invoked)\nok 121 - checkSecretRotationEvidence — never reads file contents (only stat is invoked)\n  ---\n  duration_ms: 2.530503\n  ...\n# Subtest: checkSecretRotationEvidence — HERMES_SECRET_MAX_AGE_DAYS override is honored\nok 122 - checkSecretRotationEvidence — HERMES_SECRET_MAX_AGE_DAYS override is honored\n  ---\n  duration_ms: 4.39516\n  ...\n# Subtest: checkSecretRotationEvidence — invalid max-age env var falls back to default 90\nok 123 - checkSecretRotationEvidence — invalid max-age env var falls back to default 90\n  ---\n  duration_ms: 1.206339\n  ...\n# Subtest: redactCandidate — strips long path prefixes but keeps last two segments\nok 124 - redactCandidate — strips long path prefixes but keeps last two segments\n  ---\n  duration_ms: 0.298469\n  ...\n1..124\n# tests 124\n# suites 0\n# pass 124\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1919.402355\n",
+        "stdout_tail": "sk id (132.527ms)\n✔ queue lifecycle emits task.enqueued and task.claimed events (165.3803ms)\n✔ task.recovered event fires on stale recovery (391.7135ms)\n✔ recover_stale_tasks ignores not-yet-expired claims (129.4999ms)\n✔ queue heartbeat extends claimed task record (194.3443ms)\n✔ task path cannot escape workspace (16.5174ms)\n✔ wizard dry-run prints a stable plan and writes nothing (733.4673ms)\n✔ wizard wires codex config and backs up existing config (739.8467ms)\n✔ wizard rejects workspace paths with control characters (147.1111ms)\n✔ wizard rejects malformed github repo before writing workspace state (133.3661ms)\n✔ wizard json mode reports no-truth-gates as skipped (774.6908ms)\n✔ wizard detects anthropic key without leaking the synthetic value (864.5271ms)\n✔ path escape attempts are rejected with workspace-relative error (26.932ms)\n✔ owner can refresh its own existing lock without conflict (99.1776ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (53.0934ms)\n✔ heartbeat extends expiry of held locks (83.1521ms)\n✔ stale lock recovery archives metadata and clears the lock (213.2769ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.872ms)\n✔ gate runner rejects cwd that escapes the workspace (1.5807ms)\n✔ doctor() reports errors when workspace_root does not exist (2.3103ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (15.9287ms)\n✔ custom state dir name is honored end-to-end (14.2059ms)\n✔ env file resolver falls through missing vps override to existing general override (1.8355ms)\n✔ env file resolver falls through missing explicit override to cwd .env (1.9225ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.2847ms)\n✔ event_path_cannot_escape_workspace (3.4033ms)\n✔ prune_events_respects_before_cutoff (5.8838ms)\n✔ prune_events_never_touches_failed_directory (4.8582ms)\n✔ trigger_doctor_passes_on_clean_sandbox (330.5997ms)\nℹ tests 61\nℹ suites 0\nℹ pass 61\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 7416.4194\n",
         "stderr_tail": ""
       },
-      "details": "pass=124, fail=0, exit=0"
+      "details": "pass=61, fail=0, exit=0"
     },
     {
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 255,
+      "duration_ms": 459,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
-        "server_version": "0.7.0",
-        "tool_count": 42,
+        "server_version": "0.5.0",
+        "tool_count": 24,
         "tools": [
-          "hermes_a2a_create_task",
-          "hermes_a2a_get_task",
-          "hermes_a2a_list_tasks",
-          "hermes_a2a_update_task",
-          "hermes_agent_health",
-          "hermes_agent_request_user_session",
-          "hermes_agent_resolve_blocked",
-          "hermes_agent_revoke_session",
-          "hermes_anonymous_claim",
-          "hermes_anonymous_release",
-          "hermes_anonymous_state",
           "hermes_append_evidence",
           "hermes_approve_handoff",
           "hermes_claim_task",
           "hermes_create_blocked_handoff",
-          "hermes_dispatch_recommend",
           "hermes_doctor",
           "hermes_emit_event",
           "hermes_enqueue_task",
           "hermes_get_state",
           "hermes_heartbeat",
-          "hermes_list_agents",
           "hermes_list_events",
           "hermes_list_gates",
           "hermes_list_locks",
@@ -98,21 +85,16 @@
           "hermes_mark_event_handled",
           "hermes_pick_task",
           "hermes_read_policy",
-          "hermes_record_outcome",
-          "hermes_record_task",
           "hermes_recover_stale_locks",
           "hermes_recover_stale_tasks",
           "hermes_release_files",
           "hermes_release_task",
           "hermes_request_handoff",
           "hermes_run_gate",
-          "hermes_user_check_authorization",
-          "hermes_user_grant_session",
-          "hermes_user_revoke_session",
           "hermes_verify_evidence"
         ]
       },
-      "details": "42 tools"
+      "details": "24 tools"
     },
     {
       "id": "doctor.hermes3d",
@@ -128,9 +110,9 @@
       "id": "events.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 14,
+      "duration_ms": 33,
       "evidence": {
-        "sandbox": "/tmp/truth-events-dir-z5yqPj",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-events-dir-GOdbvm",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -143,9 +125,9 @@
       "id": "tasks.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 6,
+      "duration_ms": 25,
       "evidence": {
-        "sandbox": "/tmp/truth-tasks-dir-jFkfEe",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-tasks-dir-IRttY4",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -159,20 +141,20 @@
       "id": "trigger.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 79,
+      "duration_ms": 406,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-trigger-doctor-bGbf9H",
+          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-fC0Ug3",
           "doctor": {
             "ok": true,
-            "workspace_root": "/tmp/truth-trigger-doctor-bGbf9H",
-            "state_dir": "/tmp/truth-trigger-doctor-bGbf9H/.hermes3d_orchestrator",
+            "workspace_root": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-fC0Ug3",
+            "state_dir": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-fC0Ug3\\.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
-            "node_version": "v20.20.2",
-            "platform": "linux",
+            "node_version": "v25.8.2",
+            "platform": "win32",
             "checks": [
               {
                 "id": "workspace_exists",
@@ -202,9 +184,7 @@
                 "message": "Neither MCP_LOCK_WORKSPACE nor HERMES3D_WORKSPACE is set; falling back to process.cwd().",
                 "fix": "Set one of those env vars to your project root in the MCP client config."
               }
-            ],
-            "cached": false,
-            "cache_age_ms": 0
+            ]
           },
           "event_dirs": {
             "outbox": true,
@@ -231,13 +211,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 183,
+      "duration_ms": 2207,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-queue-doctor-MlNAnV",
+          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-queue-doctor-RPvj0y",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -275,11 +255,11 @@
       "id": "wizard.dry_run_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 67,
+      "duration_ms": 668,
       "evidence": {
         "exit_code": 0,
         "wrote_state": false,
-        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-2OrqxJ\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ KiloCode\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-2OrqxJ.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
+        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Windows · Node v25.8.2 · git git version 2.54.0.windows.1\nWorkspace path: C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-wizard-gLwGh4\nGitHub repo: skipped\n\nDetected clients:\n  ✓ Claude Desktop\n  ✓ Claude Code CLI (2.1.92 (Claude Code))\n  ✓ Codex CLI\n  ✓ Windsurf / Cascade\n  ✓ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned C:\\Users\\Admin\\.codex\\config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-wizard-gLwGh4.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
         "stderr_tail": ""
       },
       "details": "wizard dry-run ok"
@@ -288,9 +268,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 383,
+      "duration_ms": 2657,
       "evidence": {
-        "sandbox": "/tmp/truth-gate-sandbox-RreZjn",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-K0SAZo",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -388,33 +368,19 @@
       "id": "server.tool_description_hygiene",
       "level": "required",
       "ok": true,
-      "duration_ms": 2,
+      "duration_ms": 1,
       "evidence": {
         "findings": [],
         "file": "src/server.mjs",
-        "bytes": 36465
+        "bytes": 18518
       },
       "details": "0 suspicious patterns"
-    },
-    {
-      "id": "security.mcp_scan_pass",
-      "level": "required",
-      "ok": true,
-      "duration_ms": 8,
-      "evidence": {
-        "file": "/home/runner/work/HermesProof/HermesProof/src/server.mjs",
-        "bytes": 36465,
-        "pattern_count": 16,
-        "fields_scanned": 109,
-        "findings": []
-      },
-      "details": "0 suspicious patterns across 16 signatures"
     },
     {
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 4,
+      "duration_ms": 7,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -450,61 +416,61 @@
           {
             "path": "docs/README_MASTER_SPEC.md",
             "ok": true,
-            "size_bytes": 5172,
+            "size_bytes": 5253,
             "has_h1": true
           },
           {
             "path": "docs/README_COVERAGE_MATRIX.md",
             "ok": true,
-            "size_bytes": 6412,
+            "size_bytes": 6481,
             "has_h1": true
           },
           {
             "path": "docs/VISUAL_ASSET_SPEC.md",
             "ok": true,
-            "size_bytes": 5632,
+            "size_bytes": 5728,
             "has_h1": true
           },
           {
             "path": "docs/SVG_ANIMATION_SPEC.md",
             "ok": true,
-            "size_bytes": 5147,
+            "size_bytes": 5269,
             "has_h1": true
           },
           {
             "path": "docs/HERMES3D_SOURCE_AUDIT.md",
             "ok": true,
-            "size_bytes": 9352,
+            "size_bytes": 9501,
             "has_h1": true
           },
           {
             "path": "docs/HERMESPROOF_SETUP_AUDIT.md",
             "ok": true,
-            "size_bytes": 8595,
+            "size_bytes": 8750,
             "has_h1": true
           },
           {
             "path": "docs/CODEX_IMPLEMENTATION_HANDOFF.md",
             "ok": true,
-            "size_bytes": 6934,
+            "size_bytes": 7094,
             "has_h1": true
           },
           {
             "path": "docs/CLAUDE_REVIEW_TEAM_PROMPT.md",
             "ok": true,
-            "size_bytes": 6986,
+            "size_bytes": 7110,
             "has_h1": true
           },
           {
             "path": "docs/ACCEPTANCE_GATES.md",
             "ok": true,
-            "size_bytes": 5970,
+            "size_bytes": 6061,
             "has_h1": true
           },
           {
             "path": "handoffs/HANDOFF_TO_CODEX_README_VISUALS.md",
             "ok": true,
-            "size_bytes": 6128,
+            "size_bytes": 6284,
             "has_h1": true
           }
         ]
@@ -512,993 +478,51 @@
       "details": "10/10 deliverables present"
     },
     {
-      "id": "provider.registry.validate",
+      "id": "accessibility.wcag_aa_pass",
       "level": "required",
       "ok": true,
-      "duration_ms": 4,
+      "duration_ms": 1763,
       "evidence": {
-        "registry_path": "/home/runner/work/HermesProof/HermesProof/policies/provider-registry/registry.yaml",
-        "registry_bytes": 24428,
-        "class_count": 62,
-        "unique_provider_names": 62,
-        "finding_count": 0
-      },
-      "details": "62 entries, 62 unique provider_names"
-    },
-    {
-      "id": "local.models.catalog.validate",
-      "level": "required",
-      "ok": true,
-      "duration_ms": 1,
-      "evidence": {
-        "csv_path": "/home/runner/work/HermesProof/HermesProof/policies/provider-registry/lmstudio_local_models.csv",
-        "csv_bytes": 10744,
-        "row_count": 87,
-        "skipped_rows": 0,
-        "invalid_row_count": 0,
-        "finding_count": 0
-      },
-      "details": "schema ok; 87 valid rows"
-    },
-    {
-      "id": "continue.llm_classes.validate",
-      "level": "required",
-      "ok": true,
-      "duration_ms": 1,
-      "evidence": {
-        "csv_path": "/home/runner/work/HermesProof/HermesProof/policies/provider-registry/continue_llm_classes.csv",
-        "expected_count": 62,
-        "csv_bytes": 2290,
-        "row_count": 62,
-        "unique_provider_names": 62,
-        "missing": [],
-        "finding_count": 0
-      },
-      "details": "all 62 expected provider names present (62 total)"
-    },
-    {
-      "id": "kilocode.provider.mapping.validate",
-      "level": "warn",
-      "ok": true,
-      "duration_ms": 0,
-      "evidence": {
-        "csv_path": "/home/runner/work/HermesProof/HermesProof/policies/provider-registry/kilocode_mapping.csv",
-        "present": false,
-        "schema": "hermes.kilocode_mapping.v1",
-        "status": "not_applicable"
-      },
-      "details": "kilocode_mapping.csv not in pack — gate stub running as not_applicable"
-    },
-    {
-      "id": "lmstudio.health",
-      "level": "warn",
-      "ok": false,
-      "duration_ms": 12,
-      "evidence": {
-        "base_url": "http://localhost:1234/v1/models",
-        "ok": false,
-        "status": 0,
-        "error": "ECONNREFUSED",
-        "target": "http://localhost:1234/v1/models",
-        "timeout_ms": 5000
-      },
-      "details": "LM Studio offline: ECONNREFUSED"
-    },
-    {
-      "id": "ollama.health",
-      "level": "warn",
-      "ok": false,
-      "duration_ms": 1,
-      "evidence": {
-        "base_url": "http://localhost:11434/api/tags",
-        "ok": false,
-        "status": 0,
-        "error": "ECONNREFUSED",
-        "target": "http://localhost:11434/api/tags",
-        "timeout_ms": 5000
-      },
-      "details": "Ollama offline: ECONNREFUSED"
-    },
-    {
-      "id": "secret.scan",
-      "level": "required",
-      "ok": true,
-      "duration_ms": 44,
-      "evidence": {
-        "mode": "fallback",
-        "scanner_ok": true,
-        "findings": [],
-        "file_count": 171
-      },
-      "details": "fallback: 0 finding(s)"
-    },
-    {
-      "id": "secrets.rotation_evidence_present",
-      "level": "warn",
-      "ok": true,
-      "duration_ms": 1,
-      "evidence": {
-        "env_source": "default.posix",
-        "env_candidate": "…/hermes/env",
-        "env_present": false,
-        "mtime_iso": null,
-        "age_days": null,
-        "max_age_days": 90
-      },
-      "details": "env file not present at …/hermes/env (source=default.posix); rotation gate not_applicable"
-    },
-    {
-      "id": "sbom.cyclonedx_generated",
-      "level": "required",
-      "ok": true,
-      "duration_ms": 35,
-      "evidence": {
-        "path": "/home/runner/work/HermesProof/HermesProof/PROOF/sbom.json",
-        "components": 92,
-        "sha256": "995fe87831e374e8c23db153a88e163a26df4dc3619c1490d6d94a2f12d23bee",
-        "serial_number": "urn:uuid:b533a628-9cb9-5f1f-b8cd-15bea7004b6c",
-        "spec_version": "1.5"
-      },
-      "details": "92 components @ /home/runner/work/HermesProof/HermesProof/PROOF/sbom.json"
-    },
-    {
-      "id": "licenses.scan",
-      "level": "required",
-      "ok": true,
-      "duration_ms": 924,
-      "evidence": {
-        "package_count": 93,
-        "allowlist": [
-          "MIT",
-          "Apache-2.0",
-          "BSD-3-Clause",
-          "BSD-2-Clause",
-          "ISC",
-          "Unlicense",
-          "CC0-1.0",
-          "BlueOak-1.0.0",
-          "Python-2.0",
-          "MPL-2.0"
-        ],
-        "denylist": [
-          "GPL-2.0",
-          "GPL-3.0",
-          "AGPL-3.0",
-          "LGPL-2.0",
-          "LGPL-3.0",
-          "SSPL-1.0",
-          "EUPL-1.2",
-          "BUSL-1.1"
-        ],
-        "review_list": [
-          "WTFPL",
-          "Public Domain",
-          "UNLICENSED"
-        ],
-        "licenses_by_package": {
-          "@hono/node-server": {
-            "version": "1.19.14",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "@modelcontextprotocol/sdk": {
-            "version": "1.29.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "accepts": {
-            "version": "2.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "ajv-formats": {
-            "version": "3.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "ajv": {
-            "version": "8.20.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "body-parser": {
-            "version": "2.2.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "bytes": {
-            "version": "3.1.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "call-bind-apply-helpers": {
-            "version": "1.0.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "call-bound": {
-            "version": "1.0.4",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "content-disposition": {
-            "version": "1.1.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "content-type": {
-            "version": "1.0.5",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "cookie-signature": {
-            "version": "1.2.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "cookie": {
-            "version": "0.7.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "cors": {
-            "version": "2.8.6",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "cross-spawn": {
-            "version": "7.0.6",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "debug": {
-            "version": "4.4.3",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "depd": {
-            "version": "2.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "dotenv": {
-            "version": "16.6.1",
-            "licenses_raw": "BSD-2-Clause",
-            "tokens": [
-              "BSD-2-Clause"
-            ],
-            "status": "allowed"
-          },
-          "dunder-proto": {
-            "version": "1.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "ee-first": {
-            "version": "1.1.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "encodeurl": {
-            "version": "2.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "es-define-property": {
-            "version": "1.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "es-errors": {
-            "version": "1.3.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "es-object-atoms": {
-            "version": "1.1.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "escape-html": {
-            "version": "1.0.3",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "etag": {
-            "version": "1.8.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "eventsource-parser": {
-            "version": "3.0.8",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "eventsource": {
-            "version": "3.0.7",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "express-rate-limit": {
-            "version": "8.4.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "express": {
-            "version": "5.2.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "fast-deep-equal": {
-            "version": "3.1.3",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "fast-uri": {
-            "version": "3.1.0",
-            "licenses_raw": "BSD-3-Clause",
-            "tokens": [
-              "BSD-3-Clause"
-            ],
-            "status": "allowed"
-          },
-          "finalhandler": {
-            "version": "2.1.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "forwarded": {
-            "version": "0.2.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "fresh": {
-            "version": "2.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "function-bind": {
-            "version": "1.1.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "get-intrinsic": {
-            "version": "1.3.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "get-proto": {
-            "version": "1.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "gopd": {
-            "version": "1.2.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "has-symbols": {
-            "version": "1.1.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "hasown": {
-            "version": "2.0.3",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "hermesproof": {
-            "version": "0.7.0",
-            "licenses_raw": "UNLICENSED",
-            "tokens": [
-              "UNLICENSED"
-            ],
-            "status": "review"
-          },
-          "hono": {
-            "version": "4.12.16",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "http-errors": {
-            "version": "2.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "iconv-lite": {
-            "version": "0.7.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "inherits": {
-            "version": "2.0.4",
-            "licenses_raw": "ISC",
-            "tokens": [
-              "ISC"
-            ],
-            "status": "allowed"
-          },
-          "ip-address": {
-            "version": "10.1.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "ipaddr.js": {
-            "version": "1.9.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "is-promise": {
-            "version": "4.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "isexe": {
-            "version": "2.0.0",
-            "licenses_raw": "ISC",
-            "tokens": [
-              "ISC"
-            ],
-            "status": "allowed"
-          },
-          "jose": {
-            "version": "6.2.3",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "json-schema-traverse": {
-            "version": "1.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "json-schema-typed": {
-            "version": "8.0.2",
-            "licenses_raw": "BSD-2-Clause",
-            "tokens": [
-              "BSD-2-Clause"
-            ],
-            "status": "allowed"
-          },
-          "math-intrinsics": {
-            "version": "1.1.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "media-typer": {
-            "version": "1.1.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "merge-descriptors": {
-            "version": "2.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "mime-db": {
-            "version": "1.54.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "mime-types": {
-            "version": "3.0.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "ms": {
-            "version": "2.1.3",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "negotiator": {
-            "version": "1.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "object-assign": {
-            "version": "4.1.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "object-inspect": {
-            "version": "1.13.4",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "on-finished": {
-            "version": "2.4.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "once": {
-            "version": "1.4.0",
-            "licenses_raw": "ISC",
-            "tokens": [
-              "ISC"
-            ],
-            "status": "allowed"
-          },
-          "parseurl": {
-            "version": "1.3.3",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "path-key": {
-            "version": "3.1.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "path-to-regexp": {
-            "version": "8.4.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "pkce-challenge": {
-            "version": "5.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "proxy-addr": {
-            "version": "2.0.7",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "qs": {
-            "version": "6.15.1",
-            "licenses_raw": "BSD-3-Clause",
-            "tokens": [
-              "BSD-3-Clause"
-            ],
-            "status": "allowed"
-          },
-          "range-parser": {
-            "version": "1.2.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "raw-body": {
-            "version": "3.0.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "require-from-string": {
-            "version": "2.0.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "router": {
-            "version": "2.2.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "safer-buffer": {
-            "version": "2.1.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "send": {
-            "version": "1.2.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "serve-static": {
-            "version": "2.2.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "setprototypeof": {
-            "version": "1.2.0",
-            "licenses_raw": "ISC",
-            "tokens": [
-              "ISC"
-            ],
-            "status": "allowed"
-          },
-          "shebang-command": {
-            "version": "2.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "shebang-regex": {
-            "version": "3.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "side-channel-list": {
-            "version": "1.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "side-channel-map": {
-            "version": "1.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "side-channel-weakmap": {
-            "version": "1.0.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "side-channel": {
-            "version": "1.1.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "statuses": {
-            "version": "2.0.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "toidentifier": {
-            "version": "1.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "type-is": {
-            "version": "2.0.1",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "unpipe": {
-            "version": "1.0.0",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "vary": {
-            "version": "1.1.2",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          },
-          "which": {
-            "version": "2.0.2",
-            "licenses_raw": "ISC",
-            "tokens": [
-              "ISC"
-            ],
-            "status": "allowed"
-          },
-          "wrappy": {
-            "version": "1.0.2",
-            "licenses_raw": "ISC",
-            "tokens": [
-              "ISC"
-            ],
-            "status": "allowed"
-          },
-          "zod-to-json-schema": {
-            "version": "3.25.2",
-            "licenses_raw": "ISC",
-            "tokens": [
-              "ISC"
-            ],
-            "status": "allowed"
-          },
-          "zod": {
-            "version": "3.25.76",
-            "licenses_raw": "MIT",
-            "tokens": [
-              "MIT"
-            ],
-            "status": "allowed"
-          }
+        "file": "G:\\_codex_worktrees\\HermesProof-gate-a11y\\site\\index.html",
+        "counts": {
+          "violation_count": 0,
+          "incomplete_count": 1,
+          "blocker_count": 0,
+          "warning_count": 1,
+          "pass_count": 22
         },
-        "denylisted_packages": [],
-        "unknown_packages": [],
-        "review_packages": [
+        "blockers": [],
+        "warnings": [
           {
-            "name": "hermesproof",
-            "version": "0.7.0",
-            "licenses_raw": "UNLICENSED"
+            "id": "color-contrast",
+            "impact": "serious",
+            "help": "Elements must meet minimum color contrast ratio thresholds",
+            "help_url": "https://dequeuniversity.com/rules/axe/4.11/color-contrast?application=axeAPI",
+            "tags": [
+              "cat.color",
+              "wcag2aa",
+              "wcag143",
+              "TTv5",
+              "TT13.c",
+              "EN-301-549",
+              "EN-9.1.4.3",
+              "ACT",
+              "RGAAv4",
+              "RGAA-3.2.1"
+            ],
+            "node_count": 1,
+            "kind": "incomplete"
           }
+        ],
+        "axe_version": "4.11.4",
+        "rule_tags": [
+          "wcag2a",
+          "wcag2aa",
+          "wcag21a",
+          "wcag21aa"
         ]
       },
-      "details": "93 packages scanned; unknown=0, review=1"
-    },
-    {
-      "id": "dependency.fresh",
-      "level": "warn",
-      "ok": true,
-      "duration_ms": 267,
-      "evidence": {
-        "direct_deps_count": 3,
-        "stale_count": 0,
-        "warn_count": 0,
-        "fresh_months": 18,
-        "warn_months": 12,
-        "details": [
-          {
-            "name": "@modelcontextprotocol/sdk",
-            "status": "fresh",
-            "latestVersion": "1.29.0",
-            "publishedAt": "2026-03-30T16:50:42.718Z",
-            "ageMonths": 1.13
-          },
-          {
-            "name": "dotenv",
-            "status": "fresh",
-            "latestVersion": "17.4.2",
-            "publishedAt": "2026-04-12T16:41:11.574Z",
-            "ageMonths": 0.7
-          },
-          {
-            "name": "zod",
-            "status": "fresh",
-            "latestVersion": "4.4.2",
-            "publishedAt": "2026-05-01T21:30:03.830Z",
-            "ageMonths": 0.06
-          }
-        ]
-      },
-      "details": "3/3 direct deps within 12mo"
-    },
-    {
-      "id": "security.workflow_actions_sha_pinned",
-      "level": "required",
-      "ok": true,
-      "duration_ms": 2,
-      "evidence": {
-        "workflow_count": 4,
-        "uses_count": 17,
-        "violations": [],
-        "per_file": {
-          ".github/workflows/hermesproof-review-check.yml": {
-            "uses": 2,
-            "violations": 0
-          },
-          ".github/workflows/pages.yml": {
-            "uses": 6,
-            "violations": 0
-          },
-          ".github/workflows/stream-watchdog-cron.yml": {
-            "uses": 2,
-            "violations": 0
-          },
-          ".github/workflows/truth-gates.yml": {
-            "uses": 7,
-            "violations": 0
-          }
-        }
-      },
-      "details": "4 workflow(s), 17 uses-ref(s), all SHA-pinned"
+      "details": "0 critical/serious violations across 22 passing rule(s) (1 non-blocking warning(s))"
     }
   ]
 }
