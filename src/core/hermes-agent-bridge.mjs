@@ -138,6 +138,17 @@ function resolveProviderModel(p) {
 const HEALTH_TIMEOUT_MS = 5000;
 const PROVIDER_TIMEOUT_MS = 25000;
 const DECISION_OVERALL_TIMEOUT_MS = 60000;
+const MAX_USER_SESSION_TTL_HOURS = 48;
+
+function normalizeScope(scope) {
+  if (!Array.isArray(scope)) return [];
+  return [...new Set(scope.map((cap) => String(cap).trim()).filter(Boolean))];
+}
+
+function intersectScope(requestedScope, configuredScope) {
+  const configured = new Set(configuredScope);
+  return requestedScope.filter((cap) => configured.has(cap));
+}
 
 export class HermesAgentBridge {
   /**
@@ -182,7 +193,7 @@ export class HermesAgentBridge {
   _resolvedProviders() {
     const list = [];
     for (const name of this.failoverOrder) {
-      const p = PROVIDERS[name];
+      const p = this._mergedProviders[name];
       if (!p) continue;
       const key = p.api_key_env ? process.env[p.api_key_env] : "no-key-needed";
       if (p.api_key_env && !key) continue; // skip if key not set
@@ -238,6 +249,21 @@ export class HermesAgentBridge {
   }
 
   async requestUserSession({ requested_scope, ttl_hours = 8 }) {
+    const configuredScope = normalizeScope(this.scope);
+    if (configuredScope.length === 0) {
+      return { ok: false, reason: "HERMES_AGENT_SCOPE must be configured before Hermes Agent can request USER sessions" };
+    }
+
+    const requestedScope = normalizeScope(requested_scope);
+    const finalScope = intersectScope(requestedScope, configuredScope);
+    if (finalScope.length === 0) {
+      return { ok: false, reason: "requested_scope has no overlap with configured HERMES_AGENT_SCOPE" };
+    }
+
+    if (!Number.isInteger(ttl_hours) || ttl_hours <= 0 || ttl_hours > MAX_USER_SESSION_TTL_HOURS) {
+      return { ok: false, reason: `ttl_hours must be a positive integer no greater than ${MAX_USER_SESSION_TTL_HOURS}` };
+    }
+
     const health = await this.healthCheck();
     if (!health.ok) {
       return { ok: false, reason: `bridge unhealthy: ${health.reason}` };
@@ -249,18 +275,14 @@ export class HermesAgentBridge {
     const decision = await this._askAgent({
       task: "user_session_authorization",
       project_goals: this.projectGoals,
-      requested_scope,
-      bridge_scope_upper_bound: this.scope,
+      requested_scope: finalScope,
+      bridge_scope_upper_bound: configuredScope,
     });
 
     if (!decision.ok) return decision;
     if (decision.verdict !== "approve") {
       return { ok: false, reason: `agent declined: ${decision.rationale}` };
     }
-
-    const finalScope = this.scope
-      ? requested_scope.filter((cap) => this.scope.includes(cap))
-      : requested_scope;
 
     const sessionId = `hermes-agent-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const grant = await this.orchestrator.grantUserSession({
