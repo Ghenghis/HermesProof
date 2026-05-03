@@ -3,10 +3,8 @@ name: HermesProof Review Check
 on:
   pull_request:
     # Adding `edited` so PR body updates re-run the mechanical review
-    # without requiring an empty commit. Adding workflow_dispatch so
-    # it's possible to manually re-run when needed.
+    # without requiring an empty commit.
     types: [opened, synchronize, reopened, ready_for_review, edited]
-  workflow_dispatch: {}
 
 permissions:
   contents: read
