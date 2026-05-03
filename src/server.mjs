@@ -2,8 +2,32 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { config as loadDotenv } from "dotenv";
+import { resolveEnvFile } from "./core/env-file.mjs";
 import { HermesLockManager } from "./core/lock-manager.mjs";
 import { GateRunner } from "./core/gate-runner.mjs";
+
+// Env-file resolution precedence (HermesProof v0.6):
+//   1. HERMES3D_PROFILE=vps + HERMES3D_VPS_ENV_FILE  (deploy mode)
+//   2. HERMES3D_ENV_FILE                              (general dev override)
+//   3. ./.env in CWD                                  (legacy fallback)
+// HermesProof is stdio JSON-RPC and does not parse argv; profile selection is
+// driven entirely by env vars. Resolved paths are intentionally not logged.
+function maybeLoadDotenv() {
+  const envFile = resolveEnvFile({
+    onMissing(source) {
+      console.error(`[hermesproof] ${source} is set but its file was not found; trying the next env-file candidate.`);
+    }
+  });
+  if (envFile) {
+    const loaded = loadDotenv({ path: envFile });
+    if (loaded.error) {
+      console.error("[hermesproof] selected env file could not be loaded; continuing with current environment.");
+    }
+  }
+}
+
+maybeLoadDotenv();
 
 // Workspace resolution priority: MCP_LOCK_WORKSPACE > HERMES3D_WORKSPACE > cwd.
 // The orchestrator can be installed into any project, not just Hermes3D.

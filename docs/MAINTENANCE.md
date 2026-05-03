@@ -49,6 +49,38 @@ Fix the underlying permission issue, then re-run `npm run doctor -- --workspace 
 
 Neither `MCP_LOCK_WORKSPACE` nor `HERMES3D_WORKSPACE` is set. The server is falling back to `process.cwd()`, which may differ between MCP clients. Set the env var in your client config (`claude_desktop_config.json`, `mcp_config.json`, or `~/.codex/config.toml`).
 
+## Env-file resolution
+
+HermesProof v0.6 loads a single `.env` file at startup (before any
+`process.env.*` reads), so users can keep secrets outside the repo workspace.
+Resolution is strictly env-driven — HermesProof speaks stdio JSON-RPC and never
+parses argv. The first matching rule wins:
+
+1. **Deploy mode** — `HERMES3D_PROFILE=vps` *and* `HERMES3D_VPS_ENV_FILE` set.
+   If that file exists, the VPS env file is loaded. Use this for production
+   deployments where the secret bundle lives at a stable on-host path.
+2. **General dev override** — `HERMES3D_ENV_FILE` set (and the file exists).
+   Recommended for users who keep secrets outside any repo workspace, e.g.
+   `HERMES3D_ENV_FILE=G:\private\.env`. This is the path most contributors
+   will use locally.
+3. **Legacy fallback** — `./.env` in the current working directory. Loaded
+   only if neither env var above resolves and the file exists.
+
+If an explicit env var is set but the file does not exist, HermesProof writes a
+stderr warning naming the env var (not the path) and tries the next candidate.
+If no rule matches, no env file is loaded and HermesProof relies on whatever
+environment the launching MCP client provided.
+
+The resolved path is intentionally **not** logged at info level; it can point
+at a secret-bearing file outside the repo, and HermesProof's stdout is a
+JSON-RPC channel. If you need to confirm which file was loaded, run with
+`DEBUG=*` or inspect the process env after startup. Do not add `console.log`
+calls that print the resolved path.
+
+`dotenv` is the only loader. Variables already present in `process.env`
+(for example, ones the MCP client injected) are not overwritten — that is the
+default `dotenv` behavior and we rely on it so client-side env always wins.
+
 ### Universal setup wizard troubleshooting
 
 ```powershell

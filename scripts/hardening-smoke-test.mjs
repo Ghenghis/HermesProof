@@ -9,6 +9,7 @@ import { ensureEventDirs } from "./generate-review-packet.mjs";
 import { markEventHandled } from "./watch-events.mjs";
 import { pruneHandledEvents } from "./prune-events.mjs";
 import { runTriggerDoctor } from "./trigger-doctor.mjs";
+import { resolveEnvFile } from "../src/core/env-file.mjs";
 
 async function makeTempWorkspace() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermes3d-mcp-hardening-"));
@@ -195,6 +196,49 @@ test("custom state dir name is honored end-to-end", async () => {
   assert.equal(stat.isDirectory(), true);
   // Default dir should NOT have been created.
   await assert.rejects(fs.stat(path.join(workspaceRoot, ".hermes3d_orchestrator")));
+});
+
+test("env file resolver falls through missing vps override to existing general override", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const generalEnv = path.join(workspaceRoot, "general.env");
+  const missingVpsEnv = path.join(workspaceRoot, "missing-vps.env");
+  const missing = [];
+  await fs.writeFile(generalEnv, "TOKEN=general\n", "utf8");
+
+  const resolved = resolveEnvFile({
+    cwd: workspaceRoot,
+    env: {
+      HERMES3D_PROFILE: "vps",
+      HERMES3D_VPS_ENV_FILE: missingVpsEnv,
+      HERMES3D_ENV_FILE: generalEnv
+    },
+    onMissing(source) {
+      missing.push(source);
+    }
+  });
+
+  assert.equal(resolved, generalEnv);
+  assert.deepEqual(missing, ["HERMES3D_VPS_ENV_FILE"]);
+});
+
+test("env file resolver falls through missing explicit override to cwd .env", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const localEnv = path.join(workspaceRoot, ".env");
+  const missing = [];
+  await fs.writeFile(localEnv, "TOKEN=local\n", "utf8");
+
+  const resolved = resolveEnvFile({
+    cwd: workspaceRoot,
+    env: {
+      HERMES3D_ENV_FILE: path.join(workspaceRoot, "missing-general.env")
+    },
+    onMissing(source) {
+      missing.push(source);
+    }
+  });
+
+  assert.equal(resolved, localEnv);
+  assert.deepEqual(missing, ["HERMES3D_ENV_FILE"]);
 });
 
 test("MCP_LOCK_STATE_DIR with a slash is rejected", async () => {
