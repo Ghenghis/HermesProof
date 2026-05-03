@@ -173,6 +173,24 @@ test("local.models.catalog.validate — fails when required column missing", asy
   }
 });
 
+test("local.models.catalog.validate — every row has exactly 8 columns (Codex audit, PR #32)", async () => {
+  // Codex's read-only audit on PR #32 (2026-05-03) found field-shifted
+  // rows in lmstudio_local_models.csv where a spurious 'Local' field had
+  // been inserted, pushing model_id into the quant column. The fix
+  // strips 'Local' and back-derives quant from the model_id filename.
+  // This invariant test prevents regressions: every data row must have
+  // exactly 8 columns matching the header.
+  const text = await fs.readFile(path.join(REGISTRY_DIR, "lmstudio_local_models.csv"), "utf8");
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const headerCols = lines[0].split(",").length;
+  assert.equal(headerCols, 8, "header must declare 8 columns");
+  for (let i = 1; i < lines.length; i++) {
+    // Naive split — registry CSV is generated to be comma-clean by convention
+    const cols = lines[i].split(",").length;
+    assert.equal(cols, 8, `row ${i + 1} has ${cols} columns (expected 8): ${lines[i].slice(0, 100)}`);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // continue.llm_classes.validate
 // ---------------------------------------------------------------------------
