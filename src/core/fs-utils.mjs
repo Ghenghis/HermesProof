@@ -68,8 +68,8 @@ async function renameAtomicWithRetry(tmp, file) {
 export async function writeJsonAtomic(file, value) {
   await ensureDir(path.dirname(file));
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(16).toString("hex")}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
   try {
+    await fs.writeFile(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
     await renameAtomicWithRetry(tmp, file);
   } catch (err) {
     try { await fs.rm(tmp, { force: true }); } catch { /* best-effort cleanup */ }
