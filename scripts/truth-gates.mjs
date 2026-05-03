@@ -48,6 +48,7 @@ import {
   readPackageJson
 } from "./license-and-deps-gates.mjs";
 import { runWorkflowPinningGate } from "./workflow-pinning-gate.mjs";
+import { runAccessibilityWcagAaGate } from "./accessibility-wcag-gate.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -247,7 +248,8 @@ if (!shouldSkip("tests.unit")) {
           "scripts/hardening-smoke-test.mjs",
           "scripts/registry-validate-smoke-test.mjs",
           "scripts/secret-rotation-smoke-test.mjs",
-          "scripts/mcp-scan-static-gate.test.mjs"
+          "scripts/mcp-scan-static-gate.test.mjs",
+          "scripts/accessibility-wcag-gate.test.mjs"
         ],
         { cwd: repoRoot, encoding: "utf8", shell: false }
       );
@@ -1266,6 +1268,25 @@ if (!shouldSkip("security.workflow_actions_sha_pinned")) {
   } else {
     record("security.workflow_actions_sha_pinned", "required", result.ok,
       result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: accessibility.wcag_aa_pass — runs axe-core (via JSDOM, no
+// browser) over site/index.html and asserts 0 critical / 0 serious WCAG 2.1
+// AA violations. axe-core + jsdom are devDependencies; the gate degrades to
+// a clean failure (with details) if either is unavailable so a stripped
+// `npm ci --omit=dev` host doesn't get a confusing crash.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("accessibility.wcag_aa_pass")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const htmlPath = path.join(repoRoot, "site", "index.html");
+    return await runAccessibilityWcagAaGate({ htmlPath });
+  });
+  if (error) {
+    record("accessibility.wcag_aa_pass", "required", false, {}, error.message, durationMs);
+  } else {
+    record("accessibility.wcag_aa_pass", "required", result.ok, result.evidence, result.details, durationMs);
   }
 }
 
