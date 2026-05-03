@@ -11,7 +11,7 @@ registration.
 ## Install
 
 ```powershell
-node scripts/install-clients.mjs --workspace "G:\Github\Hermes3D" --target cursor
+node scripts/install-clients.mjs --workspace "<ABSOLUTE_WORKSPACE_PATH>" --target cursor
 ```
 
 The installer copies `stream.mdc` beside the existing HermesProof Cursor rules.

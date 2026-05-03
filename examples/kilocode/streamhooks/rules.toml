@@ -22,4 +22,4 @@ on_exit = "release owned locks or post BLOCKED with reason"
 forbid_force_push = true
 forbid_no_verify = true
 forbid_secret_reads = true
-secret_paths = ["G:\\private", "C:\\Users\\Admin\\Downloads\\VPS"]
+secret_paths = ["<PRIVATE_ENV_DIR>", "<PRIVATE_VPS_SECRET_DIR>"]
