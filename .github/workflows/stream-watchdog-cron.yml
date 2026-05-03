@@ -1,0 +1,106 @@
+name: STREAM watchdog (cron)
+
+# Last-line guarantee that the STREAM/ handoff loop keeps moving even when
+# every interactive AI client (Claude Code, Codex CLI, KiloCode, etc.) is
+# offline. Runs every 15 minutes via cron + can be triggered manually.
+#
+# Jobs:
+#   1. validate    — schema-check every message in CLAUDE_INBOX/CODEX_INBOX/LEDGER
+#   2. watchdog    — detect STUCK correlations + IDLE roles + EXPIRED messages
+#   3. archive     — move resolved/expired messages to LEDGER.md after 6h
+#   4. snapshot    — push a fresh STATE.md snapshot built from gh PR state
+#
+# Foolproofing:
+#   - Idempotent (running twice produces the same state)
+#   - Read-only on PR data; only writes back to STREAM/ markdown
+#   - Posts a chip-comment on the most recently-active PR if loop is WEDGED
+#   - Files an issue if circuit-breaker fires (prevents silent drift)
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # every 15 minutes
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: stream-watchdog
+  cancel-in-progress: false   # don't cancel a running watchdog with another one
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate STREAM/ schema
+        id: validate
+        continue-on-error: true
+        run: node scripts/stream-validate.mjs
+
+      - name: Run watchdog (heartbeat + auto-reassign)
+        id: watchdog
+        continue-on-error: true
+        run: node scripts/stream-watchdog.mjs
+
+      - name: Archive resolved/expired messages
+        id: archive
+        continue-on-error: true
+        run: node scripts/stream-archive.mjs
+
+      - name: Refresh state snapshot
+        id: snapshot
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Best-effort STATE.md refresh from gh PR data; if the script
+          # doesn't exist yet (PR pending), do nothing rather than fail.
+          if [ -f scripts/stream-state-snapshot.mjs ]; then
+            node scripts/stream-state-snapshot.mjs
+          else
+            echo "stream-state-snapshot.mjs not present; skipping"
+          fi
+
+      - name: Commit STREAM/ changes (if any)
+        run: |
+          git config user.name "stream-watchdog[bot]"
+          git config user.email "stream-watchdog@noreply.github.com"
+          git add handoffs/STREAM/ 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "no STREAM changes; nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore(stream): watchdog auto-update [skip ci]" || true
+          # Only push if we're on main; cron runs from default branch
+          git push origin HEAD:main || echo "push failed (likely branch-protection); ok to skip"
+
+      - name: Open circuit-breaker issue if wedged
+        if: steps.watchdog.outcome == 'failure' && steps.watchdog.conclusion != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Watchdog exits 2 when WEDGED. Don't spam — only open if there
+          # isn't already an open one with the same title.
+          TITLE='[STREAM watchdog] loop is wedged — needs attention'
+          existing=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // ""')
+          if [ -z "$existing" ]; then
+            gh issue create \
+              --title "$TITLE" \
+              --body "The STREAM watchdog detected a wedged loop (>10 open messages + no LEDGER append in 60 min). Check handoffs/STREAM/STATE.md and the latest CLAUDE_INBOX/CODEX_INBOX entries. Auto-reassign messages have been posted; if no client picks them up within 30 min the loop is stalled." \
+              --label "stream-watchdog,priority-p0" || true
+          else
+            echo "circuit-breaker issue #$existing already open; not creating duplicate"
+          fi
