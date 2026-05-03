@@ -168,6 +168,7 @@ export class HermesLockManager {
   async claimTask({ owner, role = "agent", taskId, title = "", files = [], reason = "" }) {
     assertOwner(owner);
     const id = taskId || `task_${shaId(`${owner}:${Date.now()}`, 12)}`;
+    assertPathComponentId(id, "taskId");
     const taskFile = path.join(this.paths.tasksDir, `${id}.json`);
     const existing = await readJson(taskFile, null);
     if (existing && existing.status !== "released" && existing.owner !== owner) {
@@ -199,7 +200,7 @@ export class HermesLockManager {
 
   async releaseTask({ owner, taskId, note = "" }) {
     assertOwner(owner);
-    assertId(taskId, "taskId");
+    assertPathComponentId(taskId, "taskId");
     const taskFile = path.join(this.paths.tasksDir, `${taskId}.json`);
     const task = await readJson(taskFile, null);
     if (!task) return await this.queueManager.completeTask({ owner, task_id: taskId, note });
@@ -403,7 +404,7 @@ export class HermesLockManager {
 
   async approveHandoff({ owner, requestId, decision = "approve", note = "" }) {
     assertOwner(owner);
-    assertId(requestId, "requestId");
+    assertPathComponentId(requestId, "requestId");
     if (!["approve", "deny"].includes(decision)) throw new Error("decision must be approve or deny");
     const requestFile = path.join(this.paths.handoffsDir, `${requestId}.json`);
     const request = await readJson(requestFile, null);
@@ -509,7 +510,7 @@ export class HermesLockManager {
     release_locks = false
   }) {
     assertOwner(owner);
-    assertId(task_id, "task_id");
+    assertPathComponentId(task_id, "task_id");
     if (!reason || typeof reason !== "string") throw new Error("reason is required");
     if (!handoff_path || typeof handoff_path !== "string") throw new Error("handoff_path is required");
     const normalizedBlocked = Array.isArray(blocked_files) && blocked_files.length
@@ -774,6 +775,13 @@ function assertOwner(owner, name = "owner") {
 
 function assertId(id, name) {
   if (typeof id !== "string" || id.trim().length < 2) throw new Error(`${name} must be a non-empty string`);
+}
+
+function assertPathComponentId(id, name) {
+  assertId(id, name);
+  if (!/^[A-Za-z0-9._-]+$/.test(id) || id.includes("..")) {
+    throw new Error(`${name} must use only A-Z, a-z, 0-9, dot, underscore, or hyphen, and must not contain parent refs`);
+  }
 }
 
 function normalizeTtl(ttlMinutes) {
