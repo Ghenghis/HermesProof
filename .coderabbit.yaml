@@ -19,10 +19,9 @@ enable_free_tier: true
 
 # How CodeRabbit phrases its reviews.
 tone_instructions: >
-  Be concise and technically rigorous. Match the existing repo voice (terse,
-  evidence-first, no exclamation marks). Frame suggestions as questions when
-  you're not certain. Cite specific files and line numbers. When you suggest
-  an alternative, mention the trade-off, not just the alternative.
+  Be concise and rigorous: evidence-first, terse, no hype. Cite files/lines.
+  Ask when uncertain. Explain tradeoffs. Prioritize lock, event, queue, proof,
+  and path-rule invariants.
 
 reviews:
   profile: chill           # less noisy than `assertive`; this repo is small + tidy

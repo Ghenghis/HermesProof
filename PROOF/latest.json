@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-05-03T04-00-42-065Z",
-  "ts_utc": "2026-05-03T04:00:42.065Z",
-  "duration_ms": 20383,
+  "run_id": "truth_2026-05-03T04-11-06-059Z",
+  "ts_utc": "2026-05-03T04:11:06.059Z",
+  "duration_ms": 17552,
   "ok": true,
   "pass_count": 16,
   "fail_count": 0,
@@ -16,10 +16,10 @@
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 11,
+      "duration_ms": 12,
       "evidence": {
         "file_count": 21,
-        "manifest_sha256": "71f80e0150a5935c7da9f4266c67104f81bdd781be7860afa29d24118d0426e1"
+        "manifest_sha256": "2fe86360a774e2037381ee4e5564a2a021dbf1b7dff6de2639a1c50a87291a51"
       },
       "details": "21 files hashed"
     },
@@ -45,12 +45,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 3445,
+      "duration_ms": 3326,
       "evidence": {
         "exit_code": 0,
         "pass_count": 41,
         "fail_count": 0,
-        "stdout_tail": "Task streams without loading the whole ledger (32.1191ms)\n✔ listEvents respects limit without reading all files (106.1834ms)\n✔ watch-events webhook timeout aborts cleanly (691.5697ms)\n✔ task envelope validates task_schema_version=1 (75.0914ms)\n✔ enqueue creates pending task with priority and owner pattern (54.6932ms)\n✔ list_pending returns priority desc and FIFO within priority (227.075ms)\n✔ pick atomically claims one task under concurrent callers (92.5224ms)\n✔ pick respects target_owner_pattern (52.3895ms)\n✔ invalid owner pattern is rejected at enqueue time (16.0699ms)\n✔ enqueue is idempotent for the same task id (56.217ms)\n✔ queue lifecycle emits task.enqueued and task.claimed events (198.9274ms)\n✔ task.recovered event fires on stale recovery (152.7604ms)\n✔ recover_stale_tasks ignores not-yet-expired claims (195.0346ms)\n✔ queue heartbeat extends claimed task record (103.9799ms)\n✔ task path cannot escape workspace (16.4368ms)\n✔ path escape attempts are rejected with workspace-relative error (32.7313ms)\n✔ owner can refresh its own existing lock without conflict (230.3402ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (138.3614ms)\n✔ heartbeat extends expiry of held locks (88.9396ms)\n✔ stale lock recovery archives metadata and clears the lock (221.7058ms)\n✔ gate runner rejects unknown gateId without spawning anything (2.0038ms)\n✔ gate runner rejects cwd that escapes the workspace (1.8514ms)\n✔ doctor() reports errors when workspace_root does not exist (2.3488ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (14.63ms)\n✔ custom state dir name is honored end-to-end (16.6092ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.4435ms)\n✔ event_path_cannot_escape_workspace (3.4286ms)\n✔ prune_events_respects_before_cutoff (5.5274ms)\n✔ prune_events_never_touches_failed_directory (4.3618ms)\n✔ trigger_doctor_passes_on_clean_sandbox (288.2683ms)\nℹ tests 41\nℹ suites 0\nℹ pass 41\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3390.1591\n",
+        "stdout_tail": "orTask streams without loading the whole ledger (30.4967ms)\n✔ listEvents respects limit without reading all files (101.4548ms)\n✔ watch-events webhook timeout aborts cleanly (584.6307ms)\n✔ task envelope validates task_schema_version=1 (55.7917ms)\n✔ enqueue creates pending task with priority and owner pattern (55.3876ms)\n✔ list_pending returns priority desc and FIFO within priority (127.5067ms)\n✔ pick atomically claims one task under concurrent callers (93.9243ms)\n✔ pick respects target_owner_pattern (52.1846ms)\n✔ invalid owner pattern is rejected at enqueue time (14.1532ms)\n✔ enqueue is idempotent for the same task id (52.1447ms)\n✔ queue lifecycle emits task.enqueued and task.claimed events (85.8057ms)\n✔ task.recovered event fires on stale recovery (126.2462ms)\n✔ recover_stale_tasks ignores not-yet-expired claims (81.4244ms)\n✔ queue heartbeat extends claimed task record (96.2637ms)\n✔ task path cannot escape workspace (15.4064ms)\n✔ path escape attempts are rejected with workspace-relative error (28.7495ms)\n✔ owner can refresh its own existing lock without conflict (318.38ms)\n✔ releaseFiles by wrong owner is blocked, not silently allowed (136.5524ms)\n✔ heartbeat extends expiry of held locks (166.719ms)\n✔ stale lock recovery archives metadata and clears the lock (264.8383ms)\n✔ gate runner rejects unknown gateId without spawning anything (1.3874ms)\n✔ gate runner rejects cwd that escapes the workspace (1.224ms)\n✔ doctor() reports errors when workspace_root does not exist (1.9616ms)\n✔ getPolicy exposes env-var resolution and stable policy fields (13.7753ms)\n✔ custom state dir name is honored end-to-end (12.6506ms)\n✔ MCP_LOCK_STATE_DIR with a slash is rejected (1.1266ms)\n✔ event_path_cannot_escape_workspace (2.6644ms)\n✔ prune_events_respects_before_cutoff (6.3255ms)\n✔ prune_events_never_touches_failed_directory (3.8897ms)\n✔ trigger_doctor_passes_on_clean_sandbox (440.2609ms)\nℹ tests 41\nℹ suites 0\nℹ pass 41\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3268.5995\n",
         "stderr_tail": ""
       },
       "details": "pass=41, fail=0, exit=0"
@@ -59,7 +59,7 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 261,
+      "duration_ms": 252,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -143,9 +143,9 @@
       "id": "events.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 18,
+      "duration_ms": 19,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-events-dir-ZdHRnK",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-events-dir-D4ApsY",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -158,9 +158,9 @@
       "id": "tasks.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 15,
+      "duration_ms": 18,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-tasks-dir-NHBHna",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-tasks-dir-tJ9i1j",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -174,17 +174,17 @@
       "id": "trigger.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 388,
+      "duration_ms": 252,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-xY9Ljs",
+          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-kHmimj",
           "doctor": {
             "ok": true,
-            "workspace_root": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-xY9Ljs",
-            "state_dir": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-xY9Ljs\\.hermes3d_orchestrator",
+            "workspace_root": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-kHmimj",
+            "state_dir": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-kHmimj\\.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
             "node_version": "v25.8.2",
             "platform": "win32",
@@ -244,13 +244,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 1287,
+      "duration_ms": 785,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-queue-doctor-k35NUR",
+          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-queue-doctor-CHApHz",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -288,9 +288,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 1863,
+      "duration_ms": 1107,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-Ngvl3Z",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-jgTaTx",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -358,7 +358,7 @@
       "id": "workspace.integrity",
       "level": "required",
       "ok": true,
-      "duration_ms": 50,
+      "duration_ms": 44,
       "evidence": {
         "state_dir_name": ".hermes3d_orchestrator",
         "hermes3d_state_dir_present": false,
@@ -375,7 +375,7 @@
       "id": "clients.config_presence",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 2,
       "evidence": {
         "claude_desktop": {
           "path": "C:\\Users\\Admin\\AppData\\Roaming\\Claude\\claude_desktop_config.json",
@@ -406,7 +406,7 @@
       "id": "clients.claude_code_live",
       "level": "required",
       "ok": true,
-      "duration_ms": 13009,
+      "duration_ms": 11709,
       "evidence": {
         "exit_code": 0,
         "matched_line": "hermes3d-locks: node G:\\Github\\hermes3d-mcp-lock-orchestrator\\src\\server.mjs - ✓ Connected"
@@ -429,7 +429,7 @@
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 21,
+      "duration_ms": 12,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -458,7 +458,7 @@
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 4,
+      "duration_ms": 3,
       "evidence": {
         "required_count": 10,
         "findings": [

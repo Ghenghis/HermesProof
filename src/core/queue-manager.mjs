@@ -303,8 +303,10 @@ export class QueueManager {
     task.claimed_by = owner;
     task.claimed_utc = now;
     task.heartbeat_utc = now;
+    let guardOwned = false;
     try {
       await fs.mkdir(guard, { recursive: false });
+      guardOwned = true;
       await moveFileAtomic(item.file, claimed);
       await writeJsonAtomic(claimed, task);
     } catch (err) {
@@ -313,7 +315,7 @@ export class QueueManager {
       }
       throw err;
     } finally {
-      await fs.rm(guard, { recursive: true, force: true });
+      if (guardOwned) await fs.rm(guard, { recursive: true, force: true });
     }
     await this.eventManager.emitEvent({
       event_type: "task.claimed",
