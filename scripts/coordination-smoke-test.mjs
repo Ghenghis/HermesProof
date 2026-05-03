@@ -5,12 +5,14 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { EventManager } from "../src/core/event-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { ensureEventDirs, generateReviewPacket, validateEventEnvelope } from "./generate-review-packet.mjs";
 import { markEventHandled } from "./watch-events.mjs";
+
+const repoRoot = process.cwd();
 
 async function makeTempWorkspace() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermes3d-mcp-lock-test-"));
@@ -517,3 +519,143 @@ test("task path cannot escape workspace", async () => {
   await m.init();
   await assert.rejects(m.enqueueTask({ task_id: "../escape" }), /task_id/);
 });
+
+test("wizard dry-run prints a stable plan and writes nothing", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-wizard-home-"));
+  const before = await snapshotFiles(workspaceRoot);
+  const result = runWizard([
+    "--dry-run",
+    "--workspace", workspaceRoot,
+    "--clients", "codex",
+    "--no-truth-gates",
+    "--yes"
+  ], { HERMESPROOF_TEST_HOME: home });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /HermesProof Setup Wizard/);
+  assert.match(result.stdout, /Detected:/);
+  assert.match(result.stdout, /Wire all detected\?/);
+  assert.match(result.stdout, /Done/);
+  assert.deepEqual(await snapshotFiles(workspaceRoot), before);
+  await assert.rejects(fs.stat(path.join(home, ".codex", "config.toml")));
+});
+
+test("wizard wires codex config and backs up existing config", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-wizard-home-"));
+  const codexDir = path.join(home, ".codex");
+  await fs.mkdir(codexDir, { recursive: true });
+  const codexConfig = path.join(codexDir, "config.toml");
+  await fs.writeFile(codexConfig, "# existing\n", "utf8");
+  const result = runWizard([
+    "--workspace", workspaceRoot,
+    "--clients", "codex",
+    "--no-truth-gates",
+    "--yes"
+  ], { HERMESPROOF_TEST_HOME: home });
+  assert.equal(result.status, 0, result.stderr);
+  const written = await fs.readFile(codexConfig, "utf8");
+  assert.match(written, /\[mcp_servers\.hermes3d-locks\]/);
+  assert.match(written, /MCP_LOCK_WORKSPACE/);
+  const names = await fs.readdir(codexDir);
+  assert.ok(names.some((name) => name.startsWith("config.toml.bak.")));
+  assert.ok(await pathExists(path.join(workspaceRoot, ".hermes3d_orchestrator", "tasks", "pending")));
+  assert.match(result.stdout, /truth-gates: skipped/);
+});
+
+test("wizard rejects workspace paths with control characters", async () => {
+  const result = runWizard([
+    "--workspace", `${path.join(os.tmpdir(), "bad-wizard")}\nboom`,
+    "--clients", "codex",
+    "--yes"
+  ]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /control characters/);
+});
+
+test("wizard rejects malformed github repo before writing workspace state", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-wizard-home-"));
+  const result = runWizard([
+    "--workspace", workspaceRoot,
+    "--github", "not-a-valid-repo",
+    "--clients", "codex",
+    "--no-truth-gates",
+    "--yes"
+  ], { HERMESPROOF_TEST_HOME: home });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /owner\/name/);
+  await assert.rejects(fs.stat(path.join(workspaceRoot, ".hermes3d_orchestrator")));
+});
+
+test("wizard json mode reports no-truth-gates as skipped", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-wizard-home-"));
+  const result = runWizard([
+    "--workspace", workspaceRoot,
+    "--clients", "codex",
+    "--no-truth-gates",
+    "--json",
+    "--yes"
+  ], { HERMESPROOF_TEST_HOME: home });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.truth_gates.status, "skipped (--no-truth-gates)");
+});
+
+test("wizard detects anthropic key without leaking the synthetic value", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-wizard-home-"));
+  const secret = "sk-ant-test-DO-NOT-LOG-ME";
+  const result = runWizard([
+    "--workspace", workspaceRoot,
+    "--clients", "anthropic-sdk",
+    "--no-truth-gates",
+    "--yes"
+  ], { HERMESPROOF_TEST_HOME: home, ANTHROPIC_API_KEY: secret });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal((result.stdout + result.stderr).includes(secret), false);
+  const files = await snapshotFiles(workspaceRoot);
+  for (const file of files) {
+    const raw = await fs.readFile(file, "utf8");
+    assert.equal(raw.includes(secret), false, `${file} leaked synthetic key`);
+  }
+  assert.ok(files.some((file) => file.endsWith(path.join(".hermesproof", "anthropic-sdk-example.mjs"))));
+});
+
+function runWizard(args, extraEnv = {}) {
+  return spawnSync(
+    process.platform === "win32" ? "node.exe" : "node",
+    [path.join(repoRoot, "scripts", "wizard.mjs"), ...args],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: { ...process.env, ...extraEnv },
+      shell: false
+    }
+  );
+}
+
+async function snapshotFiles(root) {
+  const out = [];
+  async function walk(dir) {
+    let entries;
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) await walk(full);
+      else if (entry.isFile()) out.push(full);
+    }
+  }
+  await walk(root);
+  return out.sort();
+}
+
+async function pathExists(file) {
+  try {
+    await fs.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}

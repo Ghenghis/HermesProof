@@ -1,12 +1,12 @@
 # HermesProof — Maintenance & Best Practices
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running sixteen gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running seventeen gates sequentially" width="100%"/>
 </div>
 
 This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees.
 
-The single best diagnostic is `npm run truth-gates` — it surfaces sixteen independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
+The single best diagnostic is `npm run truth-gates` — it surfaces seventeen independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
 
 ## Code-quality conventions
 
@@ -48,6 +48,18 @@ Fix the underlying permission issue, then re-run `npm run doctor -- --workspace 
 ### Doctor reports `env_workspace_set: false`
 
 Neither `MCP_LOCK_WORKSPACE` nor `HERMES3D_WORKSPACE` is set. The server is falling back to `process.cwd()`, which may differ between MCP clients. Set the env var in your client config (`claude_desktop_config.json`, `mcp_config.json`, or `~/.codex/config.toml`).
+
+### Universal setup wizard troubleshooting
+
+```powershell
+npm run wizard -- --dry-run --workspace G:\Github\Hermes3D --no-truth-gates --yes
+```
+
+Dry-run mode prints the detected platform, selected clients, planned config
+paths, bootstrap step, and verification step without writing files. Use
+`--clients codex,claude-code` to narrow the plan. The wizard never prints secret
+values; if `ANTHROPIC_API_KEY` is present it only notes that the Anthropic SDK
+example can be written.
 
 ## Debugging recipes
 

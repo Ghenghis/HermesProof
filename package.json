@@ -26,7 +26,8 @@
   },
   "license": "MIT",
   "bin": {
-    "hermesproof": "src/server.mjs"
+    "hermesproof": "src/server.mjs",
+    "hermesproof-wizard": "scripts/wizard.mjs"
   },
   "scripts": {
     "start": "node src/server.mjs",
@@ -36,6 +37,7 @@
     "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
     "init-project": "node scripts/init-project.mjs",
     "install-clients": "node scripts/install-clients.mjs",
+    "wizard": "node scripts/wizard.mjs",
     "truth-gates": "node scripts/truth-gates.mjs",
     "proof": "node scripts/truth-gates.mjs",
     "print-configs": "node scripts/print-configs.mjs",
