@@ -58,8 +58,8 @@ Locks have TTLs. Recovery is manual and evidence-backed through `hermes_recover_
 
 ## Secret-leak prevention
 
-HermesProof v0.6 hardens the repo against the `.env.txt`-family of footguns that bypass standard `.env` ignore patterns. A defense-in-depth combo of a hardened `.gitignore`, a project-local `.gitleaks.toml` rule set covering providers GitHub does not natively scan (Anthropic, DeepSeek, Hugging Face, SiliconFlow, MiniMax, CodeRabbit), and an opt-in `.githooks/pre-commit` hook runs `gitleaks protect --staged` before every commit. Contributors enable the hook with `git config core.hooksPath .githooks`; the hook degrades gracefully (skips with a notice) on machines where `gitleaks` is not installed.
+HermesProof v0.6 hardens the repo against the `.env.txt`-family of footguns that bypass standard `.env` ignore patterns. A defense-in-depth combo of a hardened `.gitignore`, a project-local `.gitleaks.toml` rule set covering providers GitHub does not natively scan (Anthropic, DeepSeek, Hugging Face, SiliconFlow, MiniMax, CodeRabbit), and an opt-in `.githooks/pre-commit` hook runs `gitleaks protect --staged` before every commit. Contributors enable the hook with `git config core.hooksPath .githooks`; once enabled, the hook fails closed when `gitleaks` is not installed so secret scanning cannot silently become a no-op.
 
-- `.gitleaks.toml` — provider rule set + allowlist for synthetic fixtures (`sk-ant-test-*`, `*.example` paths, `PROOF/`, `node_modules/`).
-- `.githooks/pre-commit` — staged-diff secret scan; never blocks when `gitleaks` is absent.
+- `.gitleaks.toml` — provider rule set + allowlist for synthetic fixtures (`sk-ant-test-*`), `*.example` paths, and `node_modules/`.
+- `.githooks/pre-commit` — staged-diff secret scan; blocks commits when `gitleaks` is absent until the hook is disabled or the binary is installed.
 - `.gitignore` — explicit deny for `.env.txt`, `.env.bak`, `.env.old`, `.env.swp`, `.env~`, `.env.deploy`, `.env2`, `.env.production`, `.env.staging`, `.env.vps`, and the catch-all `*.env`, with allowlisted `*.example` siblings.
