@@ -28,7 +28,10 @@ describe("ReputationTracker", () => {
   });
 
   it("records reject outcome, score decreases", async () => {
-    const r = await rep.recordOutcome("builder-a", "reject", "gate-fail");
+    const isolated = new ReputationTracker({ workspaceRoot: tmpDir, stateDirName: ".hermes-rep-reject" });
+    await isolated.init();
+    await isolated.recordOutcome("builder-a", "merge", "seed-success");
+    const r = await isolated.recordOutcome("builder-a", "reject", "gate-fail");
     assert.equal(r.delta, -1.0);
     assert.equal(r.new_score, 1.0); // 1.0 + 1.0 - 1.0
   });
