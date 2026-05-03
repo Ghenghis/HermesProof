@@ -57,8 +57,8 @@ Resolution is strictly env-driven — HermesProof speaks stdio JSON-RPC and neve
 parses argv. The first matching rule wins:
 
 1. **Deploy mode** — `HERMES3D_PROFILE=vps` *and* `HERMES3D_VPS_ENV_FILE` set.
-   The VPS env file is loaded. Use this for production deployments where the
-   secret bundle lives at a stable on-host path.
+   If that file exists, the VPS env file is loaded. Use this for production
+   deployments where the secret bundle lives at a stable on-host path.
 2. **General dev override** — `HERMES3D_ENV_FILE` set (and the file exists).
    Recommended for users who keep secrets outside any repo workspace, e.g.
    `HERMES3D_ENV_FILE=G:\private\.env`. This is the path most contributors
@@ -66,6 +66,8 @@ parses argv. The first matching rule wins:
 3. **Legacy fallback** — `./.env` in the current working directory. Loaded
    only if neither env var above resolves and the file exists.
 
+If an explicit env var is set but the file does not exist, HermesProof writes a
+stderr warning naming the env var (not the path) and tries the next candidate.
 If no rule matches, no env file is loaded and HermesProof relies on whatever
 environment the launching MCP client provided.
 

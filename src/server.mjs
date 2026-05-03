@@ -3,8 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { config as loadDotenv } from "dotenv";
-import fs from "node:fs";
-import path from "node:path";
+import { resolveEnvFile } from "./core/env-file.mjs";
 import { HermesLockManager } from "./core/lock-manager.mjs";
 import { GateRunner } from "./core/gate-runner.mjs";
 
@@ -13,24 +12,18 @@ import { GateRunner } from "./core/gate-runner.mjs";
 //   2. HERMES3D_ENV_FILE                              (general dev override)
 //   3. ./.env in CWD                                  (legacy fallback)
 // HermesProof is stdio JSON-RPC and does not parse argv; profile selection is
-// driven entirely by env vars. Resolved path is intentionally not logged at
-// info level to avoid leaking secret-bearing file paths through MCP stdout.
-function resolveEnvFile() {
-  const profile = (process.env.HERMES3D_PROFILE || "").toLowerCase();
-  if (profile === "vps" && process.env.HERMES3D_VPS_ENV_FILE) {
-    return process.env.HERMES3D_VPS_ENV_FILE;
-  }
-  if (process.env.HERMES3D_ENV_FILE) {
-    return process.env.HERMES3D_ENV_FILE;
-  }
-  const localEnv = path.resolve(process.cwd(), ".env");
-  return fs.existsSync(localEnv) ? localEnv : null;
-}
-
+// driven entirely by env vars. Resolved paths are intentionally not logged.
 function maybeLoadDotenv() {
-  const envFile = resolveEnvFile();
-  if (envFile && fs.existsSync(envFile)) {
-    loadDotenv({ path: envFile });
+  const envFile = resolveEnvFile({
+    onMissing(source) {
+      console.error(`[hermesproof] ${source} is set but its file was not found; trying the next env-file candidate.`);
+    }
+  });
+  if (envFile) {
+    const loaded = loadDotenv({ path: envFile });
+    if (loaded.error) {
+      console.error("[hermesproof] selected env file could not be loaded; continuing with current environment.");
+    }
   }
 }
 
