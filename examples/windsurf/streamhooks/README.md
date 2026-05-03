@@ -16,3 +16,6 @@ node scripts/install-clients.mjs --workspace "<ABSOLUTE_WORKSPACE_PATH>" --targe
 
 The installer writes Windsurf MCP config and copies `.windsurfrules` into the
 target workspace.
+If you copy `mcp_config.json` manually, replace
+`<ABSOLUTE_HERMESPROOF_REPO>` and `<ABSOLUTE_WORKSPACE_PATH>` with real
+absolute paths first.
