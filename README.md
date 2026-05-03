@@ -203,37 +203,58 @@ See [`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md) for ful
 
 ---
 
-## ✦ Quickstart
+## ✦ Quickstart — works for ANY repository
+
+HermesProof is **project-agnostic by design**. Point `--workspace` at any local directory — a fresh repo, a legacy codebase, a monorepo, a documentation project. The `hermes3d-locks` MCP server name is a deployed-name carry-over from the original Hermes3D workflow, but the server governs whatever workspace you give it.
 
 ```powershell
-# 1. Clone and install
+# 1. Clone HermesProof itself (the orchestrator)
 git clone https://github.com/Ghenghis/HermesProof.git
 cd HermesProof
 npm install
 
-# 2. Verify the package
-npm run truth-gates                                 # 14/14 gates pass against your local machine
-npm test                                            # 12 unit tests
-npm run doctor -- --workspace G:\Github\Hermes3D    # non-destructive readiness probe
+# 2. Verify the package (no workspace needed yet)
+npm run truth-gates                                            # 14/14 gates pass
+npm test                                                       # 12 unit tests
 
-# 3. Bootstrap the target workspace
-npm run init-project -- --workspace G:\Github\Hermes3D
+# 3. Pick the workspace HermesProof will govern. Examples:
+#       Windows:  $WORKSPACE = "G:\Github\my-project"
+#       macOS:    WORKSPACE=~/code/my-project
+#       Linux:    WORKSPACE=/home/me/work/my-project
+$WORKSPACE = "G:\Github\my-project"           # <-- change this to YOUR repo
 
-# 4. Wire it into every MCP client (with backups)
-npm run install-clients -- --workspace G:\Github\Hermes3D
+# 4. Non-destructive readiness probe
+npm run doctor -- --workspace $WORKSPACE
 
-# 5. Confirm it's live
-claude mcp list                                     # expect "hermes3d-locks: ✓ Connected"
+# 5. Bootstrap the workspace state directory (creates .hermes3d_orchestrator/)
+npm run init-project -- --workspace $WORKSPACE
+
+# 6. Wire it into every MCP client (timestamped backups of any prior config)
+npm run install-clients -- --workspace $WORKSPACE
+
+# 7. Confirm it's live
+claude mcp list                                                # expect "hermes3d-locks: ✓ Connected"
 ```
 
-After step 4, restart Claude Desktop and Codex; refresh MCP servers in Cascade. Tell any agent:
+After step 6, restart Claude Desktop and Codex; refresh MCP servers in Cascade. Tell any agent:
 
 ```text
 Use hermes_doctor and hermes_read_policy. Confirm workspace_root.
 Then claim_task + lock_files before editing anything.
 ```
 
-For projects other than Hermes3D, just point `--workspace` somewhere else — HermesProof is project-agnostic.
+### Use cases (each is a `--workspace <path>` away)
+
+| Project type | Example `--workspace` |
+|---|---|
+| Solo dev wiring 2+ AI agents into a personal repo | `~/code/my-app` |
+| Team using Claude + Codex in a shared monorepo | `/srv/team/monorepo` |
+| Open-source maintainer reviewing community PRs | `~/oss/my-library` |
+| Hermes3D workflow (the original target) | `G:\Github\Hermes3D` |
+
+**No GitHub repo required.** HermesProof governs the local filesystem. If your project lives only on disk (no remote, no `.git/`, even), it still works — `init-project` creates the state dir, locks govern files, gates run shell commands. The truth-gate harness uses git only when it's there.
+
+For deeper recipes (CI integration, multi-machine coordination, etc.), see [`docs/SETUP_GENERIC_PROJECT.md`](./docs/SETUP_GENERIC_PROJECT.md).
 
 ---
 

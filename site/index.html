@@ -475,12 +475,12 @@
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 9/9 gates against your machine
+npm run truth-gates                                                # 14/14 gates against your machine
 npm test                                                           # 12 unit tests
-npm run doctor -- --workspace G:\Github\Hermes3D                   # readiness probe (read-only)
+npm run doctor -- --workspace G:\Github\my-project                 # readiness probe (read-only) — change path to YOUR repo
 
-npm run init-project    -- --workspace G:\Github\Hermes3D
-npm run install-clients -- --workspace G:\Github\Hermes3D
+npm run init-project    -- --workspace G:\Github\my-project
+npm run install-clients -- --workspace G:\Github\my-project
 
 claude mcp list                                                    # expect "hermes3d-locks: ✓ Connected"</pre></div>
     </div>
@@ -489,7 +489,7 @@ claude mcp list                                                    # expect "her
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 9/9 gates against your machine
+npm run truth-gates                                                # 14/14 gates against your machine
 npm test                                                           # 12 unit tests
 npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
 
@@ -503,7 +503,7 @@ claude mcp list                                                    # expect "her
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 9/9 gates against your machine
+npm run truth-gates                                                # 14/14 gates against your machine
 npm test                                                           # 12 unit tests
 npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
 
