@@ -222,11 +222,20 @@ if (!shouldSkip("deps.parity")) {
 // the reporter output; calling node directly gives stable, parseable text.
 // ----------------------------------------------------------------------------
 if (!shouldSkip("tests.unit")) {
+  // Codex audit fix (PR #32, 2026-05-03): the registry smoke test was
+  // shipped but never wired into the unit gate, so CI could pass without
+  // exercising the new parser/catalog/routing logic. Adding it here so a
+  // regression in any registered smoke file fails this required gate.
   const { result, durationMs } = await timed(async () => {
     return new Promise((resolve) => {
       const r = spawnSync(
         process.platform === "win32" ? "node.exe" : "node",
-        ["--test", "scripts/coordination-smoke-test.mjs", "scripts/hardening-smoke-test.mjs"],
+        [
+          "--test",
+          "scripts/coordination-smoke-test.mjs",
+          "scripts/hardening-smoke-test.mjs",
+          "scripts/registry-validate-smoke-test.mjs",
+        ],
         { cwd: repoRoot, encoding: "utf8", shell: false }
       );
       resolve({ status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" });
@@ -1009,8 +1018,12 @@ if (!shouldSkip("ollama.health")) {
 // the tracked tree so absence of gitleaks doesn't silently skip the gate.
 // ----------------------------------------------------------------------------
 if (!shouldSkip("secret.scan")) {
+  // Codex audit fix (PR #32, 2026-05-03): the previous implementation
+  // returned `{ error, findings: [] }` on infrastructure errors (git
+  // ls-files failure, gitleaks parse failure) and the gate only checked
+  // findings.length — so a broken scanner false-passed. Now scanner
+  // execution errors fail the gate ("fail closed").
   const { result, durationMs } = await timed(async () => {
-    // Try gitleaks first.
     const probe = spawnSync(
       process.platform === "win32" ? "gitleaks.exe" : "gitleaks",
       ["version"],
@@ -1020,7 +1033,12 @@ if (!shouldSkip("secret.scan")) {
       // Fallback regex scan over tracked files (cheap, conservative).
       const tracked = spawnSync("git", ["-C", repoRoot, "ls-files"], { encoding: "utf8" });
       if (tracked.status !== 0) {
-        return { mode: "fallback", error: "git ls-files failed", findings: [] };
+        return {
+          mode: "fallback",
+          scanner_ok: false,
+          error: `git ls-files failed (status=${tracked.status}): ${(tracked.stderr || "").slice(0, 200)}`,
+          findings: [],
+        };
       }
       const files = tracked.stdout.split("\n").filter(Boolean).filter(
         (p) => !p.startsWith("PROOF/") && !p.endsWith(".lock") && !p.endsWith(".png") && !p.endsWith(".jpg")
@@ -1031,24 +1049,24 @@ if (!shouldSkip("secret.scan")) {
         { name: "github_token", re: /gh[pousr]_[A-Za-z0-9]{36,}/ },
         { name: "openai_key", re: /sk-[A-Za-z0-9_-]{32,}/ },
         { name: "anthropic_key", re: /sk-ant-[A-Za-z0-9_-]{32,}/ },
-        { name: "private_key_pem", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |)PRIVATE KEY-----/ }
+        { name: "private_key_pem", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |)PRIVATE KEY-----/ },
       ];
       const findings = [];
       for (const rel of files) {
-        // skip the gate file itself (defines these patterns)
         if (rel.endsWith("truth-gates.mjs")) continue;
         try {
           const buf = await fs.readFile(path.join(repoRoot, rel), "utf8");
           for (const pat of patterns) {
-            // aws_secret_key alone is too noisy without context — require AKIA nearby
             if (pat.name === "aws_secret_key" && !/AKIA[0-9A-Z]{16}/.test(buf)) continue;
             if (pat.re.test(buf)) {
               findings.push({ file: rel, pattern: pat.name });
             }
           }
-        } catch { /* skip unreadable */ }
+        } catch {
+          /* skip unreadable */
+        }
       }
-      return { mode: "fallback", findings, file_count: files.length };
+      return { mode: "fallback", scanner_ok: true, findings, file_count: files.length };
     }
     // gitleaks present — run it.
     const r = spawnSync(
@@ -1056,22 +1074,39 @@ if (!shouldSkip("secret.scan")) {
       ["detect", "--no-banner", "--redact", "-s", repoRoot, "--report-format", "json", "--report-path", "-"],
       { encoding: "utf8" }
     );
+    // gitleaks exit codes per upstream docs: 0 = no leaks, 1 = leaks found,
+    // anything else = infrastructure error. Both 0 and 1 must be treated as
+    // "scanner ran successfully"; any other status is fail-closed.
+    const exitCode = r.status;
+    const scannerOk = exitCode === 0 || exitCode === 1;
     let parsed = [];
-    try { parsed = JSON.parse(r.stdout || "[]"); } catch { /* tolerate */ }
+    let parseError = null;
+    try {
+      parsed = JSON.parse(r.stdout || "[]");
+    } catch (err) {
+      parseError = err.message;
+    }
     return {
       mode: "gitleaks",
       version: probe.stdout.trim(),
-      exit_code: r.status,
+      exit_code: exitCode,
+      scanner_ok: scannerOk && parseError === null,
+      parse_error: parseError,
+      stderr_tail: (r.stderr || "").slice(-500),
       finding_count: Array.isArray(parsed) ? parsed.length : 0,
-      findings: Array.isArray(parsed) ? parsed.slice(0, 10) : []
+      findings: Array.isArray(parsed) ? parsed.slice(0, 10) : [],
     };
   });
-  const ok = (result.findings?.length || 0) === 0;
-  record("secret.scan", "required", ok, result,
-    ok
-      ? `${result.mode}: 0 findings`
-      : `${result.mode}: ${result.findings.length} finding(s)`,
-    durationMs);
+  // Fail closed: any scanner-execution failure (scanner_ok=false) blocks
+  // the gate, even if findings is empty. Previously this false-passed.
+  const noFindings = (result.findings?.length || 0) === 0;
+  const ok = result.scanner_ok === true && noFindings;
+  const detailParts = [];
+  detailParts.push(result.mode);
+  if (!result.scanner_ok)
+    detailParts.push(`SCANNER ERROR: ${result.error || result.parse_error || `exit=${result.exit_code}`}`);
+  detailParts.push(`${result.findings?.length || 0} finding(s)`);
+  record("secret.scan", "required", ok, result, detailParts.join(": "), durationMs);
 }
 
 // ----------------------------------------------------------------------------
