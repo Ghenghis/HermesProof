@@ -126,6 +126,40 @@ Event files use `event_schema_version: 1`, are first written through a same-file
 
 ---
 
+## ✦ Trigger bridge (v0.4)
+
+State changes flow through a passive event router. No LLM is called from HermesProof; the file is the trigger surface.
+
+<div align="center">
+<img src="docs/diagrams/event-flow.svg" alt="Trigger bridge event flow: lock manager state change emits a JSON envelope through the event manager into the outbox; a watcher generates a deterministic review packet and atomically renames the file into handled, or to failed if the schema version is unrecognized" width="100%"/>
+</div>
+
+```text
+01 STATE CHANGE     lock claimed/released/recovered, handoff created/approved/denied,
+                    evidence appended, gate passed/failed, pr.opened
+02 EMIT             event-manager builds envelope (event_schema_version: 1),
+                    resolves evidence_ids at emit time, writes JSON atomically
+03 OUTBOX           events/outbox/evt_<utc_iso_compact>_<6hex>.json
+04 WATCH            scripts/watch-events.mjs polls; three modes: console (default),
+                    review packet (--write-review-packets), or webhook
+                    (HERMESPROOF_WEBHOOK_URL)
+05 REVIEW PACKET    deterministic Markdown — same input always produces same output
+06 HANDLED / FAILED fs.rename atomic transition to events/handled/ on consumer ack;
+                    schema-mismatched envelopes go to events/failed/ (never auto-pruned)
+```
+
+Five architect invariants enforced by the implementation:
+
+1. **Loop guard** — internal bookkeeping evidence carries `data.system: "event-manager"`; the lock manager skips re-emit on those rows so `evidence.appended` events don't recurse.
+2. **Atomic rename** — every state transition between `outbox/`, `handled/`, `failed/` uses `fs.rename` on the same filesystem; concurrent watchers see `event_already_handled` rather than double-processing.
+3. **Retention** — `scripts/prune-events.mjs --before <iso>` prunes only `handled/`. `failed/` is never auto-pruned.
+4. **Schema versioning** — `event_schema_version: 1` is required on every envelope. Unknown versions move to `failed/` with `error: "unknown_schema_version"`.
+5. **`evidence_ids` at emit time** — resolved from the chained ledger when the event is written, not when it's consumed; consumers don't re-walk the chain.
+
+A separate **GitHub Actions mechanical-review workflow** (`.github/workflows/hermesproof-review-check.yml`) runs without an LLM on every PR open and asserts: PR body contains the evidence-chain line, references a task id, lists at least one gate, has changed files, has a valid handoff if `handoffs/HANDOFF_*.md` is added, and the README tool count matches the server's registered tool count.
+
+---
+
 ## ✦ Multi-agent coordination
 
 Claude leads with docs and contracts. Codex implements code. Reviewers audit. HermesProof keeps them out of each other's way.

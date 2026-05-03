@@ -5,7 +5,7 @@
 <meta http-equiv="x-ua-compatible" content="ie=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>HermesProof — verifiable multi-agent coordination over MCP</title>
-<meta name="description" content="HermesProof is the file-lock and proof layer that lets Claude, Codex, Windsurf and Cascade collaborate on the same repository without clobbering each other. Per-file locks, atomic handoffs, allowlisted gates, append-only evidence ledger, and a 9-gate truth bundle re-attested on every push." />
+<meta name="description" content="HermesProof is the file-lock, proof, and passive trigger-bridge layer that lets Claude, Codex, Windsurf and Cascade collaborate on the same repository without clobbering each other. Per-file locks, atomic handoffs, allowlisted gates, hash-chained evidence ledger, durable event outbox, Sigstore-signed proof, and a 14-gate truth bundle re-attested on every push." />
 <meta name="theme-color" content="#0a0e27" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="HermesProof — verifiable multi-agent coordination over MCP" />
@@ -37,6 +37,7 @@
     <div class="nav__links">
       <a href="#pipeline">Pipeline</a>
       <a href="#gates">Truth Gates</a>
+      <a href="#trigger">Trigger Bridge</a>
       <a href="#architecture">Architecture</a>
       <a href="#agents">Agents</a>
       <a href="#quickstart">Quickstart</a>
@@ -51,10 +52,10 @@
 <!-- ============================================================ HERO -->
 <section class="hero container">
   <div class="hero__pills reveal">
-    <span class="pill pill--green"><span class="dot"></span>truth-gates 9 / 9 PASS</span>
-    <span class="pill pill--purple"><span class="dot"></span>15 MCP tools</span>
+    <span class="pill pill--green"><span class="dot"></span>truth-gates 14 / 14 PASS</span>
+    <span class="pill pill--purple"><span class="dot"></span>20 MCP tools</span>
     <span class="pill pill--cyan"><span class="dot"></span>4 clients wired</span>
-    <span class="pill pill--pink"><span class="dot"></span>SHA-256 attested</span>
+    <span class="pill pill--pink"><span class="dot"></span>Sigstore-signed proof</span>
   </div>
   <h1 class="hero__title reveal">
     <span class="gradient-text">Verifiable</span><br/>
@@ -243,12 +244,42 @@
   </div>
 </section>
 
+<!-- ============================================================ TRIGGER BRIDGE (v0.4) -->
+<section id="trigger" class="container">
+  <div class="section-head reveal">
+    <span class="kicker">Trigger Bridge — v0.4</span>
+    <h2>State changes become durable file events. The bridge is passive.</h2>
+    <p>Every coordination state change — lock claimed, handoff approved, evidence appended, gate result, PR opened — emits a JSON envelope into <code>events/outbox/</code>. A local watcher polls, generates a deterministic review packet, and atomically renames the file into <code>events/handled/</code> when the consumer acknowledges. Schema-mismatched events go to <code>events/failed/</code>. <strong>HermesProof never calls an LLM</strong> — the file is the trigger surface; an external runner, webhook, or human reads the outbox.</p>
+  </div>
+  <div class="diagram reveal">
+    <img src="./diagrams/event-flow.svg" alt="Trigger bridge event flow: lock manager state change emits a JSON envelope through the event manager into the outbox; a watcher generates a deterministic review packet and atomically renames the file into handled, or to failed if the schema version is unrecognized" loading="lazy" />
+  </div>
+  <div class="grid-3 reveal" style="margin-top: 2rem;">
+    <div class="card">
+      <h4>4 new MCP tools</h4>
+      <p><code>hermes_emit_event</code> · <code>hermes_list_events</code> · <code>hermes_mark_event_handled</code> · <code>hermes_create_blocked_handoff</code> — total tool count is now <strong>20</strong>.</p>
+    </div>
+    <div class="card">
+      <h4>3 watcher modes</h4>
+      <p><strong>A.</strong> Console — print event lines. <strong>B.</strong> Review packet — deterministic Markdown to <code>review_packets/</code>. <strong>C.</strong> Webhook — POST envelope to <code>HERMESPROOF_WEBHOOK_URL</code>. No paid services required.</p>
+    </div>
+    <div class="card">
+      <h4>5 architect invariants</h4>
+      <p>Loop guard on <code>evidence.appended</code> · atomic <code>fs.rename</code> for state moves · retention only on <code>handled/</code> · required <code>event_schema_version: 1</code> · <code>evidence_ids</code> resolved at emit time.</p>
+    </div>
+  </div>
+  <div class="card reveal" style="margin-top: 2rem; border-left: 3px solid var(--accent-cyan); padding-left: 1.5rem;">
+    <h4>GitHub Actions mechanical PR review</h4>
+    <p>A new workflow <code>.github/workflows/hermesproof-review-check.yml</code> runs on every PR open <strong>without an LLM</strong>: asserts evidence-chain line, task id, gate run, changed-file count, valid handoff (if any handoff is added), <code>PROOF/latest.json</code> presence, and README tool count matches the server's registered tool count. Catches lock-discipline drift mechanically.</p>
+  </div>
+</section>
+
 <!-- ============================================================ ARCHITECTURE -->
 <section id="architecture" class="container">
   <div class="section-head reveal">
     <span class="kicker">Architecture</span>
-    <h2>One stdio process. Fifteen tools. Two persistence surfaces.</h2>
-    <p>HermesProof is intentionally small — a single Node process per workspace that speaks JSON-RPC over stdio. Its only side effects are inside one hidden directory.</p>
+    <h2>One stdio process. Twenty tools. Three persistence surfaces.</h2>
+    <p>HermesProof is intentionally small — a single Node process per workspace that speaks JSON-RPC over stdio. Its only side effects are inside one hidden directory: locks, tasks, handoffs, evidence, events.</p>
   </div>
   <div class="diagram reveal">
     <img src="./diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" />
