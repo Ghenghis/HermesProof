@@ -99,6 +99,10 @@ function delay(ms) {
 // per-spawn `process.once` handlers from the original implementation, which
 // accumulated across reconnects and held references to dead child objects.
 let activeChild = null;
+// Set when the supervisor itself receives SIGTERM/SIGINT, so the supervise()
+// loop can exit cleanly between spawnServer() iterations instead of treating
+// a signal-killed child as a crash and respawning.
+let shutdownSignal = null;
 
 async function spawnServer() {
   return new Promise((resolve) => {
@@ -108,12 +112,17 @@ async function spawnServer() {
     });
     activeChild = child;
 
-    // end:false — when the child exits, do NOT close the supervisor's own
-    // stdio. Otherwise the next respawn has nowhere to write, and the MCP
-    // client sees a permanently dead stream. The audit on PR #33 flagged
-    // the default end:true as the cause of "supervisor reconnects but
-    // client still sees disconnect".
-    process.stdin.pipe(child.stdin, { end: false });
+    // stdout/stderr use end:false so the child's exit doesn't close the
+    // supervisor's own output streams (otherwise the next respawn has nowhere
+    // to write and the MCP client sees a permanently dead stream — flagged in
+    // the PR #33 audit).
+    //
+    // stdin DOES propagate EOF (default end:true). When the MCP client closes
+    // its end, process.stdin emits 'end', which forwards to child.stdin,
+    // letting src/server.mjs see EOF and exit cleanly. The unpipe() in the
+    // child's 'exit' handler severs the link before process.stdin would ever
+    // try to forward EOF mid-session, so respawn cycles still work.
+    process.stdin.pipe(child.stdin);
     child.stdout.pipe(process.stdout, { end: false });
     child.stderr.pipe(process.stderr, { end: false });
 
@@ -148,12 +157,21 @@ async function spawnServer() {
 // Single top-level signal handler. Forwards to whichever child is currently
 // active at signal time. Replaces the per-spawn `process.once` handlers from
 // the original (each spawn iteration leaked a stale handler).
+//
+// Always records the signal in shutdownSignal so the supervise() loop can
+// exit cleanly. If there's no active child (e.g. mid-backoff) we exit right
+// away — there's nothing to forward to and no reason to keep the loop alive.
 const forwardSignal = (sig) => {
+  if (shutdownSignal === null) shutdownSignal = sig;
   if (activeChild) {
     try {
       activeChild.kill(sig);
     } catch {}
+    return;
   }
+  // No active child — exit immediately; supervise() may be in delay()
+  // and would otherwise outlive the signal until backoff completes.
+  process.exit(0);
 };
 process.on("SIGTERM", () => forwardSignal("SIGTERM"));
 process.on("SIGINT", () => forwardSignal("SIGINT"));
@@ -173,6 +191,14 @@ async function supervise() {
 
   while (true) {
     const result = await spawnServer();
+
+    // If we received SIGTERM/SIGINT during this spawn iteration, exit cleanly
+    // regardless of how the child terminated. Treating a signal-killed child
+    // as a crash would respawn it during shutdown — the opposite of clean.
+    if (shutdownSignal !== null) {
+      await log(`received ${shutdownSignal}; supervisor exiting`);
+      process.exit(0);
+    }
 
     if (result.code === 0 && result.signal === null) {
       // Clean exit; supervisor follows
