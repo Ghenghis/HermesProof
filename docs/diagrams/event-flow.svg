@@ -1,0 +1,237 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="HermesProof v0.4 trigger bridge: state change emits durable file events to outbox, watcher generates review packets, atomic transitions to handled or failed" aria-labelledby="event-flow-title event-flow-desc">
+  <title id="event-flow-title">Trigger bridge — event flow</title>
+  <desc id="event-flow-desc">HermesProof v0.4 trigger bridge: a coordination state change in the lock manager fires the event manager, which writes a durable JSON envelope (event_schema_version 1) to the outbox folder. A local watcher polls the outbox, generates a deterministic review packet, and atomically renames the file into handled. Schema-mismatched events go to failed. The bridge is passive — no LLM is called from HermesProof; the file is the trigger surface.</desc>
+  <defs>
+    <style>@media (prefers-reduced-motion: reduce){*{animation:none!important;animation-duration:0.001s!important}animate,animateTransform,animateMotion{display:none}}</style>
+    <linearGradient id="event-flow-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0e27"/>
+      <stop offset="50%" stop-color="#10163a"/>
+      <stop offset="100%" stop-color="#070a1f"/>
+    </linearGradient>
+    <linearGradient id="event-flow-cyan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#0891b2" stop-opacity="0.65"/>
+    </linearGradient>
+    <linearGradient id="event-flow-violet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.65"/>
+    </linearGradient>
+    <linearGradient id="event-flow-magenta" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ec4899" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#be185d" stop-opacity="0.65"/>
+    </linearGradient>
+    <linearGradient id="event-flow-green" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22c55e" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#16a34a" stop-opacity="0.65"/>
+    </linearGradient>
+    <linearGradient id="event-flow-red" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#b91c1c" stop-opacity="0.65"/>
+    </linearGradient>
+    <filter id="event-flow-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="540" fill="url(#event-flow-bg)"/>
+
+  <!-- subtle scanline grid -->
+  <g stroke="#1f2a44" stroke-width="0.5" opacity="0.35">
+    <line x1="0" y1="60" x2="1200" y2="60"/>
+    <line x1="0" y1="180" x2="1200" y2="180"/>
+    <line x1="0" y1="300" x2="1200" y2="300"/>
+    <line x1="0" y1="420" x2="1200" y2="420"/>
+  </g>
+
+  <!-- title -->
+  <text x="600" y="36" text-anchor="middle" font-size="18" fill="#e2e8f0" font-weight="600">Trigger bridge — passive event router</text>
+  <text x="600" y="56" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">state change → outbox → watcher → review packet → handled (atomic fs.rename)</text>
+
+  <!-- ============== STAGE 1: Lock Manager ============== -->
+  <g transform="translate(60, 110)">
+    <rect width="180" height="120" rx="10" fill="#101638" stroke="url(#event-flow-violet)" stroke-width="1.5"/>
+    <text x="90" y="28" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="600">Lock Manager</text>
+    <text x="90" y="50" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace">claim · lock · release</text>
+    <text x="90" y="68" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace">handoff · evidence</text>
+    <text x="90" y="86" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace">gate · pr.opened</text>
+    <circle cx="90" cy="106" r="4" fill="#a855f7" filter="url(#event-flow-glow)">
+      <animate attributeName="r" values="3;6;3" dur="2.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.65;1;0.65" dur="2.4s" repeatCount="indefinite"/>
+    </circle>
+    <text x="90" y="142" text-anchor="middle" font-size="9" fill="#a855f7" font-family="ui-monospace, monospace">13 event types</text>
+  </g>
+
+  <!-- arrow 1 -->
+  <g>
+    <line x1="240" y1="170" x2="320" y2="170" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4 4">
+      <animate attributeName="stroke-dashoffset" from="0" to="-32" dur="1.6s" repeatCount="indefinite"/>
+    </line>
+    <polygon points="320,170 314,166 314,174" fill="#a855f7"/>
+  </g>
+
+  <!-- ============== STAGE 2: Event Manager ============== -->
+  <g transform="translate(330, 110)">
+    <rect width="180" height="120" rx="10" fill="#101638" stroke="url(#event-flow-cyan)" stroke-width="1.5"/>
+    <text x="90" y="28" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="600">Event Manager</text>
+    <text x="90" y="50" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace">build envelope</text>
+    <text x="90" y="68" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace">resolve evidence_ids</text>
+    <text x="90" y="86" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace">writeJsonAtomic</text>
+    <text x="90" y="108" text-anchor="middle" font-size="9" fill="#06b6d4" font-family="ui-monospace, monospace">event_schema_version: 1</text>
+    <rect x="22" y="118" width="136" height="2" fill="#06b6d4">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="1.8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="90" y="142" text-anchor="middle" font-size="9" fill="#06b6d4" font-family="ui-monospace, monospace">loop guard: data.system="event-manager"</text>
+  </g>
+
+  <!-- arrow 2 -->
+  <g>
+    <line x1="510" y1="170" x2="590" y2="170" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4 4">
+      <animate attributeName="stroke-dashoffset" from="0" to="-32" dur="1.6s" repeatCount="indefinite" begin="0.2s"/>
+    </line>
+    <polygon points="590,170 584,166 584,174" fill="#06b6d4"/>
+  </g>
+
+  <!-- ============== STAGE 3: Outbox ============== -->
+  <g transform="translate(600, 110)">
+    <rect width="180" height="120" rx="10" fill="#101638" stroke="url(#event-flow-magenta)" stroke-width="1.5"/>
+    <text x="90" y="28" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="600">events/outbox/</text>
+    <text x="90" y="48" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="ui-monospace, monospace">durable file events</text>
+    <!-- mock file glyphs -->
+    <g transform="translate(20, 60)">
+      <rect x="0" y="0" width="38" height="48" rx="3" fill="#1a2247" stroke="#ec4899" stroke-width="1"/>
+      <rect x="3" y="6" width="32" height="2" fill="#ec4899" opacity="0.6"/>
+      <rect x="3" y="12" width="24" height="2" fill="#94a3b8" opacity="0.4"/>
+      <rect x="3" y="18" width="28" height="2" fill="#94a3b8" opacity="0.4"/>
+      <rect x="3" y="24" width="20" height="2" fill="#94a3b8" opacity="0.4"/>
+      <animate attributeName="opacity" values="0;1;1" dur="6s" repeatCount="indefinite" begin="0.4s" keyTimes="0;0.15;1"/>
+    </g>
+    <g transform="translate(70, 60)">
+      <rect x="0" y="0" width="38" height="48" rx="3" fill="#1a2247" stroke="#ec4899" stroke-width="1"/>
+      <rect x="3" y="6" width="32" height="2" fill="#ec4899" opacity="0.6"/>
+      <rect x="3" y="12" width="24" height="2" fill="#94a3b8" opacity="0.4"/>
+      <rect x="3" y="18" width="28" height="2" fill="#94a3b8" opacity="0.4"/>
+      <animate attributeName="opacity" values="0;0;1;1" dur="6s" repeatCount="indefinite" begin="2s" keyTimes="0;0.3;0.45;1"/>
+    </g>
+    <g transform="translate(120, 60)">
+      <rect x="0" y="0" width="38" height="48" rx="3" fill="#1a2247" stroke="#ec4899" stroke-width="1"/>
+      <rect x="3" y="6" width="32" height="2" fill="#ec4899" opacity="0.6"/>
+      <rect x="3" y="12" width="24" height="2" fill="#94a3b8" opacity="0.4"/>
+      <animate attributeName="opacity" values="0;0;0;1;1" dur="6s" repeatCount="indefinite" begin="3.5s" keyTimes="0;0.2;0.55;0.7;1"/>
+    </g>
+    <text x="90" y="142" text-anchor="middle" font-size="9" fill="#ec4899" font-family="ui-monospace, monospace">evt_&lt;ts&gt;_&lt;6hex&gt;.json</text>
+  </g>
+
+  <!-- arrow 3 -->
+  <g>
+    <line x1="780" y1="170" x2="860" y2="170" stroke="#ec4899" stroke-width="1.5" stroke-dasharray="4 4">
+      <animate attributeName="stroke-dashoffset" from="0" to="-32" dur="1.6s" repeatCount="indefinite" begin="0.4s"/>
+    </line>
+    <polygon points="860,170 854,166 854,174" fill="#ec4899"/>
+  </g>
+
+  <!-- ============== STAGE 4: Watcher ============== -->
+  <g transform="translate(870, 110)">
+    <rect width="270" height="120" rx="10" fill="#101638" stroke="url(#event-flow-cyan)" stroke-width="1.5"/>
+    <text x="135" y="28" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="600">watch-events.mjs</text>
+    <text x="135" y="48" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="ui-monospace, monospace">poll every N seconds</text>
+    <!-- 3 modes -->
+    <g transform="translate(14, 60)">
+      <rect x="0" y="0" width="78" height="44" rx="5" fill="#0a0e27" stroke="#06b6d4" stroke-width="1"/>
+      <text x="39" y="16" text-anchor="middle" font-size="9" fill="#06b6d4" font-family="ui-monospace, monospace">A</text>
+      <text x="39" y="32" text-anchor="middle" font-size="8" fill="#94a3b8">console</text>
+    </g>
+    <g transform="translate(96, 60)">
+      <rect x="0" y="0" width="78" height="44" rx="5" fill="#0a0e27" stroke="#06b6d4" stroke-width="1"/>
+      <text x="39" y="16" text-anchor="middle" font-size="9" fill="#06b6d4" font-family="ui-monospace, monospace">B</text>
+      <text x="39" y="32" text-anchor="middle" font-size="8" fill="#94a3b8">packet</text>
+    </g>
+    <g transform="translate(178, 60)">
+      <rect x="0" y="0" width="78" height="44" rx="5" fill="#0a0e27" stroke="#06b6d4" stroke-width="1"/>
+      <text x="39" y="16" text-anchor="middle" font-size="9" fill="#06b6d4" font-family="ui-monospace, monospace">C</text>
+      <text x="39" y="32" text-anchor="middle" font-size="8" fill="#94a3b8">webhook</text>
+    </g>
+    <text x="135" y="116" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="ui-monospace, monospace">no LLM called from HermesProof</text>
+  </g>
+
+  <!-- ============== STAGE 5: Review packet ============== -->
+  <g transform="translate(330, 290)">
+    <rect width="240" height="100" rx="10" fill="#101638" stroke="url(#event-flow-violet)" stroke-width="1.5"/>
+    <text x="120" y="28" text-anchor="middle" font-size="12" fill="#e2e8f0" font-weight="600">Review packet</text>
+    <text x="120" y="48" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="ui-monospace, monospace">deterministic markdown</text>
+    <!-- doc glyph -->
+    <g transform="translate(94, 56)">
+      <rect x="0" y="0" width="52" height="32" rx="3" fill="#1a2247" stroke="#a855f7" stroke-width="1"/>
+      <rect x="4" y="5" width="44" height="2" fill="#a855f7" opacity="0.7"/>
+      <rect x="4" y="11" width="36" height="2" fill="#94a3b8" opacity="0.4"/>
+      <rect x="4" y="17" width="40" height="2" fill="#94a3b8" opacity="0.4"/>
+      <rect x="4" y="23" width="30" height="2" fill="#94a3b8" opacity="0.4"/>
+    </g>
+  </g>
+
+  <!-- arrow from outbox to packet (down + left) -->
+  <g>
+    <path d="M 690 230 L 690 270 L 540 270 L 540 290" fill="none" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4 4">
+      <animate attributeName="stroke-dashoffset" from="0" to="-32" dur="1.6s" repeatCount="indefinite" begin="0.6s"/>
+    </path>
+    <polygon points="540,290 536,284 544,284" fill="#a855f7"/>
+  </g>
+
+  <!-- ============== STAGE 6a: Handled (atomic rename) ============== -->
+  <g transform="translate(620, 290)">
+    <rect width="240" height="100" rx="10" fill="#101638" stroke="url(#event-flow-green)" stroke-width="1.5"/>
+    <text x="120" y="28" text-anchor="middle" font-size="12" fill="#22c55e" font-weight="600">events/handled/</text>
+    <text x="120" y="48" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="ui-monospace, monospace">fs.rename — atomic</text>
+    <!-- check mark -->
+    <g transform="translate(96, 60)">
+      <circle cx="24" cy="20" r="16" fill="none" stroke="#22c55e" stroke-width="2">
+        <animate attributeName="stroke-dasharray" values="0 100;100 0" dur="1.2s" repeatCount="indefinite" begin="0.8s"/>
+      </circle>
+      <path d="M 16 20 L 22 26 L 32 14" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <animate attributeName="stroke-dasharray" values="0 24;24 0" dur="0.6s" repeatCount="indefinite" begin="1s"/>
+      </path>
+    </g>
+  </g>
+
+  <!-- ============== STAGE 6b: Failed (schema mismatch) ============== -->
+  <g transform="translate(910, 290)">
+    <rect width="240" height="100" rx="10" fill="#101638" stroke="url(#event-flow-red)" stroke-width="1.5" stroke-dasharray="6 3"/>
+    <text x="120" y="28" text-anchor="middle" font-size="12" fill="#ef4444" font-weight="600">events/failed/</text>
+    <text x="120" y="48" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="ui-monospace, monospace">unknown_schema_version</text>
+    <text x="120" y="62" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="ui-monospace, monospace">never auto-pruned</text>
+    <!-- × glyph -->
+    <g transform="translate(108, 70)">
+      <line x1="0" y1="0" x2="24" y2="24" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="24" y1="0" x2="0" y2="24" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- arrows from watcher to handled / failed -->
+  <g>
+    <path d="M 1005 230 L 1005 260 L 740 260 L 740 290" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="4 4">
+      <animate attributeName="stroke-dashoffset" from="0" to="-32" dur="1.6s" repeatCount="indefinite" begin="0.8s"/>
+    </path>
+    <polygon points="740,290 736,284 744,284" fill="#22c55e"/>
+  </g>
+  <g>
+    <path d="M 1005 230 L 1030 290" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 4">
+      <animate attributeName="stroke-dashoffset" from="0" to="-32" dur="2.4s" repeatCount="indefinite" begin="1s"/>
+    </path>
+    <polygon points="1030,290 1026,283 1035,285" fill="#ef4444"/>
+  </g>
+
+  <!-- ============== Footer band: 4 new MCP tools + 5 architect improvements ============== -->
+  <g transform="translate(60, 430)">
+    <rect width="1080" height="80" rx="10" fill="#0a0e27" stroke="#1f2a44" stroke-width="1"/>
+    <text x="20" y="22" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace" font-weight="600">4 NEW MCP TOOLS (v0.4)</text>
+    <text x="20" y="38" font-size="9" fill="#06b6d4" font-family="ui-monospace, monospace">hermes_emit_event · hermes_list_events · hermes_mark_event_handled · hermes_create_blocked_handoff</text>
+    <text x="20" y="58" font-size="10" fill="#94a3b8" font-family="ui-monospace, monospace" font-weight="600">5 ARCHITECT IMPROVEMENTS</text>
+    <text x="20" y="73" font-size="9" fill="#a855f7" font-family="ui-monospace, monospace">loop guard · atomic fs.rename · retention (handled-only) · event_schema_version=1 · evidence_ids resolved at emit time</text>
+  </g>
+
+  <!-- ambient sweep -->
+  <rect x="0" y="0" width="3" height="540" fill="#06b6d4" opacity="0.08">
+    <animate attributeName="x" values="-10;1210" dur="9s" repeatCount="indefinite"/>
+  </rect>
+</svg>
