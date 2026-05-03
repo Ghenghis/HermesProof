@@ -14,7 +14,7 @@ HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
 | Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
-| Server | 24 tools across coordination, gates, evidence, events, queue pickup, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Server | 42 MCP tools across coordination, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
 | Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
 | Queue manager | passive task queue, priority pickup, stale-task recovery | `src/core/queue-manager.mjs` |
@@ -102,10 +102,10 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 ## 5. Truth-gate harness
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running sixteen gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running twenty-six gates sequentially" width="100%"/>
 </div>
 
-`scripts/truth-gates.mjs` is the attestation runner. Sixteen independent gates, each producing structured evidence:
+`scripts/truth-gates.mjs` is the attestation runner. Twenty-six independent gates, each producing structured evidence:
 
 | # | Gate | Implementation |
 | - | --- | --- |
@@ -129,7 +129,7 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 CLI:
 
 ```text
-node scripts/truth-gates.mjs               # run all 16 against your local Hermes3D
+node scripts/truth-gates.mjs               # run all 26 against your local Hermes3D
 node scripts/truth-gates.mjs --ci          # skip the 4 local-machine gates
 node scripts/truth-gates.mjs --skip foo,bar
 ```
@@ -196,7 +196,7 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (24 tools)
+│   ├── server.mjs                 # MCP entrypoint (42 MCP tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
 │       ├── event-manager.mjs      # event_schema_version=1 outbox bridge
@@ -204,7 +204,7 @@ HermesProof/
 │       ├── gate-runner.mjs        # DEFAULT_GATES allowlist + spawn
 │       └── fs-utils.mjs           # path safety, NDJSON helpers
 ├── scripts/
-│   ├── truth-gates.mjs            # 16-gate harness
+│   ├── truth-gates.mjs            # 26-gate harness
 │   ├── watch-events.mjs           # passive watcher: console, review packet, or webhook
 │   ├── generate-review-packet.mjs # deterministic Markdown review context
 │   ├── trigger-doctor.mjs         # trigger bridge end-to-end diagnostic
