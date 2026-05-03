@@ -51,11 +51,30 @@ export async function readJson(file, fallback = undefined) {
   }
 }
 
+async function renameAtomicWithRetry(tmp, file) {
+  let delayMs = 5;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      await fs.rename(tmp, file);
+      return;
+    } catch (err) {
+      if (!["EPERM", "EACCES"].includes(err.code) || attempt === 9) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs *= 2;
+    }
+  }
+}
+
 export async function writeJsonAtomic(file, value) {
   await ensureDir(path.dirname(file));
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(16).toString("hex")}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
-  await fs.rename(tmp, file);
+  try {
+    await renameAtomicWithRetry(tmp, file);
+  } catch (err) {
+    try { await fs.rm(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
+  }
 }
 
 export async function appendJsonLine(file, value) {

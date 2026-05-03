@@ -10,6 +10,7 @@ import { markEventHandled } from "./watch-events.mjs";
 import { pruneHandledEvents } from "./prune-events.mjs";
 import { runTriggerDoctor } from "./trigger-doctor.mjs";
 import { resolveEnvFile } from "../src/core/env-file.mjs";
+import { writeJsonAtomic } from "../src/core/fs-utils.mjs";
 
 async function makeTempWorkspace() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermes3d-mcp-hardening-"));
@@ -17,6 +18,47 @@ async function makeTempWorkspace() {
   await fs.writeFile(path.join(root, "src/index.ts"), "// index\n");
   return root;
 }
+
+async function legacyWriteJsonAtomicWithCollidingTmp(file, value) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.fixed-date.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
+  await new Promise((resolve) => setImmediate(resolve));
+  await fs.rename(tmp, file);
+}
+
+test("writeJsonAtomic uses unique temp files under concurrent same-target writes", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const target = path.join(workspaceRoot, ".hermes3d_orchestrator", "stress", "state.json");
+
+  const legacyResults = await Promise.allSettled(
+    Array.from({ length: 64 }, (_, i) => legacyWriteJsonAtomicWithCollidingTmp(target, { legacy: i }))
+  );
+  assert.ok(
+    legacyResults.some((r) => r.status === "rejected" && r.reason?.code === "ENOENT"),
+    "legacy Date.now-style temp names should collide and produce ENOENT during concurrent writes"
+  );
+
+  const originalNow = Date.now;
+  Date.now = () => 1_777_830_000_000;
+  try {
+    const fixedResults = await Promise.allSettled(
+      Array.from({ length: 128 }, (_, i) => writeJsonAtomic(target, { fixed: i }))
+    );
+    assert.deepEqual(
+      fixedResults.filter((r) => r.status === "rejected"),
+      [],
+      "random temp suffixes should not collide even in the same millisecond"
+    );
+  } finally {
+    Date.now = originalNow;
+  }
+
+  const final = JSON.parse(await fs.readFile(target, "utf8"));
+  assert.equal(typeof final.fixed, "number");
+  const leftovers = (await fs.readdir(path.dirname(target))).filter((name) => name.endsWith(".tmp"));
+  assert.deepEqual(leftovers, []);
+});
 
 test("path escape attempts are rejected with workspace-relative error", async () => {
   const workspaceRoot = await makeTempWorkspace();
