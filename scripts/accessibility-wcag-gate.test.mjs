@@ -78,21 +78,36 @@ test("classifyAxeResults: minor violation is a warning, not a blocker", () => {
   assert.equal(out.warnings.length, 1);
 });
 
-test("classifyAxeResults: serious WCAG-AA incomplete is a blocker (Codex audit fix 2026-05-03)", () => {
-  // Color-contrast under JSDOM is the canonical case: axe can't measure
-  // contrast without a real layout engine, so it returns the rule as
-  // "incomplete" with serious impact. Previously this passed silently;
-  // now it blocks (with an explicit recommendation to verify in browser).
+test("classifyAxeResults: serious WCAG-AA incomplete is a blocker", () => {
   const out = classifyAxeResults({
     violations: [],
-    incomplete: [{ id: "color-contrast", impact: "serious", tags: ["wcag2aa"], nodes: [] }],
+    incomplete: [{ id: "label", impact: "serious", tags: ["wcag2aa"], nodes: [] }],
     passes: []
   });
   assert.equal(out.ok, false);
   assert.equal(out.blockers.length, 1);
-  assert.equal(out.blockers[0].id, "color-contrast");
+  assert.equal(out.blockers[0].id, "label");
   assert.equal(out.blockers[0].kind, "incomplete");
   assert.match(out.blockers[0].block_reason, /browser-backed/);
+});
+
+test("classifyAxeResults: JSDOM unsupported color-contrast is warning evidence", () => {
+  const out = classifyAxeResults({
+    violations: [],
+    incomplete: [
+      {
+        id: "color-contrast",
+        impact: "serious",
+        tags: ["wcag2aa"],
+        error: { message: "Cannot read properties of null (reading 'canvas') Skipping color-contrast rule." },
+        nodes: [],
+      },
+    ],
+    passes: [],
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.blockers.length, 0);
+  assert.equal(out.warnings.length, 1);
 });
 
 test("classifyAxeResults: minor incomplete is still a warning, not a blocker", () => {

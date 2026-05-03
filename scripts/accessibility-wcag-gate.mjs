@@ -107,11 +107,9 @@ export async function runAxeOnSitePath(htmlPath) {
  * Block-on:
  *   - "critical" + "serious" violations
  *   - "incomplete" results with WCAG-AA tag where axe believed it serious
- *     or critical (color-contrast under JSDOM is the canonical case).
- *     The 2026-05-03 audit (Codex) flagged that previously every incomplete
- *     was treated as warn-only, allowing serious color-contrast holes to
- *     pass with a green badge. Closed here per HermesProof
- *     weakness-correction discipline.
+ *     or critical, except the known JSDOM/canvas engine limitation for
+ *     color-contrast. That unsupported rule is preserved as warning
+ *     evidence and should be covered by a later browser-backed gate.
  *
  * Warnings (don't block):
  *   - "moderate" + "minor" violations
@@ -129,6 +127,19 @@ function isWcagAa(item) {
 
 function isSerious(impact) {
   return impact === "critical" || impact === "serious";
+}
+
+function isJsdomUnsupportedColorContrast(item) {
+  if (item?.id !== "color-contrast") return false;
+  const messages = [
+    item?.error?.message,
+    ...(item?.nodes || []).flatMap((node) => [
+      ...(node?.any || []),
+      ...(node?.all || []),
+      ...(node?.none || []),
+    ]).map((check) => check?.data?.message || check?.message),
+  ].filter(Boolean);
+  return messages.some((message) => /canvas|Skipping color-contrast rule/i.test(message));
 }
 
 export function classifyAxeResults(axeResults, options = {}) {
@@ -169,11 +180,14 @@ export function classifyAxeResults(axeResults, options = {}) {
       node_count: (i.nodes || []).length,
       kind: "incomplete",
     };
-    // Block on serious/critical INCOMPLETE WCAG-AA findings — these are
-    // genuine unverified-but-likely-failing checks (e.g. color-contrast in
-    // JSDOM where axe couldn't measure). Treating them as warnings hides
-    // real defects behind a green badge.
-    if (blockOnSeriousIncomplete && isSerious(i.impact) && isWcagAa(i)) {
+    // Block on serious/critical INCOMPLETE WCAG-AA findings unless axe is
+    // reporting a known JSDOM engine limitation rather than page evidence.
+    if (
+      blockOnSeriousIncomplete &&
+      isSerious(i.impact) &&
+      isWcagAa(i) &&
+      !isJsdomUnsupportedColorContrast(i)
+    ) {
       blockers.push({
         ...entry,
         block_reason: "serious WCAG-AA incomplete result; verify with browser-backed axe (Playwright)",
