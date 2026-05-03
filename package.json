@@ -32,7 +32,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "mcp:dev": "node src/server.mjs",
-    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs src/core/skill-rotation.test.mjs src/core/reputation.test.mjs src/core/a2a-stub.test.mjs",
+    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs src/core/skill-rotation.test.mjs src/core/reputation.test.mjs src/core/a2a-stub.test.mjs",
     "smoke": "node --test scripts/coordination-smoke-test.mjs",
     "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
     "smoke:perf": "node --test scripts/perf-v0.5.1-smoke-test.mjs",

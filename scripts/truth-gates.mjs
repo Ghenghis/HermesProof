@@ -27,9 +27,14 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { runMcpScanStaticGate } from "./mcp-scan-static-gate.mjs";
+import { writeSbomToProof } from "./sbom-generator.mjs";
 import {
   runLicensesScanGate,
-  collectInstalledLicensesViaCheck
+  runDependencyFreshGate,
+  collectInstalledLicensesViaCheck,
+  fetchLatestFromNpm,
+  readPackageJson
 } from "./license-and-deps-gates.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
@@ -220,7 +225,12 @@ if (!shouldSkip("tests.unit")) {
     return new Promise((resolve) => {
       const r = spawnSync(
         process.platform === "win32" ? "node.exe" : "node",
-        ["--test", "scripts/coordination-smoke-test.mjs", "scripts/hardening-smoke-test.mjs"],
+        [
+          "--test",
+          "scripts/coordination-smoke-test.mjs",
+          "scripts/hardening-smoke-test.mjs",
+          "scripts/mcp-scan-static-gate.test.mjs"
+        ],
         { cwd: repoRoot, encoding: "utf8", shell: false }
       );
       resolve({ status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" });
@@ -812,6 +822,27 @@ if (!shouldSkip("server.tool_description_hygiene")) {
 }
 
 // ----------------------------------------------------------------------------
+// Gate 10b: security.mcp_scan_pass — extended static analysis over
+// src/server.mjs. Superset of `server.tool_description_hygiene`: adds
+// hidden-content markers, authority-impersonation phrases, exfil
+// directives, hex/url-encoded payloads, RTL-override / bidi-isolate
+// unicode, and `<sysprompt>` / `<HIDDEN>` tags. OWASP MCP "tool poisoning"
+// + rug-pull defense, pure-regex, zero deps.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("security.mcp_scan_pass")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runMcpScanStaticGate({
+      serverPath: path.join(repoRoot, "src", "server.mjs")
+    });
+  });
+  if (error) {
+    record("security.mcp_scan_pass", "required", false, {}, error.message, durationMs);
+  } else {
+    record("security.mcp_scan_pass", "required", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Gate 11: evidence hash-chain validity — round-trips appendChainedJsonLine
 // and verifyChainedLog through a positive case (3 valid entries) and a
 // negative case (mid-chain tamper detected at the right index).
@@ -916,6 +947,36 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
 }
 
 // ----------------------------------------------------------------------------
+// Gate: sbom.cyclonedx_generated — emit CycloneDX 1.5 SBOM at PROOF/sbom.json
+//
+// Required gate. Walks `node_modules/` and writes a deterministic CycloneDX
+// 1.5 JSON SBOM (sorted by name+version, sha256-pinned per package.json) to
+// `PROOF/sbom.json`. Pure stdlib; zero new runtime deps. The SBOM is
+// suitable for downstream supply-chain tooling (Grype, Trivy, etc.) and
+// gets carried alongside the cosign-signed PROOF/latest.json on every
+// successful main-branch run.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("sbom.cyclonedx_generated")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await writeSbomToProof(repoRoot);
+  });
+  if (error) {
+    record("sbom.cyclonedx_generated", "required", false, {}, error.message, durationMs);
+  } else if (!result.ok) {
+    record("sbom.cyclonedx_generated", "required", false, { reason: result.reason },
+      `sbom generation failed: ${result.reason}`, durationMs);
+  } else {
+    record("sbom.cyclonedx_generated", "required", true, {
+      path: result.path,
+      components: result.components,
+      sha256: result.sha256,
+      serial_number: result.serialNumber,
+      spec_version: "1.5"
+    }, `${result.components} components @ ${result.path}`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Gate: licenses.scan — every production dep on the SPDX allowlist
 //
 // Required gate. Pulls the live `npx --yes license-checker --production --json`
@@ -941,6 +1002,34 @@ if (!shouldSkip("licenses.scan")) {
   } else {
     record("licenses.scan", "required", result.gate.ok, result.gate.evidence,
       result.gate.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: dependency.fresh — direct deps published within 18 months
+//
+// Advisory (warn-level) gate. Skipped automatically when offline (npm
+// registry unreachable) so CI without net does not flap. FAIL ages at 18mo,
+// WARN between 12-18mo, PASS otherwise. Threshold tunable via
+// HERMES3D_DEP_FRESH_MONTHS / HERMES3D_DEP_WARN_MONTHS env vars.
+// Registry queries are bounded by the helper's per-request 5s timeout and
+// the full pass exits early on the first ENETWORK to keep CI flap-free.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("dependency.fresh")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const pkgJson = await readPackageJson(repoRoot);
+    return await runDependencyFreshGate({
+      pkgJson,
+      fetchLatest: (name) => fetchLatestFromNpm(name)
+    });
+  });
+  if (error) {
+    record("dependency.fresh", "warn", false, {}, error.message, durationMs);
+  } else if (result.skip) {
+    // Skipped at gate level (offline) — surface as skipped, not warn-fail.
+    record("dependency.fresh", "skipped", true, result.evidence, result.details, durationMs);
+  } else {
+    record("dependency.fresh", "warn", result.ok, result.evidence, result.details, durationMs);
   }
 }
 

@@ -61,6 +61,7 @@ jobs:
           name: proof-${{ github.sha }}
           path: |
             PROOF/latest.json
+            PROOF/sbom.json
             PROOF_E2E_REPORT.md
           if-no-files-found: error
           retention-days: 90
@@ -73,6 +74,15 @@ jobs:
         uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
         with:
           subject-path: 'PROOF/latest.json'
+
+      - name: Attest diagram SVG provenance
+        if: |
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success()
+        uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
+        with:
+          subject-path: 'docs/diagrams/*.svg'
 
       - name: Install cosign
         if: |
@@ -111,8 +121,8 @@ jobs:
           set -e
           git config user.name "hermes-truth-gate-bot"
           git config user.email "bot@hermes3d.local"
-          if [ -n "$(git status --porcelain PROOF/latest.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle)" ]; then
-            git add PROOF/latest.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle
+          if [ -n "$(git status --porcelain PROOF/latest.json PROOF/sbom.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle)" ]; then
+            git add PROOF/latest.json PROOF/sbom.json PROOF_E2E_REPORT.md PROOF/latest.json.cosign.bundle
             git commit -m "ci: refresh truth-gate proof for ${GITHUB_SHA::7} [skip ci]" \
                        -m "Run id: ${{ github.run_id }}" \
                        -m "Workflow: ${{ github.workflow }}"
