@@ -579,7 +579,7 @@ registerTool(
       include_history: z.boolean().optional()
         .describe("Include recent reputation events. Default false.")
     },
-    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try {
@@ -588,15 +588,26 @@ registerTool(
         reputation.leaderboard(),
       ]);
       const repMap = Object.fromEntries(leaderboard.map((a) => [a.actor_id, a]));
-      const allActorIds = new Set([...Object.keys(allSkills), ...leaderboard.map((a) => a.actor_id)]);
+      const allActorIds = [...new Set([...Object.keys(allSkills), ...leaderboard.map((a) => a.actor_id)])];
 
       let dispatchRanks = {};
       if (args?.task_type) {
-        const ranked = await dispatch.rankActors(args.task_type, [...allActorIds]);
+        const ranked = await dispatch.rankActors(args.task_type, allActorIds);
         for (const r of ranked) dispatchRanks[r.actor_id] = r.dispatch_score;
       }
 
-      const agents = [...allActorIds].map((actor_id) => {
+      // include_history requires per-actor recent_events; reputation.leaderboard()
+      // does not surface them (only score/total_outcomes), so resolve them via
+      // reputation.getScore() per actor only when the flag is set.
+      const historyMap = {};
+      if (args?.include_history) {
+        const records = await Promise.all(allActorIds.map((id) => reputation.getScore(id)));
+        for (let i = 0; i < allActorIds.length; i++) {
+          historyMap[allActorIds[i]] = records[i]?.recent_events ?? [];
+        }
+      }
+
+      const agents = allActorIds.map((actor_id) => {
         const skill = allSkills[actor_id] ?? { task_counts: {}, last_active_ts: 0, total_tasks: 0 };
         const rep = repMap[actor_id] ?? { score: 1.0, total_outcomes: 0 };
         const entry = {
@@ -608,10 +619,7 @@ registerTool(
           last_active_ts: skill.last_active_ts,
         };
         if (args?.task_type) entry.dispatch_score = dispatchRanks[actor_id] ?? 0;
-        if (args?.include_history) {
-          const full = leaderboard.find((a) => a.actor_id === actor_id);
-          entry.recent_events = full?.recent_events ?? [];
-        }
+        if (args?.include_history) entry.recent_events = historyMap[actor_id] ?? [];
         return entry;
       });
 
@@ -651,7 +659,7 @@ registerTool(
       context: z.string().max(200).optional()
         .describe("Optional free-text annotation (PR number, gate name, etc.).")
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
   },
   async (args) => {
     try {
@@ -686,7 +694,7 @@ registerTool(
       task_type: z.string().min(1).max(40)
         .describe("Task type identifier (gate | lock | review | handoff | build | docs | test | infra).")
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
   },
   async (args) => {
     try {
@@ -702,7 +710,7 @@ registerTool(
     title: "Read anonymous orchestrator state",
     description: "Read-only view of active role claims and (redacted) active user session. Hash field is redacted.",
     inputSchema: {},
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false }
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   async () => {
     try { return toolResult(await anon.getState()); } catch (err) { return toolError(err); }
@@ -740,7 +748,7 @@ registerTool(
       candidates: z.array(z.string().regex(/^[a-z][a-z0-9-]{1,63}$/)).min(1).max(50)
         .describe("Candidate actor IDs to choose from.")
     },
-    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try {
@@ -765,7 +773,7 @@ registerTool(
       input: z.record(z.unknown()).optional()
         .describe("Task parameters, opaque to the orchestrator.")
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
   },
   async (args) => {
     try {
@@ -797,7 +805,7 @@ registerTool(
       task_id: z.string().min(1).max(80)
         .describe("A2A task ID returned by hermes_a2a_create_task.")
     },
-    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try {
@@ -814,7 +822,7 @@ registerTool(
     title: "Check AS_USER authorization for an action",
     description: "Returns { allowed, reason, granted_by } for the given action name against the currently active AS_USER session. Lazy-clears expired sessions.",
     inputSchema: { action: z.string().min(1).max(128) },
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false }
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   async ({ action }) => {
     try { return toolResult(await anon.checkUserAuthorization(action)); } catch (err) { return toolError(err); }
@@ -836,7 +844,7 @@ registerTool(
       error: z.string().max(500).optional()
         .describe("Error message, set when transitioning to 'failed'.")
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
   },
   async (args) => {
     try {
@@ -852,7 +860,7 @@ registerTool(
     title: "Hermes Agent bridge health probe",
     description: "Probes the configured DeepSeek/MiniMax/SiliconFlow/LM-Studio providers in failover order. Returns the first healthy provider + model. Bridge is disabled by default (set HERMES_AGENT_ENABLED=1).",
     inputSchema: {},
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true }
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
   async () => {
     try { return toolResult(await hermesAgent.healthCheck()); } catch (err) { return toolError(err); }
@@ -872,7 +880,7 @@ registerTool(
       task_type: z.string().min(1).max(40).optional()
         .describe("Filter by task type.")
     },
-    annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true }
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try {
