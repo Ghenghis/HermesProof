@@ -15,8 +15,12 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--workspace" || a === "-w") out.workspace = argv[++i];
+    else if (a.startsWith("--workspace=")) out.workspace = a.slice("--workspace=".length);
     else if (a === "--server-name") out.serverName = argv[++i];
-    else if (a === "--targets") out.targets = argv[++i];
+    else if (a.startsWith("--server-name=")) out.serverName = a.slice("--server-name=".length);
+    else if (a === "--targets" || a === "--target") out.targets = argv[++i];
+    else if (a.startsWith("--targets=")) out.targets = a.slice("--targets=".length);
+    else if (a.startsWith("--target=")) out.targets = a.slice("--target=".length);
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--help" || a === "-h") out.help = true;
   }
@@ -66,7 +70,7 @@ function helpText() {
     `Usage:\n` +
     `  node scripts/install-clients.mjs --workspace <path> [--server-name <id>] [--targets <list>]\n\n` +
     `Available targets:\n` +
-    `  ${SUPPORTED_CLIENTS.join(", ")}\n` +
+    `  ${SUPPORTED_CLIENTS.join(", ")}, vscode\n` +
     `  claude-code-hooks\n\n` +
     `--targets defaults to: claude-desktop,codex,windsurf,claude-code`;
 }

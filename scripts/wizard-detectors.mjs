@@ -8,6 +8,7 @@ export const CLIENT_IDS = [
   "claude-code",
   "codex",
   "windsurf",
+  "kilocode",
   "cursor",
   "vscode-copilot",
   "anthropic-sdk"
@@ -37,6 +38,8 @@ export function clientPaths({ workspaceRoot, homeDir = resolveHome(), env = proc
     claudeHooksSidecar: path.join(homeDir, ".claude", "settings.hermesproof.hooks.json"),
     codex: path.join(homeDir, ".codex", "config.toml"),
     windsurf: path.join(homeDir, ".codeium", "windsurf", "mcp_config.json"),
+    kilocodeDir: workspaceRoot ? path.join(workspaceRoot, ".kilocode") : path.join(homeDir, ".kilocode"),
+    kilocodeRules: workspaceRoot ? path.join(workspaceRoot, ".kilocode", "rules.toml") : path.join(homeDir, ".kilocode", "rules.toml"),
     cursorDir: workspaceRoot ? path.join(workspaceRoot, ".cursor") : path.join(homeDir, ".cursor"),
     cursorMcp: workspaceRoot ? path.join(workspaceRoot, ".cursor", "mcp.json") : path.join(homeDir, ".cursor", "mcp.json"),
     cursorRulesDir: workspaceRoot ? path.join(workspaceRoot, ".cursor", "rules") : path.join(homeDir, ".cursor", "rules"),
@@ -75,6 +78,12 @@ export async function detectClients({ workspaceRoot, env = process.env, homeDir 
       label: "Windsurf / Cascade",
       detected: await exists(path.dirname(paths.windsurf)) || await exists(paths.windsurf),
       configPath: paths.windsurf
+    },
+    kilocode: {
+      id: "kilocode",
+      label: "KiloCode",
+      detected: await exists(paths.kilocodeDir) || await exists(path.join(homeDir, ".kilocode")),
+      configPath: paths.kilocodeRules
     },
     cursor: {
       id: "cursor",

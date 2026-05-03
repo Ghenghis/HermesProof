@@ -37,6 +37,10 @@ import {
   runLmstudioHealth,
   runOllamaHealth
 } from "./local-providers-health.mjs";
+import {
+  runLicensesScanGate,
+  collectInstalledLicensesViaCheck
+} from "./license-and-deps-gates.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -1072,6 +1076,35 @@ if (!shouldSkip("secret.scan")) {
       ? `${result.mode}: 0 findings`
       : `${result.mode}: ${result.findings.length} finding(s)`,
     durationMs);
+}
+
+// ----------------------------------------------------------------------------
+// Gate: licenses.scan — every production dep on the SPDX allowlist
+//
+// Required gate. Pulls the live `npx --yes license-checker --production --json`
+// snapshot, normalises SPDX expressions, and fails on any GPL/AGPL/LGPL/SSPL/
+// EUPL/BUSL contact. Conservative-by-design: GPL family stays denied even
+// though it's a valid OSS license — HermesProof itself is MIT and we cannot
+// pull copyleft into the dependency closure without an explicit policy waiver.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("licenses.scan")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const collected = await collectInstalledLicensesViaCheck(repoRoot);
+    if (!collected.ok) {
+      return { collectError: collected.reason };
+    }
+    const gate = runLicensesScanGate({ packageList: collected.packageList });
+    return { gate, package_count: collected.packageList.length };
+  });
+  if (error) {
+    record("licenses.scan", "required", false, {}, error.message, durationMs);
+  } else if (result.collectError) {
+    record("licenses.scan", "required", false, { reason: result.collectError },
+      `license-checker unavailable: ${result.collectError}`, durationMs);
+  } else {
+    record("licenses.scan", "required", result.gate.ok, result.gate.evidence,
+      result.gate.details, durationMs);
+  }
 }
 
 // ----------------------------------------------------------------------------
