@@ -27,6 +27,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { writeSbomToProof } from "./sbom-generator.mjs";
 import {
   runLicensesScanGate,
   runDependencyFreshGate,
@@ -915,6 +916,36 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
         ? `${result.required_count}/${result.required_count} deliverables present`
         : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
       durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: sbom.cyclonedx_generated — emit CycloneDX 1.5 SBOM at PROOF/sbom.json
+//
+// Required gate. Walks `node_modules/` and writes a deterministic CycloneDX
+// 1.5 JSON SBOM (sorted by name+version, sha256-pinned per package.json) to
+// `PROOF/sbom.json`. Pure stdlib; zero new runtime deps. The SBOM is
+// suitable for downstream supply-chain tooling (Grype, Trivy, etc.) and
+// gets carried alongside the cosign-signed PROOF/latest.json on every
+// successful main-branch run.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("sbom.cyclonedx_generated")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await writeSbomToProof(repoRoot);
+  });
+  if (error) {
+    record("sbom.cyclonedx_generated", "required", false, {}, error.message, durationMs);
+  } else if (!result.ok) {
+    record("sbom.cyclonedx_generated", "required", false, { reason: result.reason },
+      `sbom generation failed: ${result.reason}`, durationMs);
+  } else {
+    record("sbom.cyclonedx_generated", "required", true, {
+      path: result.path,
+      components: result.components,
+      sha256: result.sha256,
+      serial_number: result.serialNumber,
+      spec_version: "1.5"
+    }, `${result.components} components @ ${result.path}`, durationMs);
   }
 }
 
