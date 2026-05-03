@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-05-03T04-43-20-493Z",
-  "ts_utc": "2026-05-03T04:43:20.493Z",
-  "duration_ms": 3201,
+  "run_id": "truth_2026-05-03T10-22-16-047Z",
+  "ts_utc": "2026-05-03T10:22:16.047Z",
+  "duration_ms": 2638,
   "ok": true,
   "pass_count": 13,
   "fail_count": 0,
@@ -16,12 +16,12 @@
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 10,
+      "duration_ms": 8,
       "evidence": {
-        "file_count": 25,
-        "manifest_sha256": "b7cc745c7ca9fe7e6a65a21baddd1634a0ee6d47bfc2eb445781431faf499ba2"
+        "file_count": 26,
+        "manifest_sha256": "8f48ea1570443a8fd10679c92f3acc85b689347ea85601cdd95a4245fa4aae5b"
       },
-      "details": "25 files hashed"
+      "details": "26 files hashed"
     },
     {
       "id": "deps.parity",
@@ -31,35 +31,37 @@
       "evidence": {
         "declared": {
           "@modelcontextprotocol/sdk": "^1.29.0",
+          "dotenv": "^16.4.5",
           "zod": "^3.24.1"
         },
         "installed": {
           "@modelcontextprotocol/sdk": "1.29.0",
+          "dotenv": "16.6.1",
           "zod": "3.25.76"
         },
         "missing": []
       },
-      "details": "all 2 deps installed"
+      "details": "all 3 deps installed"
     },
     {
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 2246,
+      "duration_ms": 1716,
       "evidence": {
         "exit_code": 0,
-        "pass_count": 47,
+        "pass_count": 49,
         "fail_count": 0,
-        "stdout_tail": "by wrong owner is blocked, not silently allowed\n  ---\n  duration_ms: 28.916874\n  ...\n# Subtest: heartbeat extends expiry of held locks\nok 36 - heartbeat extends expiry of held locks\n  ---\n  duration_ms: 58.558754\n  ...\n# Subtest: stale lock recovery archives metadata and clears the lock\nok 37 - stale lock recovery archives metadata and clears the lock\n  ---\n  duration_ms: 41.359788\n  ...\n# Subtest: gate runner rejects unknown gateId without spawning anything\nok 38 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 1.843083\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 39 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 1.425472\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 40 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 2.260432\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 41 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 8.435677\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 42 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 10.404674\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 43 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 1.341074\n  ...\n# Subtest: event_path_cannot_escape_workspace\nok 44 - event_path_cannot_escape_workspace\n  ---\n  duration_ms: 2.129051\n  ...\n# Subtest: prune_events_respects_before_cutoff\nok 45 - prune_events_respects_before_cutoff\n  ---\n  duration_ms: 5.26251\n  ...\n# Subtest: prune_events_never_touches_failed_directory\nok 46 - prune_events_never_touches_failed_directory\n  ---\n  duration_ms: 3.257638\n  ...\n# Subtest: trigger_doctor_passes_on_clean_sandbox\nok 47 - trigger_doctor_passes_on_clean_sandbox\n  ---\n  duration_ms: 28.949031\n  ...\n1..47\n# tests 47\n# suites 0\n# pass 47\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 2209.926735\n",
+        "stdout_tail": "ejects unknown gateId without spawning anything\nok 38 - gate runner rejects unknown gateId without spawning anything\n  ---\n  duration_ms: 5.817743\n  ...\n# Subtest: gate runner rejects cwd that escapes the workspace\nok 39 - gate runner rejects cwd that escapes the workspace\n  ---\n  duration_ms: 3.104538\n  ...\n# Subtest: doctor() reports errors when workspace_root does not exist\nok 40 - doctor() reports errors when workspace_root does not exist\n  ---\n  duration_ms: 3.181804\n  ...\n# Subtest: getPolicy exposes env-var resolution and stable policy fields\nok 41 - getPolicy exposes env-var resolution and stable policy fields\n  ---\n  duration_ms: 10.51484\n  ...\n# Subtest: custom state dir name is honored end-to-end\nok 42 - custom state dir name is honored end-to-end\n  ---\n  duration_ms: 14.332029\n  ...\n# Subtest: env file resolver falls through missing vps override to existing general override\nok 43 - env file resolver falls through missing vps override to existing general override\n  ---\n  duration_ms: 1.985474\n  ...\n# Subtest: env file resolver falls through missing explicit override to cwd .env\nok 44 - env file resolver falls through missing explicit override to cwd .env\n  ---\n  duration_ms: 2.112103\n  ...\n# Subtest: MCP_LOCK_STATE_DIR with a slash is rejected\nok 45 - MCP_LOCK_STATE_DIR with a slash is rejected\n  ---\n  duration_ms: 1.889054\n  ...\n# Subtest: event_path_cannot_escape_workspace\nok 46 - event_path_cannot_escape_workspace\n  ---\n  duration_ms: 7.819438\n  ...\n# Subtest: prune_events_respects_before_cutoff\nok 47 - prune_events_respects_before_cutoff\n  ---\n  duration_ms: 5.733455\n  ...\n# Subtest: prune_events_never_touches_failed_directory\nok 48 - prune_events_never_touches_failed_directory\n  ---\n  duration_ms: 2.784899\n  ...\n# Subtest: trigger_doctor_passes_on_clean_sandbox\nok 49 - trigger_doctor_passes_on_clean_sandbox\n  ---\n  duration_ms: 34.699702\n  ...\n1..49\n# tests 49\n# suites 0\n# pass 49\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1680.217148\n",
         "stderr_tail": ""
       },
-      "details": "pass=47, fail=0, exit=0"
+      "details": "pass=49, fail=0, exit=0"
     },
     {
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 229,
+      "duration_ms": 217,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -108,9 +110,9 @@
       "id": "events.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 12,
+      "duration_ms": 13,
       "evidence": {
-        "sandbox": "/tmp/truth-events-dir-2zptSH",
+        "sandbox": "/tmp/truth-events-dir-hyIRmp",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -125,7 +127,7 @@
       "ok": true,
       "duration_ms": 7,
       "evidence": {
-        "sandbox": "/tmp/truth-tasks-dir-rHyZ1u",
+        "sandbox": "/tmp/truth-tasks-dir-7GYTzf",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -139,17 +141,17 @@
       "id": "trigger.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 74,
+      "duration_ms": 73,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-trigger-doctor-hvDqqX",
+          "workspace": "/tmp/truth-trigger-doctor-VBoDpa",
           "doctor": {
             "ok": true,
-            "workspace_root": "/tmp/truth-trigger-doctor-hvDqqX",
-            "state_dir": "/tmp/truth-trigger-doctor-hvDqqX/.hermes3d_orchestrator",
+            "workspace_root": "/tmp/truth-trigger-doctor-VBoDpa",
+            "state_dir": "/tmp/truth-trigger-doctor-VBoDpa/.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
             "node_version": "v20.20.2",
             "platform": "linux",
@@ -209,13 +211,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 183,
+      "duration_ms": 171,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-queue-doctor-iriuwj",
+          "workspace": "/tmp/truth-queue-doctor-nOMFAb",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -253,11 +255,11 @@
       "id": "wizard.dry_run_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 64,
+      "duration_ms": 61,
       "evidence": {
         "exit_code": 0,
         "wrote_state": false,
-        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-js6Lpg\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-js6Lpg.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
+        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-Z0OQ08\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-Z0OQ08.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
         "stderr_tail": ""
       },
       "details": "wizard dry-run ok"
@@ -266,9 +268,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 361,
+      "duration_ms": 357,
       "evidence": {
-        "sandbox": "/tmp/truth-gate-sandbox-ihbuuw",
+        "sandbox": "/tmp/truth-gate-sandbox-4CVxEP",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -366,11 +368,11 @@
       "id": "server.tool_description_hygiene",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 2,
       "evidence": {
         "findings": [],
         "file": "src/server.mjs",
-        "bytes": 17002
+        "bytes": 17989
       },
       "details": "0 suspicious patterns"
     },
@@ -378,7 +380,7 @@
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 5,
+      "duration_ms": 4,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -407,7 +409,7 @@
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 3,
+      "duration_ms": 2,
       "evidence": {
         "required_count": 10,
         "findings": [
