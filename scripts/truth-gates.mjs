@@ -25,6 +25,7 @@ import url from "node:url";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
+import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
@@ -233,16 +234,20 @@ const expectedTools = [
   "hermes_claim_task",
   "hermes_create_blocked_handoff",
   "hermes_doctor",
+  "hermes_enqueue_task",
   "hermes_emit_event",
   "hermes_get_state",
   "hermes_heartbeat",
   "hermes_list_events",
   "hermes_list_gates",
   "hermes_list_locks",
+  "hermes_list_pending_tasks",
   "hermes_lock_files",
   "hermes_mark_event_handled",
+  "hermes_pick_task",
   "hermes_read_policy",
   "hermes_recover_stale_locks",
+  "hermes_recover_stale_tasks",
   "hermes_release_files",
   "hermes_release_task",
   "hermes_request_handoff",
@@ -322,6 +327,36 @@ if (!shouldSkip("events.directory_present")) {
 // ----------------------------------------------------------------------------
 // Gate 7: trigger doctor end-to-end sandbox probe
 // ----------------------------------------------------------------------------
+if (!shouldSkip("tasks.directory_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-tasks-dir-"));
+    try {
+      const m = new HermesLockManager({ workspaceRoot: sb });
+      await m.init();
+      const paths = statePaths(sb);
+      const checks = {};
+      for (const [id, dir] of Object.entries({
+        pending: paths.tasksPendingDir,
+        claimed: paths.tasksClaimedDir,
+        blocked: paths.tasksBlockedDir,
+        done: paths.tasksDoneDir
+      })) {
+        checks[id] = (await fs.stat(dir)).isDirectory();
+      }
+      return { sandbox: sb, checks };
+    } finally {
+      await fs.rm(sb, { recursive: true, force: true });
+    }
+  });
+  if (error) {
+    record("tasks.directory_present", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = Object.values(result.checks).every(Boolean);
+    record("tasks.directory_present", "required", ok, result,
+      ok ? "pending/claimed/blocked/done present" : "one or more task dirs missing", durationMs);
+  }
+}
+
 if (!shouldSkip("trigger.doctor_passes")) {
   const { result, durationMs } = await timed(async () => {
     const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-trigger-doctor-"));
@@ -341,6 +376,27 @@ if (!shouldSkip("trigger.doctor_passes")) {
     parsed: result.parsed,
     stderr_tail: (result.stderr || "").slice(-500)
   }, ok ? "trigger doctor ok" : `exit=${result.exit_code}`, durationMs);
+}
+
+if (!shouldSkip("queue.doctor_passes")) {
+  const { result, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-queue-doctor-"));
+    const r = spawnSync(
+      process.platform === "win32" ? "node.exe" : "node",
+      [path.join(repoRoot, "scripts", "queue-doctor.mjs"), "--workspace", sb],
+      { cwd: repoRoot, encoding: "utf8", shell: false }
+    );
+    let parsed = null;
+    try { parsed = JSON.parse(r.stdout || "{}"); } catch {}
+    await fs.rm(sb, { recursive: true, force: true });
+    return { exit_code: r.status, stdout: r.stdout, stderr: r.stderr, parsed };
+  });
+  const ok = result.exit_code === 0 && result.parsed?.ok === true && result.parsed?.queue_doctor_schema_version === 1;
+  record("queue.doctor_passes", "required", ok, {
+    exit_code: result.exit_code,
+    parsed: result.parsed,
+    stderr_tail: (result.stderr || "").slice(-500)
+  }, ok ? "queue doctor ok" : `exit=${result.exit_code}`, durationMs);
 }
 
 // ----------------------------------------------------------------------------

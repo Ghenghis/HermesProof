@@ -20,6 +20,7 @@ import {
   writeJsonAtomic
 } from "./fs-utils.mjs";
 import { EventManager } from "./event-manager.mjs";
+import { QueueManager } from "./queue-manager.mjs";
 
 const DEFAULT_TTL_MINUTES = 90;
 
@@ -29,11 +30,17 @@ export class HermesLockManager {
     this.paths = statePaths(this.workspaceRoot, stateDirName);
     this.stateDirName = this.paths.stateDirName;
     this.eventManager = new EventManager({ workspaceRoot: this.workspaceRoot, stateDirName: this.stateDirName });
+    this.queueManager = new QueueManager({
+      workspaceRoot: this.workspaceRoot,
+      stateDirName: this.stateDirName,
+      eventManager: this.eventManager
+    });
   }
 
   async init() {
     await initStateDirs(this.paths);
     await this.eventManager.init();
+    await this.queueManager.init();
     await this.writeDefaultConfig();
     return this.getStateSummary();
   }
@@ -102,6 +109,22 @@ export class HermesLockManager {
     return await this.eventManager.markEventHandled(args);
   }
 
+  async enqueueTask(args) {
+    return await this.queueManager.enqueueTask(args);
+  }
+
+  async listPendingTasks(args) {
+    return await this.queueManager.listPendingTasks(args);
+  }
+
+  async pickTask(args) {
+    return await this.queueManager.pickTask(args);
+  }
+
+  async recoverStaleTasks(args) {
+    return await this.queueManager.recoverStaleTasks(args);
+  }
+
   async emitGateEvent({ owner, result }) {
     const report = result?.report || {};
     const ok = result?.ok === true;
@@ -166,7 +189,7 @@ export class HermesLockManager {
     assertId(taskId, "taskId");
     const taskFile = path.join(this.paths.tasksDir, `${taskId}.json`);
     const task = await readJson(taskFile, null);
-    if (!task) return { ok: false, status: "missing", message: `task not found: ${taskId}` };
+    if (!task) return await this.queueManager.completeTask({ owner, task_id: taskId, note });
     if (task.owner !== owner) {
       return { ok: false, status: "blocked", message: `task belongs to ${task.owner}, not ${owner}` };
     }
@@ -308,8 +331,9 @@ export class HermesLockManager {
         touched.push(lock.file);
       }
     }
+    const touchedTasks = await this.queueManager.heartbeat({ owner, taskId });
     await this.event("heartbeat", { owner, task_id: taskId || null, files: touched });
-    return { ok: true, status: "heartbeat", touched };
+    return { ok: true, status: "heartbeat", touched, touched_tasks: touchedTasks };
   }
 
   async listLocks() {
@@ -553,6 +577,12 @@ export class HermesLockManager {
     for (const file of taskFiles.filter((f) => f.endsWith(".json"))) tasks.push(await readJson(path.join(this.paths.tasksDir, file), null));
     const handoffs = [];
     for (const file of handoffFiles.filter((f) => f.endsWith(".json"))) handoffs.push(await readJson(path.join(this.paths.handoffsDir, file), null));
+    const queue = {
+      pending: (await this.queueManager.listPendingTasks({ limit: 500 })).tasks,
+      claimed: (await this.queueManager.readTasks("claimed")).map((item) => item.task),
+      blocked: (await this.queueManager.readTasks("blocked")).map((item) => item.task),
+      done: (await this.queueManager.readTasks("done")).map((item) => item.task)
+    };
     return {
       ok: true,
       workspace_root: this.workspaceRoot,
@@ -560,6 +590,7 @@ export class HermesLockManager {
       state_dir_name: this.stateDirName,
       locks: locks.locks,
       tasks: tasks.filter(Boolean).sort((a, b) => a.id.localeCompare(b.id)),
+      queue,
       handoffs: handoffs.filter(Boolean).sort((a, b) => a.id.localeCompare(b.id))
     };
   }

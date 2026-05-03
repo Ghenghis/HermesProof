@@ -222,12 +222,17 @@ export function statePaths(workspaceRoot, stateDirName) {
   const dirName = resolveStateDirName(stateDirName);
   const stateDir = path.join(workspaceRoot, dirName);
   const eventsDir = path.join(stateDir, "events");
+  const tasksDir = path.join(stateDir, "tasks");
   return {
     root: workspaceRoot,
     stateDirName: dirName,
     stateDir,
     locksDir: path.join(stateDir, "locks"),
-    tasksDir: path.join(stateDir, "tasks"),
+    tasksDir,
+    tasksPendingDir: path.join(tasksDir, "pending"),
+    tasksClaimedDir: path.join(tasksDir, "claimed"),
+    tasksBlockedDir: path.join(tasksDir, "blocked"),
+    tasksDoneDir: path.join(tasksDir, "done"),
     handoffsDir: path.join(stateDir, "handoffs"),
     evidenceDir: path.join(stateDir, "evidence"),
     gatesDir: path.join(stateDir, "gates"),
@@ -246,6 +251,10 @@ export async function initStateDirs(paths) {
   await ensureDir(paths.stateDir);
   await ensureDir(paths.locksDir);
   await ensureDir(paths.tasksDir);
+  await ensureDir(paths.tasksPendingDir);
+  await ensureDir(paths.tasksClaimedDir);
+  await ensureDir(paths.tasksBlockedDir);
+  await ensureDir(paths.tasksDoneDir);
   await ensureDir(paths.handoffsDir);
   await ensureDir(paths.evidenceDir);
   await ensureDir(paths.gatesDir);

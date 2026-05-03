@@ -1,9 +1,9 @@
 # HermesProof — Tool Reference
 
-The server exposes 20 MCP tools across coordination, gates, evidence, events, and diagnostics.
+The server exposes 24 MCP tools across coordination, gates, evidence, events, queue pickup, and diagnostics.
 
 <div align="center">
-<img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the 20 tools surfaced over stdio JSON-RPC" width="100%"/>
+<img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
 </div>
 
 | Group           | Tools                                                                                                        |
@@ -14,6 +14,7 @@ The server exposes 20 MCP tools across coordination, gates, evidence, events, an
 | Gate            | `hermes_run_gate`, `hermes_list_gates`                                                                       |
 | Evidence        | `hermes_append_evidence`, `hermes_verify_evidence`                                                           |
 | Events          | `hermes_list_events`, `hermes_emit_event`, `hermes_mark_event_handled`, `hermes_create_blocked_handoff`      |
+| Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`         |
 | Diagnostics     | `hermes_get_state`, `hermes_list_locks`, `hermes_recover_stale_locks`, `hermes_doctor`, `hermes_read_policy` |
 
 ---
@@ -145,6 +146,47 @@ Writes a Markdown handoff for a blocked task, appends evidence, emits `task.bloc
   "handoff_path": "handoffs/HANDOFF_TO_CLAUDE_H3D-CP5.1-B_BLOCKED.md",
   "release_locks": true
 }
+```
+
+## hermes_enqueue_task
+
+Writes a `task_schema_version: 1` task to `.hermes3d_orchestrator/tasks/pending/`. Re-enqueueing an existing `task_id` is a no-op success. `priority` is numeric and clamped to `[-100, 100]`; `target_owner_pattern` is validated before the file is written.
+
+```json
+{
+  "task_id": "CP-HERMESPROOF-0.5",
+  "title": "Task queue",
+  "summary": "Implement queue pickup.",
+  "handoff_path": "handoffs/HANDOFF_TO_CODEX_CP-HERMESPROOF-0.5.md",
+  "branch_hint": "feat/cp-hermesproof-0.5-task-queue",
+  "files_hint": ["src/core/queue-manager.mjs"],
+  "priority": 5,
+  "target_owner_pattern": "^codex-.*$"
+}
+```
+
+## hermes_list_pending_tasks
+
+Lists pending queue tasks sorted by priority descending, then enqueue time ascending. `owner_filter` limits the response to tasks whose owner-affinity regex matches that owner.
+
+```json
+{ "owner_filter": "codex-impl-01", "limit": 10 }
+```
+
+## hermes_pick_task
+
+Atomically claims the highest-priority pending task matching the caller. `prefer_task_id` can request one specific task; owner-affinity still applies. Concurrent losers receive `task_already_claimed` or `no_pending_tasks_for_owner`.
+
+```json
+{ "owner": "codex-impl-01", "prefer_task_id": "CP-HERMESPROOF-0.5" }
+```
+
+## hermes_recover_stale_tasks
+
+Moves expired claimed tasks back to `pending/` and emits `task.recovered`. The optional `files` field is interpreted as a list of task ids, mirroring the existing recovery tool's shape while keeping queue recovery task-scoped.
+
+```json
+{ "owner": "claude-lead", "files": ["CP-HERMESPROOF-0.5"], "note": "owner session expired" }
 ```
 
 ## hermes_read_policy

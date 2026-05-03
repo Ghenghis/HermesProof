@@ -149,6 +149,8 @@ await withClient({ ...baseEnv, __agent: "sandbox-driver" }, async (client) => {
   assert.ok(tools.includes("hermes_doctor"), "hermes_doctor missing");
   assert.ok(tools.includes("hermes_read_policy"), "hermes_read_policy missing");
   assert.ok(tools.includes("hermes_lock_files"), "hermes_lock_files missing");
+  assert.ok(tools.includes("hermes_enqueue_task"), "hermes_enqueue_task missing");
+  assert.ok(tools.includes("hermes_pick_task"), "hermes_pick_task missing");
   console.log(`[ok] tools/list reports ${tools.length} tools, including doctor/policy/locks`);
 
   // 2. Doctor — sandbox is a git repo, so all checks should be ok=true.
@@ -162,6 +164,34 @@ await withClient({ ...baseEnv, __agent: "sandbox-driver" }, async (client) => {
   assert.equal(policy.workspace_root, workspace);
   assert.equal(policy.policy.atomic_lock_acquisition, true);
   console.log(`[ok] hermes_read_policy reports correct workspace`);
+
+  // 3b. Queue lifecycle: enqueue -> pick -> release(done).
+  const queued = await callTool(client, "hermes_enqueue_task", {
+    task_id: "CP-UX-A-QUEUE",
+    title: "Queued sandbox task",
+    priority: 10,
+    target_owner_pattern: "^codex-.*$",
+    files_hint: ["03_implementation/ui/src/tabs/Dashboard.tsx"],
+    summary: "Sandbox queued task"
+  });
+  assert.equal(queued.ok, true);
+  const listedTasks = await callTool(client, "hermes_list_pending_tasks", {
+    owner_filter: "codex-impl-queue"
+  });
+  assert.equal(listedTasks.count, 1);
+  const pickedTask = await callTool(client, "hermes_pick_task", {
+    owner: "codex-impl-queue",
+    prefer_task_id: "CP-UX-A-QUEUE"
+  });
+  assert.equal(pickedTask.ok, true);
+  const doneTask = await callTool(client, "hermes_release_task", {
+    owner: "codex-impl-queue",
+    taskId: "CP-UX-A-QUEUE",
+    note: "queue sandbox done"
+  });
+  assert.equal(doneTask.ok, true);
+  assert.equal(doneTask.status, "done");
+  console.log(`[ok] queue task lifecycle enqueue -> pick -> done`);
 
   // 4. Claude lead claims doc task and locks contracts.
   const claudeTask = await callTool(client, "hermes_claim_task", {
@@ -318,7 +348,7 @@ await withClient({ ...baseEnv, __agent: "sandbox-driver" }, async (client) => {
   console.log(`[ok] all locks released`);
 
   const outboxTypes = await durableEventTypes();
-  const expectedDurableTypes = ["task.claimed", "lock.acquired", "lock.released"];
+  const expectedDurableTypes = ["task.enqueued", "task.claimed", "lock.acquired", "lock.released"];
   const missingDurableTypes = expectedDurableTypes.filter((type) => !outboxTypes.includes(type));
   if (missingDurableTypes.length === 0) {
     console.log(`[ok] durable outbox includes lifecycle events: ${expectedDurableTypes.join(", ")}`);

@@ -14,12 +14,13 @@ HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
 | Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
-| Server | 20 tools across coordination, gates, evidence, events, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Server | 24 tools across coordination, gates, evidence, events, queue pickup, diagnostics | [`src/server.mjs`](../src/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
 | Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
+| Queue manager | passive task queue, priority pickup, stale-task recovery | `src/core/queue-manager.mjs` |
 | Gate runner | allowlisted command execution | [`src/core/gate-runner.mjs`](../src/core/gate-runner.mjs) |
 | Path safety | env-var resolution, escape rejection | [`src/core/fs-utils.mjs`](../src/core/fs-utils.mjs) |
-| Persistence | event outbox directories, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
+| Persistence | task queue directories, event outbox directories, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
 
 ## 2. End-to-end pipeline
 
@@ -49,6 +50,17 @@ state change
 ```
 
 The bridge is intentionally not a chat wake-up system. HermesProof never calls an LLM API and never reaches into a Claude, Codex, or Windsurf session. It creates durable files that external watchers can observe.
+
+CP-HERMESPROOF-0.5 adds a passive queue beside the trigger bridge:
+
+```text
+enqueue task -> tasks/pending/<id>.json
+agent standing prompt calls hermes_pick_task
+pending/<id>.json --fs.rename--> claimed/<id>.json
+release_task marks queue work done -> tasks/done/<id>.json
+```
+
+The queue improves pickup discipline but still does not auto-start agents.
 
 ## 3. Lock lifecycle
 
@@ -90,10 +102,10 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 ## 5. Truth-gate harness
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running fourteen gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running sixteen gates sequentially" width="100%"/>
 </div>
 
-`scripts/truth-gates.mjs` is the attestation runner. Fourteen independent gates, each producing structured evidence:
+`scripts/truth-gates.mjs` is the attestation runner. Sixteen independent gates, each producing structured evidence:
 
 | # | Gate | Implementation |
 | - | --- | --- |
@@ -111,11 +123,13 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 | 12 | `docs.master_prompt_deliverables_present` | verify required design and handoff docs exist |
 | 13 | `events.directory_present` | verify `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 14 | `trigger.doctor_passes` | verify the trigger bridge doctor succeeds in a sandbox |
+| 15 | `tasks.directory_present` | verify `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
+| 16 | `queue.doctor_passes` | verify enqueue, pick, done, owner mismatch, priority, and stale recovery in a sandbox |
 
 CLI:
 
 ```text
-node scripts/truth-gates.mjs               # run all 14 against your local Hermes3D
+node scripts/truth-gates.mjs               # run all 16 against your local Hermes3D
 node scripts/truth-gates.mjs --ci          # skip the 4 local-machine gates
 node scripts/truth-gates.mjs --skip foo,bar
 ```
@@ -182,17 +196,20 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (20 tools)
+│   ├── server.mjs                 # MCP entrypoint (24 tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
 │       ├── event-manager.mjs      # event_schema_version=1 outbox bridge
+│       ├── queue-manager.mjs      # task_schema_version=1 queue lifecycle
 │       ├── gate-runner.mjs        # DEFAULT_GATES allowlist + spawn
 │       └── fs-utils.mjs           # path safety, NDJSON helpers
 ├── scripts/
-│   ├── truth-gates.mjs            # 14-gate harness
+│   ├── truth-gates.mjs            # 16-gate harness
 │   ├── watch-events.mjs           # passive watcher: console, review packet, or webhook
 │   ├── generate-review-packet.mjs # deterministic Markdown review context
 │   ├── trigger-doctor.mjs         # trigger bridge end-to-end diagnostic
+│   ├── queue-doctor.mjs           # queue lifecycle diagnostic
+│   ├── next-task.sh               # POSIX queue pickup helper
 │   ├── prune-events.mjs           # handled-event retention only
 │   ├── sandbox-integration.mjs    # 14-assertion end-to-end probe
 │   ├── coordination-smoke-test.mjs
