@@ -149,9 +149,13 @@ function uuidFromHash(hash) {
 function normalizeLicense(raw) {
   if (!raw) return { license: { name: "UNKNOWN" } };
   if (typeof raw === "string") {
-    // Heuristic: SPDX ids are token-ish (no spaces), longer free-form
-    // text comes through as `name`.
-    if (/^[A-Za-z0-9._+\-()/ ]{1,80}$/.test(raw) && !/\s{2,}/.test(raw)) {
+    // SPDX expressions are not license ids in CycloneDX; keep them explicit.
+    if (/\b(AND|OR|WITH)\b|[()]/.test(raw)) {
+      return { expression: raw };
+    }
+    // Heuristic: SPDX ids are token-ish (no spaces), longer free-form text
+    // comes through as `name`.
+    if (/^[A-Za-z0-9._+\-]{1,80}$/.test(raw)) {
       return { license: { id: raw } };
     }
     return { license: { name: raw } };
