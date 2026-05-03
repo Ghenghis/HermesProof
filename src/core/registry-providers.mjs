@@ -79,60 +79,133 @@ const PARSE_SHAPES = {
 };
 
 /**
- * Tiny YAML subset parser — handles flat key:value, nested 2-space indent maps,
- * and `- ` list items with key:value pairs. Sufficient for our registry.yaml.
+ * Tiny YAML subset parser — handles flat key:value, nested indent maps, and
+ * sequences of mappings. Sufficient for our registry.yaml without a runtime dep.
  */
-function parseYamlSubset(text) {
+export function parseYamlSubset(text) {
   const lines = text.split(/\r?\n/);
   const root = {};
-  const stack = [{ obj: root, indent: -1 }];
-  const cleanValue = (v) => {
-    let s = v.trim();
-    if (s.startsWith("'") && s.endsWith("'")) s = s.slice(1, -1);
-    else if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1);
-    return s;
-  };
-  for (let raw of lines) {
-    if (!raw || /^\s*#/.test(raw)) continue;
-    const indent = raw.match(/^ */)[0].length;
-    const trimmed = raw.trim();
+  const stack = [{ container: root, indent: -1, parentKey: null }];
+
+  function setOnTop(key, value) {
+    const top = stack[stack.length - 1];
+    if (Array.isArray(top.container)) {
+      const last = top.container[top.container.length - 1];
+      if (last && typeof last === "object") last[key] = value;
+      else top.container.push({ [key]: value });
+    } else {
+      top.container[key] = value;
+    }
+  }
+
+  function popTo(indent) {
     while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
       stack.pop();
     }
-    const top = stack[stack.length - 1];
-    if (trimmed.startsWith("- ")) {
-      // List item
-      const item = {};
-      if (Array.isArray(top.obj)) {
-        top.obj.push(item);
-      } else if (top.lastKey) {
-        if (!Array.isArray(top.obj[top.lastKey])) top.obj[top.lastKey] = [];
-        top.obj[top.lastKey].push(item);
-      }
-      const rest = trimmed.slice(2);
-      if (rest.includes(":")) {
-        const [k, ...vparts] = rest.split(":");
-        const v = vparts.join(":").trim();
-        if (v) item[k.trim()] = cleanValue(v);
-        else item[k.trim()] = {};
-      }
-      stack.push({ obj: item, indent });
-      continue;
+  }
+
+  function parseScalar(raw) {
+    if (raw === undefined || raw === null) return null;
+    let s = raw.trim();
+    if (s === "") return "";
+    if (s === "null" || s === "~") return null;
+    if (s === "true") return true;
+    if (s === "false") return false;
+    if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
+      return s.slice(1, -1);
     }
-    const m = trimmed.match(/^([\w.-]+):(.*)$/);
-    if (!m) continue;
-    const key = m[1].trim();
-    const value = m[2];
-    if (value.trim() === "") {
-      const child = {};
-      top.obj[key] = child;
-      top.lastKey = key;
-      stack.push({ obj: child, indent });
+    if (/^-?\d+$/.test(s)) return Number(s);
+    if (/^-?\d+\.\d+$/.test(s)) return Number(s);
+    return s;
+  }
+
+  for (let lineNo = 0; lineNo < lines.length; lineNo++) {
+    const rawLine = lines[lineNo];
+    if (!rawLine.trim() || rawLine.trim().startsWith("#")) continue;
+    const stripped = rawLine.replace(/\s+#.*$/, "");
+    const indent = stripped.match(/^ */)[0].length;
+    const content = stripped.slice(indent);
+    const isSequenceItem = content.startsWith("- ");
+
+    popTo(indent);
+    if (!isSequenceItem) {
+      while (stack.length > 1) {
+        const topFrame = stack[stack.length - 1];
+        if (!Array.isArray(topFrame.container) || topFrame._listIndent === undefined || indent > topFrame._listIndent) {
+          break;
+        }
+        stack.pop();
+        popTo(indent);
+      }
+    }
+    const top = stack[stack.length - 1];
+
+    if (isSequenceItem) {
+      if (!Array.isArray(top.container)) {
+        throw new Error(`unexpected sequence item at line ${lineNo + 1}: ${rawLine}`);
+      }
+      const itemBody = content.slice(2);
+      const colonIdx = findColon(itemBody);
+      if (colonIdx === -1) {
+        top.container.push(parseScalar(itemBody));
+      } else {
+        const key = itemBody.slice(0, colonIdx).trim();
+        const valuePart = itemBody.slice(colonIdx + 1);
+        const obj = {};
+        top.container.push(obj);
+        if (valuePart.trim() === "") {
+          stack.push({ container: obj, indent, parentKey: null });
+        } else {
+          obj[key] = parseScalar(valuePart);
+          stack.push({ container: obj, indent, parentKey: null });
+        }
+      }
     } else {
-      top.obj[key] = cleanValue(value);
+      const colonIdx = findColon(content);
+      if (colonIdx === -1) {
+        throw new Error(`expected mapping at line ${lineNo + 1}: ${rawLine}`);
+      }
+      const key = content.slice(0, colonIdx).trim();
+      const valuePart = content.slice(colonIdx + 1);
+      if (valuePart.trim() === "") {
+        let nextIndent = null;
+        let nextIsSeq = false;
+        for (let p = lineNo + 1; p < lines.length; p++) {
+          const ln = lines[p];
+          if (!ln.trim() || ln.trim().startsWith("#")) continue;
+          nextIndent = ln.match(/^ */)[0].length;
+          nextIsSeq = ln.slice(nextIndent).startsWith("- ");
+          break;
+        }
+        if (nextIndent !== null && nextIndent >= indent && nextIsSeq) {
+          const list = [];
+          setOnTop(key, list);
+          stack.push({ container: list, indent: indent - 1, parentKey: key, _listIndent: nextIndent });
+        } else {
+          const child = {};
+          setOnTop(key, child);
+          stack.push({ container: child, indent, parentKey: key });
+        }
+      } else {
+        setOnTop(key, parseScalar(valuePart));
+      }
     }
   }
   return root;
+}
+
+function findColon(text) {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "'" && !inDouble) inSingle = !inSingle;
+    else if (c === '"' && !inSingle) inDouble = !inDouble;
+    else if (c === ":" && !inSingle && !inDouble) {
+      if (i + 1 >= text.length || text[i + 1] === " " || text[i + 1] === "\t") return i;
+    }
+  }
+  return -1;
 }
 
 /**
