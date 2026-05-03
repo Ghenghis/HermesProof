@@ -217,7 +217,12 @@ if (!shouldSkip("tests.unit")) {
     return new Promise((resolve) => {
       const r = spawnSync(
         process.platform === "win32" ? "node.exe" : "node",
-        ["--test", "scripts/coordination-smoke-test.mjs", "scripts/hardening-smoke-test.mjs"],
+        [
+          "--test",
+          "scripts/coordination-smoke-test.mjs",
+          "scripts/hardening-smoke-test.mjs",
+          "scripts/secret-rotation-smoke-test.mjs"
+        ],
         { cwd: repoRoot, encoding: "utf8", shell: false }
       );
       resolve({ status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" });

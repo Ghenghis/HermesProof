@@ -104,6 +104,7 @@ export async function checkSecretRotationEvidence({
   }
 
   const { source, candidate } = resolveEnvFilePath({ env, platform, homedir });
+  const redactedCandidate = redactCandidate(candidate);
 
   let st;
   try {
@@ -115,13 +116,13 @@ export async function checkSecretRotationEvidence({
         reason: "env_file_missing",
         evidence: {
           env_source: source,
-          env_candidate: candidate,
+          env_candidate: redactedCandidate,
           env_present: false,
           mtime_iso: null,
           age_days: null,
           max_age_days: maxAgeDays
         },
-        details: `env file not present at ${redactCandidate(candidate)} (source=${source}); rotation gate not_applicable`
+        details: `env file not present at ${redactedCandidate} (source=${source}); rotation gate not_applicable`
       };
     }
     return {
@@ -129,13 +130,13 @@ export async function checkSecretRotationEvidence({
       reason: "stat_error",
       evidence: {
         env_source: source,
-        env_candidate: candidate,
+        env_candidate: redactedCandidate,
         env_present: false,
         mtime_iso: null,
         age_days: null,
         max_age_days: maxAgeDays
       },
-      details: `stat(${redactCandidate(candidate)}) failed: ${err && err.code ? err.code : err && err.message}`
+      details: `stat(${redactedCandidate}) failed: ${err && err.code ? err.code : err && err.message}`
     };
   }
 
@@ -150,7 +151,7 @@ export async function checkSecretRotationEvidence({
     reason: ok ? "fresh" : "stale",
     evidence: {
       env_source: source,
-      env_candidate: candidate,
+      env_candidate: redactedCandidate,
       env_present: true,
       mtime_iso: mtimeIso,
       age_days: Number(ageDays.toFixed(2)),

@@ -105,7 +105,8 @@ test("checkSecretRotationEvidence — fresh mtime returns ok:true", async () => 
   assert.equal(out.reason, "fresh");
   assert.equal(out.evidence.env_present, true);
   assert.equal(out.evidence.env_source, "HERMES3D_ENV_FILE");
-  assert.equal(out.evidence.env_candidate, envPath);
+  assert.notEqual(out.evidence.env_candidate, envPath);
+  assert.equal(out.evidence.env_candidate, _internal.redactCandidate(envPath));
   assert.equal(out.evidence.max_age_days, 90);
   assert.ok(out.evidence.mtime_iso);
   assert.ok(out.evidence.age_days <= 1);
@@ -141,6 +142,10 @@ test("checkSecretRotationEvidence — missing env file returns ok:true reason=en
   assert.equal(out.ok, true);
   assert.equal(out.reason, "env_file_missing");
   assert.equal(out.evidence.env_present, false);
+  assert.equal(
+    out.evidence.env_candidate,
+    _internal.redactCandidate(path.join(os.tmpdir(), "definitely-not-here", "missing.env"))
+  );
   assert.equal(out.evidence.mtime_iso, null);
   assert.equal(out.evidence.age_days, null);
 });
@@ -157,6 +162,7 @@ test("checkSecretRotationEvidence — non-ENOENT stat error returns ok:false rea
   });
   assert.equal(out.ok, false);
   assert.equal(out.reason, "stat_error");
+  assert.equal(out.evidence.env_candidate, _internal.redactCandidate("/some/locked/path/.env"));
   assert.match(out.details, /EACCES/);
 });
 
@@ -181,6 +187,7 @@ test("checkSecretRotationEvidence — never reads file contents (only stat is in
   // The evidence must contain only metadata — no plaintext from the file.
   const blob = JSON.stringify(out.evidence);
   assert.ok(!blob.includes("do_not_read_me"), "evidence must not leak file contents");
+  assert.ok(!blob.includes(envPath), "evidence must not leak raw env file path");
 });
 
 test("checkSecretRotationEvidence — HERMES_SECRET_MAX_AGE_DAYS override is honored", async () => {
