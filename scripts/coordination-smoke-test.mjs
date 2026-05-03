@@ -651,9 +651,17 @@ test("install-clients wires streamhook adapters for KiloCode, Cursor, Windsurf, 
     /KILOCODE_INBOX\.md/
   );
   assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".kilocode", "system-prompt-snippet.md"), "utf8"),
+    /HermesProof STREAM Discipline for KiloCode/
+  );
+  const cursorMcp = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".cursor", "mcp.json"), "utf8"));
+  assert.equal(cursorMcp.mcpServers["hermes-test"].env.MCP_LOCK_WORKSPACE, workspaceRoot);
+  assert.match(
     await fs.readFile(path.join(workspaceRoot, ".cursor", "rules", "stream.mdc"), "utf8"),
     /HermesProof STREAM coordination protocol/
   );
+  const windsurfMcp = JSON.parse(await fs.readFile(path.join(home, ".codeium", "windsurf", "mcp_config.json"), "utf8"));
+  assert.equal(windsurfMcp.mcpServers["hermes-test"].env.MCP_LOCK_WORKSPACE, workspaceRoot);
   assert.match(
     await fs.readFile(path.join(workspaceRoot, ".windsurfrules"), "utf8"),
     /HermesProof STREAM Rules for Windsurf/

@@ -16,3 +16,5 @@ node scripts/install-clients.mjs --workspace "<ABSOLUTE_WORKSPACE_PATH>" --targe
 
 The installer writes workspace-local files under `.kilocode/` and does not
 touch private environment files.
+If you copy `rules.toml` manually, replace private-directory placeholders
+with the paths your local policy should deny.

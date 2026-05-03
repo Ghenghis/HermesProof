@@ -15,3 +15,6 @@ node scripts/install-clients.mjs --workspace "<ABSOLUTE_WORKSPACE_PATH>" --targe
 ```
 
 The `vscode-copilot` target remains supported; `vscode` is a shorter alias.
+If you copy `.vscode/mcp.json` manually, replace
+`<ABSOLUTE_HERMESPROOF_REPO>` and `<ABSOLUTE_WORKSPACE_PATH>` with real
+absolute paths first.
