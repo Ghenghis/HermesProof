@@ -32,9 +32,10 @@
   "scripts": {
     "start": "node src/server.mjs",
     "mcp:dev": "node src/server.mjs",
-    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs",
+    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/registry-validate-smoke-test.mjs",
     "smoke": "node --test scripts/coordination-smoke-test.mjs",
     "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
+    "smoke:registry": "node --test scripts/registry-validate-smoke-test.mjs",
     "init-project": "node scripts/init-project.mjs",
     "install-clients": "node scripts/install-clients.mjs",
     "wizard": "node scripts/wizard.mjs",

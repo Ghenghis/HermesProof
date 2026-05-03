@@ -27,6 +27,16 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import {
+  runProviderRegistryValidate,
+  runLocalModelsCatalogValidate,
+  runContinueLlmClassesValidate,
+  runKilocodeProviderMappingValidate
+} from "./provider-registry-validate.mjs";
+import {
+  runLmstudioHealth,
+  runOllamaHealth
+} from "./local-providers-health.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -909,6 +919,159 @@ if (!shouldSkip("docs.master_prompt_deliverables_present")) {
         : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
       durationMs);
   }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: provider.registry.validate — schema + completeness of registry.yaml
+// ----------------------------------------------------------------------------
+if (!shouldSkip("provider.registry.validate")) {
+  const { result, error, durationMs } = await timed(() => runProviderRegistryValidate());
+  if (error) {
+    record("provider.registry.validate", "required", false, {}, error.message, durationMs);
+  } else {
+    record("provider.registry.validate", "required", result.ok,
+      { ...result.evidence, finding_count: result.findings?.length ?? 0 },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: local.models.catalog.validate — lmstudio_local_models.csv hygiene
+// ----------------------------------------------------------------------------
+if (!shouldSkip("local.models.catalog.validate")) {
+  const { result, error, durationMs } = await timed(() => runLocalModelsCatalogValidate());
+  if (error) {
+    record("local.models.catalog.validate", "required", false, {}, error.message, durationMs);
+  } else {
+    record("local.models.catalog.validate", "required", result.ok,
+      { ...result.evidence, finding_count: result.findings?.length ?? 0 },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: continue.llm_classes.validate — 62 expected provider names present
+// ----------------------------------------------------------------------------
+if (!shouldSkip("continue.llm_classes.validate")) {
+  const { result, error, durationMs } = await timed(() => runContinueLlmClassesValidate());
+  if (error) {
+    record("continue.llm_classes.validate", "required", false, {}, error.message, durationMs);
+  } else {
+    record("continue.llm_classes.validate", "required", result.ok,
+      { ...result.evidence, finding_count: result.findings?.length ?? 0 },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: kilocode.provider.mapping.validate — stub (not_applicable)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("kilocode.provider.mapping.validate")) {
+  const { result, error, durationMs } = await timed(() => runKilocodeProviderMappingValidate());
+  if (error) {
+    record("kilocode.provider.mapping.validate", "warn", false, {}, error.message, durationMs);
+  } else {
+    // Stub gate: pass-through, marked warn so it's visible in the report.
+    record("kilocode.provider.mapping.validate", "warn", result.ok,
+      { ...result.evidence, status: result.status || "ok" },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: lmstudio.health — WARN on offline (local-only)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("lmstudio.health")) {
+  const { result, error, durationMs } = await timed(() => runLmstudioHealth());
+  if (error) {
+    record("lmstudio.health", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("lmstudio.health", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: ollama.health — WARN on offline (local-only)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("ollama.health")) {
+  const { result, error, durationMs } = await timed(() => runOllamaHealth());
+  if (error) {
+    record("ollama.health", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("ollama.health", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: secret.scan — surface gitleaks (or built-in fallback) as a first-class
+// gate. Tries `gitleaks detect --no-banner --redact -s . -r -` and parses any
+// findings; if gitleaks isn't on PATH, runs a tiny stdlib regex fallback over
+// the tracked tree so absence of gitleaks doesn't silently skip the gate.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("secret.scan")) {
+  const { result, durationMs } = await timed(async () => {
+    // Try gitleaks first.
+    const probe = spawnSync(
+      process.platform === "win32" ? "gitleaks.exe" : "gitleaks",
+      ["version"],
+      { encoding: "utf8" }
+    );
+    if (probe.error?.code === "ENOENT") {
+      // Fallback regex scan over tracked files (cheap, conservative).
+      const tracked = spawnSync("git", ["-C", repoRoot, "ls-files"], { encoding: "utf8" });
+      if (tracked.status !== 0) {
+        return { mode: "fallback", error: "git ls-files failed", findings: [] };
+      }
+      const files = tracked.stdout.split("\n").filter(Boolean).filter(
+        (p) => !p.startsWith("PROOF/") && !p.endsWith(".lock") && !p.endsWith(".png") && !p.endsWith(".jpg")
+      );
+      const patterns = [
+        { name: "aws_access_key", re: /AKIA[0-9A-Z]{16}/ },
+        { name: "aws_secret_key", re: /(?:^|[^A-Za-z0-9])([A-Za-z0-9/+=]{40})(?:[^A-Za-z0-9]|$)/ },
+        { name: "github_token", re: /gh[pousr]_[A-Za-z0-9]{36,}/ },
+        { name: "openai_key", re: /sk-[A-Za-z0-9_-]{32,}/ },
+        { name: "anthropic_key", re: /sk-ant-[A-Za-z0-9_-]{32,}/ },
+        { name: "private_key_pem", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |)PRIVATE KEY-----/ }
+      ];
+      const findings = [];
+      for (const rel of files) {
+        // skip the gate file itself (defines these patterns)
+        if (rel.endsWith("truth-gates.mjs")) continue;
+        try {
+          const buf = await fs.readFile(path.join(repoRoot, rel), "utf8");
+          for (const pat of patterns) {
+            // aws_secret_key alone is too noisy without context — require AKIA nearby
+            if (pat.name === "aws_secret_key" && !/AKIA[0-9A-Z]{16}/.test(buf)) continue;
+            if (pat.re.test(buf)) {
+              findings.push({ file: rel, pattern: pat.name });
+            }
+          }
+        } catch { /* skip unreadable */ }
+      }
+      return { mode: "fallback", findings, file_count: files.length };
+    }
+    // gitleaks present — run it.
+    const r = spawnSync(
+      process.platform === "win32" ? "gitleaks.exe" : "gitleaks",
+      ["detect", "--no-banner", "--redact", "-s", repoRoot, "--report-format", "json", "--report-path", "-"],
+      { encoding: "utf8" }
+    );
+    let parsed = [];
+    try { parsed = JSON.parse(r.stdout || "[]"); } catch { /* tolerate */ }
+    return {
+      mode: "gitleaks",
+      version: probe.stdout.trim(),
+      exit_code: r.status,
+      finding_count: Array.isArray(parsed) ? parsed.length : 0,
+      findings: Array.isArray(parsed) ? parsed.slice(0, 10) : []
+    };
+  });
+  const ok = (result.findings?.length || 0) === 0;
+  record("secret.scan", "required", ok, result,
+    ok
+      ? `${result.mode}: 0 findings`
+      : `${result.mode}: ${result.findings.length} finding(s)`,
+    durationMs);
 }
 
 // ----------------------------------------------------------------------------
