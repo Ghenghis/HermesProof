@@ -44,3 +44,16 @@ Thumbs.db
 !.env.deploy.example
 !.env.production.example
 !.env.staging.example
+
+# STREAM/ local snapshots (LEDGER.md is the durable history; backups are local rotation)
+handoffs/STREAM/backups/
+
+# 2026-05-03 hardening v2: paranoid blocklist for accidental Notepad-saved-as variants
+*.env.notepad
+*.env.copy
+*.env.bak2
+.env_old
+secrets.txt
+secrets.json
+G_private/  # never check in shadows of G:\private\
+private_keys/

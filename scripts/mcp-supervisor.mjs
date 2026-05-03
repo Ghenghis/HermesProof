@@ -94,47 +94,69 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Track the currently-active child so the single top-level signal handler
+// can forward to whichever child is alive at signal time. Replaces the
+// per-spawn `process.once` handlers from the original implementation, which
+// accumulated across reconnects and held references to dead child objects.
+let activeChild = null;
+
 async function spawnServer() {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [SERVER_PATH], {
       stdio: ["pipe", "pipe", "pipe"],
       env: process.env,
     });
+    activeChild = child;
 
-    // Pipe stdio between MCP client and child server
-    process.stdin.pipe(child.stdin);
-    child.stdout.pipe(process.stdout);
-    child.stderr.pipe(process.stderr);
+    // end:false — when the child exits, do NOT close the supervisor's own
+    // stdio. Otherwise the next respawn has nowhere to write, and the MCP
+    // client sees a permanently dead stream. The audit on PR #33 flagged
+    // the default end:true as the cause of "supervisor reconnects but
+    // client still sees disconnect".
+    process.stdin.pipe(child.stdin, { end: false });
+    child.stdout.pipe(process.stdout, { end: false });
+    child.stderr.pipe(process.stderr, { end: false });
 
     let exited = false;
 
     child.on("exit", (code, signal) => {
       if (exited) return;
       exited = true;
-      // Detach pipes to allow new child to attach
       try {
         process.stdin.unpipe(child.stdin);
       } catch {}
+      try {
+        child.stdout.unpipe(process.stdout);
+      } catch {}
+      try {
+        child.stderr.unpipe(process.stderr);
+      } catch {}
+      if (activeChild === child) activeChild = null;
       resolve({ code, signal });
     });
 
     child.on("error", (err) => {
       if (exited) return;
       exited = true;
+      if (activeChild === child) activeChild = null;
       log(`spawn error: ${err.message}`);
       resolve({ code: 1, signal: null, error: err.message });
     });
-
-    // Forward our own termination signals to the child for clean shutdown
-    const forward = (sig) => {
-      try {
-        child.kill(sig);
-      } catch {}
-    };
-    process.once("SIGTERM", () => forward("SIGTERM"));
-    process.once("SIGINT", () => forward("SIGINT"));
   });
 }
+
+// Single top-level signal handler. Forwards to whichever child is currently
+// active at signal time. Replaces the per-spawn `process.once` handlers from
+// the original (each spawn iteration leaked a stale handler).
+const forwardSignal = (sig) => {
+  if (activeChild) {
+    try {
+      activeChild.kill(sig);
+    } catch {}
+  }
+};
+process.on("SIGTERM", () => forwardSignal("SIGTERM"));
+process.on("SIGINT", () => forwardSignal("SIGINT"));
 
 async function supervise() {
   if (process.env.HERMESPROOF_SUPERVISOR_DISABLED === "1") {
