@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-05-03T15-10-21-275Z",
-  "ts_utc": "2026-05-03T15:10:21.275Z",
-  "duration_ms": 5461,
+  "run_id": "truth_2026-05-03T15-19-24-182Z",
+  "ts_utc": "2026-05-03T15:19:24.182Z",
+  "duration_ms": 5485,
   "ok": true,
   "pass_count": 18,
   "fail_count": 0,
@@ -18,16 +18,16 @@
       "ok": true,
       "duration_ms": 13,
       "evidence": {
-        "file_count": 40,
-        "manifest_sha256": "0a58bd42fdc2973d455b5278e691da7bc48a6cf34fb9d76bebda0b6d2558502c"
+        "file_count": 44,
+        "manifest_sha256": "4f5892584300b13d46df9fc239b507384a8bf996ee0e56e81b341769ca3a1e11"
       },
-      "details": "40 files hashed"
+      "details": "44 files hashed"
     },
     {
       "id": "deps.parity",
       "level": "required",
       "ok": true,
-      "duration_ms": 3,
+      "duration_ms": 2,
       "evidence": {
         "declared": {
           "@modelcontextprotocol/sdk": "^1.29.0",
@@ -47,12 +47,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 1745,
+      "duration_ms": 1762,
       "evidence": {
         "exit_code": 0,
         "pass_count": 99,
         "fail_count": 0,
-        "stdout_tail": "ermes/env\n  ---\n  duration_ms: 0.353701\n  ...\n# Subtest: resolveEnvFilePath — VPS var only takes effect when profile=vps\nok 91 - resolveEnvFilePath — VPS var only takes effect when profile=vps\n  ---\n  duration_ms: 0.336539\n  ...\n# Subtest: checkSecretRotationEvidence — fresh mtime returns ok:true\nok 92 - checkSecretRotationEvidence — fresh mtime returns ok:true\n  ---\n  duration_ms: 13.061596\n  ...\n# Subtest: checkSecretRotationEvidence — stale mtime returns ok:false reason=stale\nok 93 - checkSecretRotationEvidence — stale mtime returns ok:false reason=stale\n  ---\n  duration_ms: 1.677584\n  ...\n# Subtest: checkSecretRotationEvidence — missing env file returns ok:true reason=env_file_missing\nok 94 - checkSecretRotationEvidence — missing env file returns ok:true reason=env_file_missing\n  ---\n  duration_ms: 1.539575\n  ...\n# Subtest: checkSecretRotationEvidence — non-ENOENT stat error returns ok:false reason=stat_error\nok 95 - checkSecretRotationEvidence — non-ENOENT stat error returns ok:false reason=stat_error\n  ---\n  duration_ms: 0.740703\n  ...\n# Subtest: checkSecretRotationEvidence — never reads file contents (only stat is invoked)\nok 96 - checkSecretRotationEvidence — never reads file contents (only stat is invoked)\n  ---\n  duration_ms: 3.121911\n  ...\n# Subtest: checkSecretRotationEvidence — HERMES_SECRET_MAX_AGE_DAYS override is honored\nok 97 - checkSecretRotationEvidence — HERMES_SECRET_MAX_AGE_DAYS override is honored\n  ---\n  duration_ms: 2.598003\n  ...\n# Subtest: checkSecretRotationEvidence — invalid max-age env var falls back to default 90\nok 98 - checkSecretRotationEvidence — invalid max-age env var falls back to default 90\n  ---\n  duration_ms: 2.037856\n  ...\n# Subtest: redactCandidate — strips long path prefixes but keeps last two segments\nok 99 - redactCandidate — strips long path prefixes but keeps last two segments\n  ---\n  duration_ms: 0.378467\n  ...\n1..99\n# tests 99\n# suites 0\n# pass 99\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1703.931752\n",
+        "stdout_tail": "hermes/env\n  ---\n  duration_ms: 0.453955\n  ...\n# Subtest: resolveEnvFilePath — VPS var only takes effect when profile=vps\nok 91 - resolveEnvFilePath — VPS var only takes effect when profile=vps\n  ---\n  duration_ms: 0.377542\n  ...\n# Subtest: checkSecretRotationEvidence — fresh mtime returns ok:true\nok 92 - checkSecretRotationEvidence — fresh mtime returns ok:true\n  ---\n  duration_ms: 16.831876\n  ...\n# Subtest: checkSecretRotationEvidence — stale mtime returns ok:false reason=stale\nok 93 - checkSecretRotationEvidence — stale mtime returns ok:false reason=stale\n  ---\n  duration_ms: 2.445551\n  ...\n# Subtest: checkSecretRotationEvidence — missing env file returns ok:true reason=env_file_missing\nok 94 - checkSecretRotationEvidence — missing env file returns ok:true reason=env_file_missing\n  ---\n  duration_ms: 1.549483\n  ...\n# Subtest: checkSecretRotationEvidence — non-ENOENT stat error returns ok:false reason=stat_error\nok 95 - checkSecretRotationEvidence — non-ENOENT stat error returns ok:false reason=stat_error\n  ---\n  duration_ms: 0.65509\n  ...\n# Subtest: checkSecretRotationEvidence — never reads file contents (only stat is invoked)\nok 96 - checkSecretRotationEvidence — never reads file contents (only stat is invoked)\n  ---\n  duration_ms: 2.841738\n  ...\n# Subtest: checkSecretRotationEvidence — HERMES_SECRET_MAX_AGE_DAYS override is honored\nok 97 - checkSecretRotationEvidence — HERMES_SECRET_MAX_AGE_DAYS override is honored\n  ---\n  duration_ms: 5.907294\n  ...\n# Subtest: checkSecretRotationEvidence — invalid max-age env var falls back to default 90\nok 98 - checkSecretRotationEvidence — invalid max-age env var falls back to default 90\n  ---\n  duration_ms: 3.409044\n  ...\n# Subtest: redactCandidate — strips long path prefixes but keeps last two segments\nok 99 - redactCandidate — strips long path prefixes but keeps last two segments\n  ---\n  duration_ms: 0.408179\n  ...\n1..99\n# tests 99\n# suites 0\n# pass 99\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1718.064416\n",
         "stderr_tail": ""
       },
       "details": "pass=99, fail=0, exit=0"
@@ -61,13 +61,20 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 218,
+      "duration_ms": 226,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
         "server_version": "0.5.0",
-        "tool_count": 24,
+        "tool_count": 34,
         "tools": [
+          "hermes_agent_health",
+          "hermes_agent_request_user_session",
+          "hermes_agent_resolve_blocked",
+          "hermes_agent_revoke_session",
+          "hermes_anonymous_claim",
+          "hermes_anonymous_release",
+          "hermes_anonymous_state",
           "hermes_append_evidence",
           "hermes_approve_handoff",
           "hermes_claim_task",
@@ -91,10 +98,13 @@
           "hermes_release_task",
           "hermes_request_handoff",
           "hermes_run_gate",
+          "hermes_user_check_authorization",
+          "hermes_user_grant_session",
+          "hermes_user_revoke_session",
           "hermes_verify_evidence"
         ]
       },
-      "details": "24 tools"
+      "details": "34 tools"
     },
     {
       "id": "doctor.hermes3d",
@@ -110,9 +120,9 @@
       "id": "events.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 12,
+      "duration_ms": 11,
       "evidence": {
-        "sandbox": "/tmp/truth-events-dir-l37Nli",
+        "sandbox": "/tmp/truth-events-dir-gxITQ4",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -127,7 +137,7 @@
       "ok": true,
       "duration_ms": 5,
       "evidence": {
-        "sandbox": "/tmp/truth-tasks-dir-W3Pc7X",
+        "sandbox": "/tmp/truth-tasks-dir-wQ5rSa",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -147,11 +157,11 @@
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-trigger-doctor-9OYrmZ",
+          "workspace": "/tmp/truth-trigger-doctor-HCfJ4N",
           "doctor": {
             "ok": true,
-            "workspace_root": "/tmp/truth-trigger-doctor-9OYrmZ",
-            "state_dir": "/tmp/truth-trigger-doctor-9OYrmZ/.hermes3d_orchestrator",
+            "workspace_root": "/tmp/truth-trigger-doctor-HCfJ4N",
+            "state_dir": "/tmp/truth-trigger-doctor-HCfJ4N/.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
             "node_version": "v20.20.2",
             "platform": "linux",
@@ -213,13 +223,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 172,
+      "duration_ms": 162,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-queue-doctor-vU3VlB",
+          "workspace": "/tmp/truth-queue-doctor-YzC3cQ",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -257,11 +267,11 @@
       "id": "wizard.dry_run_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 60,
+      "duration_ms": 62,
       "evidence": {
         "exit_code": 0,
         "wrote_state": false,
-        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-hhFkSL\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ KiloCode\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-hhFkSL.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
+        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-UnxhJE\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ KiloCode\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-UnxhJE.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
         "stderr_tail": ""
       },
       "details": "wizard dry-run ok"
@@ -270,9 +280,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 345,
+      "duration_ms": 346,
       "evidence": {
-        "sandbox": "/tmp/truth-gate-sandbox-AS9yzL",
+        "sandbox": "/tmp/truth-gate-sandbox-7CK2n8",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -370,11 +380,11 @@
       "id": "server.tool_description_hygiene",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 2,
       "evidence": {
         "findings": [],
         "file": "src/server.mjs",
-        "bytes": 18259
+        "bytes": 26111
       },
       "details": "0 suspicious patterns"
     },
@@ -385,9 +395,9 @@
       "duration_ms": 5,
       "evidence": {
         "file": "/home/runner/work/HermesProof/HermesProof/src/server.mjs",
-        "bytes": 18259,
+        "bytes": 26111,
         "pattern_count": 16,
-        "fields_scanned": 52,
+        "fields_scanned": 73,
         "findings": []
       },
       "details": "0 suspicious patterns across 16 signatures"
@@ -396,7 +406,7 @@
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 3,
+      "duration_ms": 4,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -512,12 +522,12 @@
       "id": "sbom.cyclonedx_generated",
       "level": "required",
       "ok": true,
-      "duration_ms": 33,
+      "duration_ms": 36,
       "evidence": {
         "path": "/home/runner/work/HermesProof/HermesProof/PROOF/sbom.json",
         "components": 92,
-        "sha256": "8984fbf575968024ec5728403d4930ae9f61e1ce40e242bd3fa0516681112c0b",
-        "serial_number": "urn:uuid:f5c1e79a-ec2a-557a-a206-cf14513f8a50",
+        "sha256": "48a9cf58cb34f280f93d1ba07e625354a66f237556ed80bfff5b4908a93d1d2c",
+        "serial_number": "urn:uuid:5be0ed3d-cc98-5507-bfaf-394e6d1cf330",
         "spec_version": "1.5"
       },
       "details": "92 components @ /home/runner/work/HermesProof/HermesProof/PROOF/sbom.json"
@@ -526,7 +536,7 @@
       "id": "licenses.scan",
       "level": "required",
       "ok": true,
-      "duration_ms": 2512,
+      "duration_ms": 2563,
       "evidence": {
         "package_count": 93,
         "allowlist": [
@@ -886,7 +896,7 @@
             "status": "allowed"
           },
           "hermesproof": {
-            "version": "0.5.1",
+            "version": "0.6.0",
             "licenses_raw": "UNLICENSED",
             "tokens": [
               "UNLICENSED"
@@ -1307,7 +1317,7 @@
         "review_packages": [
           {
             "name": "hermesproof",
-            "version": "0.5.1",
+            "version": "0.6.0",
             "licenses_raw": "UNLICENSED"
           }
         ]
@@ -1318,7 +1328,7 @@
       "id": "dependency.fresh",
       "level": "warn",
       "ok": true,
-      "duration_ms": 253,
+      "duration_ms": 206,
       "evidence": {
         "direct_deps_count": 3,
         "stale_count": 0,
