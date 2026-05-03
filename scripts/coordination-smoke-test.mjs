@@ -728,7 +728,7 @@ test("generateSbom emits a valid CycloneDX 1.5 doc with sorted components", () =
   const components = [
     { name: "zod", version: "3.24.1", license: "MIT", sha256: "deadbeef" },
     { name: "@modelcontextprotocol/sdk", version: "1.29.0", license: "MIT" },
-    { name: "dotenv", version: "16.4.5", license: "BSD-2-Clause" }
+    { name: "dotenv", version: "16.4.5", license: "(MIT OR Apache-2.0)" }
   ];
   const text = generateSbom({
     pkg: { name: "hermesproof", version: "0.5.0" },
@@ -753,6 +753,7 @@ test("generateSbom emits a valid CycloneDX 1.5 doc with sorted components", () =
   assert.equal(sbom.components[2].purl, "pkg:npm/zod@3.24.1");
   assert.equal(sbom.components[2].scope, "required");
   assert.deepEqual(sbom.components[2].hashes, [{ alg: "SHA-256", content: "deadbeef" }]);
+  assert.deepEqual(sbom.components[1].licenses, [{ expression: "(MIT OR Apache-2.0)" }]);
   // SPDX id-shaped license stays as `id`.
   assert.deepEqual(sbom.components[2].licenses, [{ license: { id: "MIT" } }]);
 });

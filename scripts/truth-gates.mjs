@@ -27,6 +27,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { runMcpScanStaticGate } from "./mcp-scan-static-gate.mjs";
 import { writeSbomToProof } from "./sbom-generator.mjs";
 import {
   runLicensesScanGate,
@@ -224,7 +225,12 @@ if (!shouldSkip("tests.unit")) {
     return new Promise((resolve) => {
       const r = spawnSync(
         process.platform === "win32" ? "node.exe" : "node",
-        ["--test", "scripts/coordination-smoke-test.mjs", "scripts/hardening-smoke-test.mjs"],
+        [
+          "--test",
+          "scripts/coordination-smoke-test.mjs",
+          "scripts/hardening-smoke-test.mjs",
+          "scripts/mcp-scan-static-gate.test.mjs"
+        ],
         { cwd: repoRoot, encoding: "utf8", shell: false }
       );
       resolve({ status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" });
@@ -812,6 +818,27 @@ if (!shouldSkip("server.tool_description_hygiene")) {
     record("server.tool_description_hygiene", "required", ok, result,
       ok ? "0 suspicious patterns" : `${result.findings.length} pattern(s): ${result.findings.map((f) => f.pattern).join(", ")}`,
       durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 10b: security.mcp_scan_pass — extended static analysis over
+// src/server.mjs. Superset of `server.tool_description_hygiene`: adds
+// hidden-content markers, authority-impersonation phrases, exfil
+// directives, hex/url-encoded payloads, RTL-override / bidi-isolate
+// unicode, and `<sysprompt>` / `<HIDDEN>` tags. OWASP MCP "tool poisoning"
+// + rug-pull defense, pure-regex, zero deps.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("security.mcp_scan_pass")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runMcpScanStaticGate({
+      serverPath: path.join(repoRoot, "src", "server.mjs")
+    });
+  });
+  if (error) {
+    record("security.mcp_scan_pass", "required", false, {}, error.message, durationMs);
+  } else {
+    record("security.mcp_scan_pass", "required", result.ok, result.evidence, result.details, durationMs);
   }
 }
 
