@@ -1,8 +1,8 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-05-03T01-04-25-702Z`
-- **Timestamp (UTC)**: 2026-05-03T01:04:25.702Z
-- **Duration**: 0.63s
+- **Run id**: `truth_2026-05-03T01-36-20-717Z`
+- **Timestamp (UTC)**: 2026-05-03T01:36:20.717Z
+- **Duration**: 0.72s
 - **Hermes3D workspace**: `/home/runner/work/HermesProof/HermesProof`
 - **Node**: v20.20.2 on linux
 - **Result**: ✅ ALL REQUIRED GATES PASS
@@ -14,11 +14,11 @@ Pass / Fail / Warn / Skip: **8 / 0 / 0 / 4**
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
 | `source.integrity_manifest` | required | ✅ pass | 5 ms | 13 files hashed |
-| `deps.parity` | required | ✅ pass | 2 ms | all 2 deps installed |
-| `tests.unit` | required | ✅ pass | 163 ms | pass=12, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 195 ms | 16 tools |
+| `deps.parity` | required | ✅ pass | 1 ms | all 2 deps installed |
+| `tests.unit` | required | ✅ pass | 200 ms | pass=12, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 210 ms | 16 tools |
 | `doctor.hermes3d` | skipped | ✅ pass | 0 ms | skipped |
-| `e2e.multi_agent_flow` | required | ✅ pass | 255 ms | 14/14 checks; 3 ledger, 11 events |
+| `e2e.multi_agent_flow` | required | ✅ pass | 294 ms | 14/14 checks; 3 ledger, 11 events |
 | `workspace.integrity` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.config_presence` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.claude_code_live` | skipped | ✅ pass | 0 ms | skipped |
