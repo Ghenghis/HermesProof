@@ -1,35 +1,36 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-05-03T10-22-16-047Z`
-- **Timestamp (UTC)**: 2026-05-03T10:22:16.047Z
-- **Duration**: 2.64s
+- **Run id**: `truth_2026-05-03T13-57-52-240Z`
+- **Timestamp (UTC)**: 2026-05-03T13:57:52.240Z
+- **Duration**: 5.67s
 - **Hermes3D workspace**: `/home/runner/work/HermesProof/HermesProof`
 - **Node**: v20.20.2 on linux
 - **Result**: ✅ ALL REQUIRED GATES PASS
 
-Pass / Fail / Warn / Skip: **13 / 0 / 0 / 4**
+Pass / Fail / Warn / Skip: **14 / 0 / 0 / 4**
 
 ## Gate results
 
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| `source.integrity_manifest` | required | ✅ pass | 8 ms | 26 files hashed |
+| `source.integrity_manifest` | required | ✅ pass | 10 ms | 33 files hashed |
 | `deps.parity` | required | ✅ pass | 2 ms | all 3 deps installed |
-| `tests.unit` | required | ✅ pass | 1716 ms | pass=49, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 217 ms | 24 tools |
+| `tests.unit` | required | ✅ pass | 2375 ms | pass=52, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 224 ms | 24 tools |
 | `doctor.hermes3d` | skipped | ✅ pass | 0 ms | skipped |
-| `events.directory_present` | required | ✅ pass | 13 ms | outbox/handled/failed present |
+| `events.directory_present` | required | ✅ pass | 12 ms | outbox/handled/failed present |
 | `tasks.directory_present` | required | ✅ pass | 7 ms | pending/claimed/blocked/done present |
-| `trigger.doctor_passes` | required | ✅ pass | 73 ms | trigger doctor ok |
-| `queue.doctor_passes` | required | ✅ pass | 171 ms | queue doctor ok |
-| `wizard.dry_run_passes` | required | ✅ pass | 61 ms | wizard dry-run ok |
-| `e2e.multi_agent_flow` | required | ✅ pass | 357 ms | 14/14 checks; 15 ledger, 11 events |
+| `trigger.doctor_passes` | required | ✅ pass | 71 ms | trigger doctor ok |
+| `queue.doctor_passes` | required | ✅ pass | 161 ms | queue doctor ok |
+| `wizard.dry_run_passes` | required | ✅ pass | 66 ms | wizard dry-run ok |
+| `e2e.multi_agent_flow` | required | ✅ pass | 352 ms | 14/14 checks; 15 ledger, 11 events |
 | `workspace.integrity` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.config_presence` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.claude_code_live` | skipped | ✅ pass | 0 ms | skipped |
-| `server.tool_description_hygiene` | required | ✅ pass | 2 ms | 0 suspicious patterns |
+| `server.tool_description_hygiene` | required | ✅ pass | 1 ms | 0 suspicious patterns |
 | `evidence.hash_chain_valid` | required | ✅ pass | 4 ms | positive=true, negative_detected_at_idx_1=true |
 | `docs.master_prompt_deliverables_present` | required | ✅ pass | 2 ms | 10/10 deliverables present |
+| `licenses.scan` | required | ✅ pass | 2375 ms | 93 packages scanned; unknown=0, review=1 |
 
 ## Machine-readable report
 
