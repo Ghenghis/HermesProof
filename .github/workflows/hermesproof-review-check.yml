@@ -2,7 +2,9 @@ name: HermesProof Review Check
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    # Adding `edited` so PR body updates re-run the mechanical review
+    # without requiring an empty commit.
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
   contents: read
