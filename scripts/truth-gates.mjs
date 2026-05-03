@@ -238,23 +238,30 @@ if (!shouldSkip("deps.parity")) {
 // the reporter output; calling node directly gives stable, parseable text.
 // ----------------------------------------------------------------------------
 if (!shouldSkip("tests.unit")) {
-  // Codex audit fix (PR #32, 2026-05-03): the registry smoke test was
-  // shipped but never wired into the unit gate, so CI could pass without
-  // exercising the new parser/catalog/routing logic. Adding it here so a
-  // regression in any registered smoke file fails this required gate.
+  // Audit P1-9 fix (2026-05-03): previously the unit gate's spawnSync arg
+  // list was a hardcoded subset of test files (5 of 12 at audit time, 6
+  // of ~20 today), so the truth-gate harness could pass even when the
+  // package-level `npm test` manifest had files the gate ignored.
+  // Now we parse `package.json`'s `scripts.test` at gate time and run
+  // exactly the files `npm test` runs — single source of truth, no drift.
+  //
+  // Earlier Codex audit fix (PR #32, 2026-05-03): the registry smoke test
+  // was shipped but never wired into the unit gate. That fix is preserved
+  // by deriving the list from package.json (which includes it).
+  const pkgJson = await readPackageJson(repoRoot);
+  const testScript = pkgJson?.scripts?.test || "";
+  // Expect `node --test <file1> <file2> ...`; extract every .mjs/.js arg.
+  const testFiles = testScript
+    .split(/\s+/)
+    .filter((tok) => tok.endsWith(".mjs") || tok.endsWith(".js"));
   const { result, durationMs } = await timed(async () => {
+    if (testFiles.length === 0) {
+      return { status: 1, stdout: "", stderr: "tests.unit: package.json scripts.test contained no test files" };
+    }
     return new Promise((resolve) => {
       const r = spawnSync(
         process.platform === "win32" ? "node.exe" : "node",
-        [
-          "--test",
-          "scripts/coordination-smoke-test.mjs",
-          "scripts/hardening-smoke-test.mjs",
-          "scripts/registry-validate-smoke-test.mjs",
-          "scripts/secret-rotation-smoke-test.mjs",
-          "scripts/mcp-scan-static-gate.test.mjs",
-          "scripts/accessibility-wcag-gate.test.mjs"
-        ],
+        ["--test", ...testFiles],
         { cwd: repoRoot, encoding: "utf8", shell: false }
       );
       resolve({ status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" });

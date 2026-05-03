@@ -945,3 +945,48 @@ registerTool(
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// ---------------------------------------------------------------------------
+// Shutdown handlers (audit P1-8, 2026-05-03)
+// ---------------------------------------------------------------------------
+// Pre-fix, the server relied on Node defaults for SIGTERM/SIGINT and on the
+// MCP SDK closing stdio when the client disconnected. In-flight async work
+// (mutex chains, appendChainedJsonLine, atomic-rename writes, evidence
+// appends) could be interrupted mid-step by an immediate process exit,
+// leaving torn state — the same family of risks the supervisor's own
+// shutdown story addresses for the wrapper layer.
+//
+// This handler:
+//   1. Records the shutdown intent to stderr (visible to the supervisor's log).
+//   2. Tells the MCP transport to close — the SDK awaits any in-flight tool
+//      handler returns before resolving close().
+//   3. Exits 0 (clean) when close succeeded — the supervisor doesn't flag a
+//      crash + respawn. Exits 1 if transport.close() threw, since a torn
+//      shutdown is signal we want the supervisor (and operators) to see, NOT
+//      a clean stop. CodeRabbit follow-up on PR #48 (2026-05-03 audit).
+//
+// stdin EOF is the MCP-client-disconnect signal; the SDK already exits the
+// transport's read loop on EOF, but without an explicit handler the process
+// keeps running with nothing to do. Treating EOF as a clean shutdown closes
+// the gap.
+let _shuttingDown = false;
+async function gracefulShutdown(reason) {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  process.stderr.write(`[hermesproof] shutdown: ${reason}\n`);
+  let exitCode = 0;
+  try {
+    if (typeof transport.close === "function") {
+      await transport.close();
+    } else if (typeof server.close === "function") {
+      await server.close();
+    }
+  } catch (err) {
+    process.stderr.write(`[hermesproof] shutdown error: ${err?.message || err}\n`);
+    exitCode = 1;
+  }
+  process.exit(exitCode);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.stdin.on("end", () => gracefulShutdown("stdin EOF (client disconnect)"));
