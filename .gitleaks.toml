@@ -33,9 +33,33 @@ keywords = ["minimax"]
 
 [[rules]]
 id = "coderabbit-api-key"
-description = "CodeRabbit API key"
-regex = '''(?i)coderabbit[_-]?(api[_-]?)?key['"\s:=]+([a-zA-Z0-9_-]{30,})'''
-keywords = ["coderabbit"]
+description = "CodeRabbit API key (cr-...)"
+regex = '''cr-[a-zA-Z0-9_-]{20,}'''
+keywords = ["cr-", "coderabbit"]
+
+[[rules]]
+id = "github-personal-token"
+description = "GitHub fine-grained or classic personal access token (ghp_...)"
+regex = '''ghp_[a-zA-Z0-9]{30,}'''
+keywords = ["ghp_"]
+
+[[rules]]
+id = "github-server-token"
+description = "GitHub server-to-server token (ghs_...)"
+regex = '''ghs_[a-zA-Z0-9]{30,}'''
+keywords = ["ghs_"]
+
+[[rules]]
+id = "azure-speech-key"
+description = "Azure Speech Service key (32-char hex within azure_speech context)"
+regex = '''(?i)azure[_-]?speech[_-]?key['"\s:=]+[a-zA-Z0-9]{30,40}'''
+keywords = ["azure_speech", "AZURE_SPEECH"]
+
+[[rules]]
+id = "minimax-cp-prefix"
+description = "MiniMax cp-prefixed API key"
+regex = '''cp-[a-zA-Z0-9]{30,}'''
+keywords = ["cp-"]
 
 [[allowlists]]
 description = "Permitted patterns — synthetic test keys, examples"
@@ -46,4 +70,5 @@ regexes = [
 paths = [
   '''.*\.example$''',
   '''node_modules/.*''',
+  '''handoffs/STREAM/backups/.*''',
 ]
