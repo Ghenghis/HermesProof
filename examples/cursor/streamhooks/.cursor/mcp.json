@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "hermes3d-locks": {
+      "command": "node",
+      "args": ["${workspaceFolder}/../HermesProof/src/server.mjs"],
+      "env": {
+        "MCP_LOCK_WORKSPACE": "${workspaceFolder}"
+      }
+    }
+  }
+}

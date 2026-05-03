@@ -16,6 +16,7 @@ import {
   LICENSE_ALLOWLIST,
   LICENSE_DENYLIST
 } from "./license-and-deps-gates.mjs";
+import { installClients } from "./install-clients.mjs";
 
 const repoRoot = process.cwd();
 
@@ -626,6 +627,43 @@ test("wizard detects anthropic key without leaking the synthetic value", async (
     assert.equal(raw.includes(secret), false, `${file} leaked synthetic key`);
   }
   assert.ok(files.some((file) => file.endsWith(path.join(".hermesproof", "anthropic-sdk-example.mjs"))));
+});
+
+test("install-clients wires streamhook adapters for KiloCode, Cursor, Windsurf, and VS Code", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-client-home-"));
+  const result = await installClients([
+    `--workspace=${workspaceRoot}`,
+    "--server-name=hermes-test",
+    "--target=kilocode,cursor,windsurf,vscode"
+  ], {
+    HERMESPROOF_TEST_HOME: home,
+    APPDATA: path.join(home, "AppData", "Roaming")
+  });
+  assert.equal(result.ok, true, JSON.stringify(result.results, null, 2));
+  assert.equal(result.results.kilocode.status, "written");
+  assert.equal(result.results.cursor.status, "written");
+  assert.equal(result.results.windsurf.status, "written");
+  assert.equal(result.results.vscode.status, "written");
+
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".kilocode", "rules.toml"), "utf8"),
+    /KILOCODE_INBOX\.md/
+  );
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".cursor", "rules", "stream.mdc"), "utf8"),
+    /HermesProof STREAM coordination protocol/
+  );
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".windsurfrules"), "utf8"),
+    /HermesProof STREAM Rules for Windsurf/
+  );
+  assert.match(
+    await fs.readFile(path.join(workspaceRoot, ".github", "copilot-instructions.md"), "utf8"),
+    /HermesProof STREAM Discipline/
+  );
+  const vscodeMcp = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".vscode", "mcp.json"), "utf8"));
+  assert.equal(vscodeMcp.servers["hermes-test"].env.MCP_LOCK_WORKSPACE, workspaceRoot);
 });
 
 function runWizard(args, extraEnv = {}) {

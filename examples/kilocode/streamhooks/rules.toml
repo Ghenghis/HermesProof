@@ -1,0 +1,25 @@
+[stream]
+protocol_path = "handoffs/STREAM/PROTOCOL.md"
+state_path = "handoffs/STREAM/STATE.md"
+inbox_path = "handoffs/STREAM/KILOCODE_INBOX.md"
+poll_interval = "3min"
+idle_poll_interval = "5min"
+
+[identity]
+default_role = "BUILDER"
+owner_prefix = "kilocode"
+owner_pattern = "kilocode-<handle>"
+
+[hooks]
+on_session_start = "read protocol, state, and inbox"
+on_idle = "poll stream inbox"
+before_edit = "check active task claim and HermesProof locks"
+after_edit = "append evidence for material changes"
+on_long_task = "post HEARTBEAT every 30min"
+on_exit = "release owned locks or post BLOCKED with reason"
+
+[guards]
+forbid_force_push = true
+forbid_no_verify = true
+forbid_secret_reads = true
+secret_paths = ["G:\\private", "C:\\Users\\Admin\\Downloads\\VPS"]
