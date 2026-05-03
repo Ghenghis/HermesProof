@@ -30,7 +30,10 @@ import { ensureEventDirs } from "./generate-review-packet.mjs";
 import { checkSecretRotationEvidence } from "./secret-rotation-evidence.mjs";
 import {
   runLicensesScanGate,
-  collectInstalledLicensesViaCheck
+  runDependencyFreshGate,
+  collectInstalledLicensesViaCheck,
+  fetchLatestFromNpm,
+  readPackageJson
 } from "./license-and-deps-gates.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
@@ -978,6 +981,34 @@ if (!shouldSkip("licenses.scan")) {
   } else {
     record("licenses.scan", "required", result.gate.ok, result.gate.evidence,
       result.gate.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: dependency.fresh — direct deps published within 18 months
+//
+// Advisory (warn-level) gate. Skipped automatically when offline (npm
+// registry unreachable) so CI without net does not flap. FAIL ages at 18mo,
+// WARN between 12-18mo, PASS otherwise. Threshold tunable via
+// HERMES3D_DEP_FRESH_MONTHS / HERMES3D_DEP_WARN_MONTHS env vars.
+// Registry queries are bounded by the helper's per-request 5s timeout and
+// the full pass exits early on the first ENETWORK to keep CI flap-free.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("dependency.fresh")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const pkgJson = await readPackageJson(repoRoot);
+    return await runDependencyFreshGate({
+      pkgJson,
+      fetchLatest: (name) => fetchLatestFromNpm(name)
+    });
+  });
+  if (error) {
+    record("dependency.fresh", "warn", false, {}, error.message, durationMs);
+  } else if (result.skip) {
+    // Skipped at gate level (offline) — surface as skipped, not warn-fail.
+    record("dependency.fresh", "skipped", true, result.evidence, result.details, durationMs);
+  } else {
+    record("dependency.fresh", "warn", result.ok, result.evidence, result.details, durationMs);
   }
 }
 
