@@ -47,6 +47,43 @@ export class CapabilityDispatch {
   }
 
   /**
+   * Score every candidate actor against the FULL candidate set, so the
+   * load-penalty normalization is consistent across all consumers (recommend,
+   * rankActors). Returns an array of `{ actor_id, composite, repScore, recency,
+   * load }` entries, NOT sorted.
+   *
+   * Centralizing scoring here is important: previously rankActors() called
+   * recommend() once per actor with a singleton candidate list, which made
+   * each call's `maxLoad` normalize against itself (always 1.0). Result:
+   * hermes_list_agents could disagree with hermes_dispatch_recommend on the
+   * same inputs.
+   */
+  async _scoreActors(task_type, candidate_actors) {
+    const [repBoard, skillActors] = await Promise.all([
+      this.reputation.leaderboard(),
+      this.skills.listActors(),
+    ]);
+    const repMap = Object.fromEntries(repBoard.map((a) => [a.actor_id, a.score]));
+    const now = Date.now();
+
+    // Max task_type count across the FULL candidate set, for load normalization.
+    let maxLoad = 1;
+    for (const id of candidate_actors) {
+      const load = skillActors[id]?.task_counts?.[task_type] ?? 0;
+      if (load > maxLoad) maxLoad = load;
+    }
+
+    return candidate_actors.map((actor_id) => {
+      const repScore   = repMap[actor_id] ?? 1.0;
+      const lastActive = skillActors[actor_id]?.last_active_ts ?? 0;
+      const recency    = (now - lastActive) < RECENCY_WINDOW_MS ? 1.0 : 0.5;
+      const load       = (skillActors[actor_id]?.task_counts?.[task_type] ?? 0) / maxLoad;
+      const composite  = repScore * WEIGHT_REP + recency * WEIGHT_FRESH - load * WEIGHT_LOAD;
+      return { actor_id, composite, repScore, recency, load };
+    });
+  }
+
+  /**
    * Pick the best actor from candidates for the given task_type.
    *
    * @param {string}   task_type         — e.g. "gate", "review", "build"
@@ -57,34 +94,9 @@ export class CapabilityDispatch {
     if (!candidate_actors || candidate_actors.length === 0) {
       return { actor_id: null, score: 0, reasoning: "no candidates" };
     }
-
-    const [repBoard, skillActors] = await Promise.all([
-      this.reputation.leaderboard(),
-      this.skills.listActors(),
-    ]);
-
-    const repMap = Object.fromEntries(repBoard.map((a) => [a.actor_id, a.score]));
-    const now = Date.now();
-
-    // Find max task_type count among candidates for normalization
-    let maxLoad = 1;
-    for (const id of candidate_actors) {
-      const load = skillActors[id]?.task_counts?.[task_type] ?? 0;
-      if (load > maxLoad) maxLoad = load;
-    }
-
-    const scored = candidate_actors.map((actor_id) => {
-      const repScore   = repMap[actor_id] ?? 1.0;
-      const lastActive = skillActors[actor_id]?.last_active_ts ?? 0;
-      const recency    = (now - lastActive) < RECENCY_WINDOW_MS ? 1.0 : 0.5;
-      const load       = (skillActors[actor_id]?.task_counts?.[task_type] ?? 0) / maxLoad;
-      const composite  = repScore * WEIGHT_REP + recency * WEIGHT_FRESH - load * WEIGHT_LOAD;
-      return { actor_id, composite, repScore, recency, load };
-    });
-
+    const scored = await this._scoreActors(task_type, candidate_actors);
     scored.sort((a, b) => b.composite - a.composite);
     const best = scored[0];
-
     return {
       actor_id: best.actor_id,
       score: parseFloat(best.composite.toFixed(4)),
@@ -95,15 +107,15 @@ export class CapabilityDispatch {
   /**
    * Enrich a list of agents with dispatch scores for a given task_type.
    * Useful for hermes_list_agents to surface routing hints.
+   *
+   * Scores are computed against the full `actor_ids` set (single _scoreActors
+   * call), guaranteeing rankActors() and recommend() agree on the ordering.
    */
   async rankActors(task_type, actor_ids) {
     if (!actor_ids || actor_ids.length === 0) return [];
-    const result = await Promise.all(
-      actor_ids.map(async (actor_id) => {
-        const rec = await this.recommend(task_type, [actor_id]);
-        return { actor_id, dispatch_score: rec.score };
-      })
-    );
-    return result.sort((a, b) => b.dispatch_score - a.dispatch_score);
+    const scored = await this._scoreActors(task_type, actor_ids);
+    return scored
+      .map((s) => ({ actor_id: s.actor_id, dispatch_score: parseFloat(s.composite.toFixed(4)) }))
+      .sort((a, b) => b.dispatch_score - a.dispatch_score);
   }
 }
