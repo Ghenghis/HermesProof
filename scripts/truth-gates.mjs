@@ -49,6 +49,10 @@ import {
 } from "./license-and-deps-gates.mjs";
 import { runWorkflowPinningGate } from "./workflow-pinning-gate.mjs";
 import { runAccessibilityWcagAaGate } from "./accessibility-wcag-gate.mjs";
+import { loadOrRunPerfReport } from "./perf-budget.mjs";
+import { runDocsChangesReflectedGate } from "./docs-changes-reflected.mjs";
+import { runReleaseChecksumGate } from "./release-checksum.mjs";
+import { runCoderabbitReviewGate, parseRemoteUrl } from "./coderabbit-review.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -1287,6 +1291,101 @@ if (!shouldSkip("accessibility.wcag_aa_pass")) {
     record("accessibility.wcag_aa_pass", "required", false, {}, error.message, durationMs);
   } else {
     record("accessibility.wcag_aa_pass", "required", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: perf.budgets_pass — micro-bench p95 budgets for hot ops
+//
+// Required gate. Reads or generates PERF/latest.json (see scripts/perf-budget.mjs).
+// p95 budgets:
+//   - hermes_doctor cold start  < 300 ms
+//   - lock acquire              <  50 ms
+//   - heartbeat                 <  20 ms
+// ----------------------------------------------------------------------------
+if (!shouldSkip("perf.budgets_pass")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await loadOrRunPerfReport({
+      // Inside CI we fall back to a smaller iteration count to keep the
+      // truth-gate run snappy. A dedicated `npm run perf` job populates
+      // PERF/latest.json with the full 1000-iter sample.
+      minIterations: 100,
+      fastIterations: Number(process.env.HP_PERF_GATE_ITERATIONS) || 200
+    });
+  });
+  if (error) {
+    record("perf.budgets_pass", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = result.ok === true;
+    const summary = Object.entries(result.benches || {})
+      .map(([k, b]) => `${k}=${b.stats.p95_ms.toFixed(1)}ms<${b.budget.budget_ms}ms? ${b.budget.pass ? "Y" : "N"}`)
+      .join("; ");
+    record("perf.budgets_pass", "required", ok, result, summary || "no benches", durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 14: docs.reflects_changes — README/CHANGELOG must reflect version+ADR diffs
+//
+// Advisory (warn) gate. If `package.json` version bumped or an ADR was
+// added/changed in the comparison range and README/CHANGELOG were not
+// updated correspondingly, we surface the unreflected change.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("docs.reflects_changes")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runDocsChangesReflectedGate({});
+  });
+  if (error) {
+    record("docs.reflects_changes", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("docs.reflects_changes", "warn", result.ok === true, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 15: release.checksums_present — every release artifact has SHA-256 + sig
+//
+// Advisory (warn) gate. Inert when no `dist/` or `release/` directory has
+// any artifacts. When artifacts are present, fail any that lack a `.sha256`
+// sidecar OR a signature sidecar (.sig / .asc / .cosign.bundle).
+// ----------------------------------------------------------------------------
+if (!shouldSkip("release.checksums_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runReleaseChecksumGate({ root: repoRoot });
+  });
+  if (error) {
+    record("release.checksums_present", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("release.checksums_present", "warn", result.ok === true, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 16: quality.coderabbit_reviewed — CodeRabbit posted >=1 comment on PR
+//
+// Advisory (warn) gate. Skipped automatically when GH_TOKEN is absent or
+// when no PR_NUMBER is provided. Detects coderabbitai bot comments on
+// both /issues/{n}/comments and /pulls/{n}/comments endpoints.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("quality.coderabbit_reviewed")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const remote = spawnSync("git", ["-C", repoRoot, "remote", "get-url", "origin"], { encoding: "utf8" });
+    const parsed = remote.status === 0 ? parseRemoteUrl(remote.stdout) : null;
+    const pr = Number(process.env.PR_NUMBER) || null;
+    const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || null;
+    return await runCoderabbitReviewGate({
+      owner: parsed?.owner,
+      repo: parsed?.repo,
+      pr,
+      token
+    });
+  });
+  if (error) {
+    record("quality.coderabbit_reviewed", "warn", false, {}, error.message, durationMs);
+  } else if (result.skip) {
+    record("quality.coderabbit_reviewed", "skipped", true, result.evidence, result.details, durationMs);
+  } else {
+    record("quality.coderabbit_reviewed", "warn", result.ok === true, result.evidence, result.details, durationMs);
   }
 }
 
