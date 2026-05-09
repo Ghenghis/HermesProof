@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-05-09T12-22-19-713Z",
-  "ts_utc": "2026-05-09T12:22:19.713Z",
-  "duration_ms": 39336,
+  "run_id": "truth_2026-05-09T15-04-21-441Z",
+  "ts_utc": "2026-05-09T15:04:21.441Z",
+  "duration_ms": 39718,
   "ok": true,
   "pass_count": 28,
   "fail_count": 0,
@@ -16,12 +16,12 @@
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 16,
+      "duration_ms": 21,
       "evidence": {
-        "file_count": 73,
-        "manifest_sha256": "461b7ff6e90d251a6b155e3156cf661ab42b4e150542582900f90a09c6159e5f"
+        "file_count": 74,
+        "manifest_sha256": "f711d4098874f7ab1acdf424acb616c8c40a7c53538b4b95e47a6719d62a9b43"
       },
-      "details": "73 files hashed"
+      "details": "74 files hashed"
     },
     {
       "id": "deps.parity",
@@ -47,21 +47,21 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 31482,
+      "duration_ms": 31559,
       "evidence": {
         "exit_code": 0,
-        "pass_count": 289,
+        "pass_count": 297,
         "fail_count": 0,
-        "stdout_tail": "     ...\n    # Subtest: getScore returns null for unknown actor\n    ok 6 - getScore returns null for unknown actor\n      ---\n      duration_ms: 4.089748\n      ...\n    # Subtest: leaderboard is sorted descending\n    ok 7 - leaderboard is sorted descending\n      ---\n      duration_ms: 3.667561\n      ...\n    # Subtest: rejects unknown outcome\n    ok 8 - rejects unknown outcome\n      ---\n      duration_ms: 0.56386\n      ...\n    # Subtest: serializes concurrent recordOutcome — all 50 outcomes land (race-condition guard)\n    ok 9 - serializes concurrent recordOutcome — all 50 outcomes land (race-condition guard)\n      ---\n      duration_ms: 57.965061\n      ...\n    1..9\nok 247 - ReputationTracker\n  ---\n  duration_ms: 107.130426\n  type: 'suite'\n  ...\n# Subtest: SkillRotation\n    # Subtest: records a task and returns correct totals\n    ok 1 - records a task and returns correct totals\n      ---\n      duration_ms: 4.148186\n      ...\n    # Subtest: accumulates multiple tasks for the same actor\n    ok 2 - accumulates multiple tasks for the same actor\n      ---\n      duration_ms: 4.633989\n      ...\n    # Subtest: returns null for unknown actor\n    ok 3 - returns null for unknown actor\n      ---\n      duration_ms: 3.112744\n      ...\n    # Subtest: leastLoadedForType returns sorted list\n    ok 4 - leastLoadedForType returns sorted list\n      ---\n      duration_ms: 8.990379\n      ...\n    # Subtest: recommendNextType returns the least-practiced type\n    ok 5 - recommendNextType returns the least-practiced type\n      ---\n      duration_ms: 11.297984\n      ...\n    # Subtest: serializes concurrent recordTask — exact total_tasks count under 50-parallel load\n    ok 6 - serializes concurrent recordTask — exact total_tasks count under 50-parallel load\n      ---\n      duration_ms: 56.94721\n      ...\n    1..6\nok 248 - SkillRotation\n  ---\n  duration_ms: 106.4731\n  type: 'suite'\n  ...\n1..248\n# tests 289\n# suites 6\n# pass 289\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 31425.30121\n",
+        "stdout_tail": " ...\n    # Subtest: getScore returns null for unknown actor\n    ok 6 - getScore returns null for unknown actor\n      ---\n      duration_ms: 2.283081\n      ...\n    # Subtest: leaderboard is sorted descending\n    ok 7 - leaderboard is sorted descending\n      ---\n      duration_ms: 5.337418\n      ...\n    # Subtest: rejects unknown outcome\n    ok 8 - rejects unknown outcome\n      ---\n      duration_ms: 0.707457\n      ...\n    # Subtest: serializes concurrent recordOutcome — all 50 outcomes land (race-condition guard)\n    ok 9 - serializes concurrent recordOutcome — all 50 outcomes land (race-condition guard)\n      ---\n      duration_ms: 61.578206\n      ...\n    1..9\nok 254 - ReputationTracker\n  ---\n  duration_ms: 108.346309\n  type: 'suite'\n  ...\n# Subtest: SkillRotation\n    # Subtest: records a task and returns correct totals\n    ok 1 - records a task and returns correct totals\n      ---\n      duration_ms: 4.404421\n      ...\n    # Subtest: accumulates multiple tasks for the same actor\n    ok 2 - accumulates multiple tasks for the same actor\n      ---\n      duration_ms: 5.452515\n      ...\n    # Subtest: returns null for unknown actor\n    ok 3 - returns null for unknown actor\n      ---\n      duration_ms: 2.493282\n      ...\n    # Subtest: leastLoadedForType returns sorted list\n    ok 4 - leastLoadedForType returns sorted list\n      ---\n      duration_ms: 6.631848\n      ...\n    # Subtest: recommendNextType returns the least-practiced type\n    ok 5 - recommendNextType returns the least-practiced type\n      ---\n      duration_ms: 10.596277\n      ...\n    # Subtest: serializes concurrent recordTask — exact total_tasks count under 50-parallel load\n    ok 6 - serializes concurrent recordTask — exact total_tasks count under 50-parallel load\n      ---\n      duration_ms: 56.207894\n      ...\n    1..6\nok 255 - SkillRotation\n  ---\n  duration_ms: 95.097044\n  type: 'suite'\n  ...\n1..255\n# tests 297\n# suites 6\n# pass 297\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 31499.319716\n",
         "stderr_tail": ""
       },
-      "details": "pass=289, fail=0, exit=0"
+      "details": "pass=297, fail=0, exit=0"
     },
     {
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 238,
+      "duration_ms": 248,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -131,9 +131,9 @@
       "id": "events.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 11,
+      "duration_ms": 19,
       "evidence": {
-        "sandbox": "/tmp/truth-events-dir-71RZEM",
+        "sandbox": "/tmp/truth-events-dir-ozk5iI",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -146,9 +146,9 @@
       "id": "tasks.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 5,
+      "duration_ms": 8,
       "evidence": {
-        "sandbox": "/tmp/truth-tasks-dir-3PHHgL",
+        "sandbox": "/tmp/truth-tasks-dir-tM89lR",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -162,17 +162,17 @@
       "id": "trigger.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 78,
+      "duration_ms": 75,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-trigger-doctor-i7f2Pi",
+          "workspace": "/tmp/truth-trigger-doctor-1jS7zm",
           "doctor": {
             "ok": true,
-            "workspace_root": "/tmp/truth-trigger-doctor-i7f2Pi",
-            "state_dir": "/tmp/truth-trigger-doctor-i7f2Pi/.hermes3d_orchestrator",
+            "workspace_root": "/tmp/truth-trigger-doctor-1jS7zm",
+            "state_dir": "/tmp/truth-trigger-doctor-1jS7zm/.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
             "node_version": "v20.20.2",
             "platform": "linux",
@@ -234,13 +234,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 174,
+      "duration_ms": 165,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "/tmp/truth-queue-doctor-0IKBnz",
+          "workspace": "/tmp/truth-queue-doctor-58KpKx",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -278,11 +278,11 @@
       "id": "wizard.dry_run_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 67,
+      "duration_ms": 63,
       "evidence": {
         "exit_code": 0,
         "wrote_state": false,
-        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-2oHYvz\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ KiloCode\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-2oHYvz.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
+        "stdout_tail": "HermesProof Setup Wizard\n────────────────────────\nDetected: Linux · Node v20.20.2 · git git version 2.53.0\nWorkspace path: /tmp/truth-wizard-ntkiZK\nGitHub repo: skipped\n\nDetected clients:\n  ✗ Claude Desktop\n  ✗ Claude Code CLI\n  ✗ Codex CLI\n  ✗ Windsurf / Cascade\n  ✗ KiloCode\n  ✗ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned /home/runner/.codex/config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=/tmp/truth-wizard-ntkiZK.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
         "stderr_tail": ""
       },
       "details": "wizard dry-run ok"
@@ -291,9 +291,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 387,
+      "duration_ms": 372,
       "evidence": {
-        "sandbox": "/tmp/truth-gate-sandbox-cp0ia2",
+        "sandbox": "/tmp/truth-gate-sandbox-SZtWXx",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -395,7 +395,7 @@
       "evidence": {
         "findings": [],
         "file": "src/server.mjs",
-        "bytes": 38824
+        "bytes": 40304
       },
       "details": "0 suspicious patterns"
     },
@@ -406,7 +406,7 @@
       "duration_ms": 11,
       "evidence": {
         "file": "/home/runner/work/HermesProof/HermesProof/src/server.mjs",
-        "bytes": 38824,
+        "bytes": 40304,
         "pattern_count": 16,
         "fields_scanned": 110,
         "findings": []
@@ -446,7 +446,7 @@
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 2,
+      "duration_ms": 3,
       "evidence": {
         "required_count": 10,
         "findings": [
@@ -547,7 +547,7 @@
       "id": "continue.llm_classes.validate",
       "level": "required",
       "ok": true,
-      "duration_ms": 0,
+      "duration_ms": 1,
       "evidence": {
         "csv_path": "/home/runner/work/HermesProof/HermesProof/policies/provider-registry/continue_llm_classes.csv",
         "expected_count": 62,
@@ -563,7 +563,7 @@
       "id": "kilocode.provider.mapping.validate",
       "level": "warn",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 0,
       "evidence": {
         "csv_path": "/home/runner/work/HermesProof/HermesProof/policies/provider-registry/kilocode_mapping.csv",
         "present": false,
@@ -606,12 +606,12 @@
       "id": "secret.scan",
       "level": "required",
       "ok": true,
-      "duration_ms": 47,
+      "duration_ms": 53,
       "evidence": {
         "mode": "fallback",
         "scanner_ok": true,
         "findings": [],
-        "file_count": 202
+        "file_count": 208
       },
       "details": "fallback: 0 finding(s)"
     },
@@ -634,7 +634,7 @@
       "id": "sbom.cyclonedx_generated",
       "level": "required",
       "ok": true,
-      "duration_ms": 43,
+      "duration_ms": 54,
       "evidence": {
         "path": "/home/runner/work/HermesProof/HermesProof/PROOF/sbom.json",
         "components": 131,
@@ -648,7 +648,7 @@
       "id": "licenses.scan",
       "level": "required",
       "ok": true,
-      "duration_ms": 881,
+      "duration_ms": 961,
       "evidence": {
         "package_count": 93,
         "allowlist": [
@@ -1440,7 +1440,7 @@
       "id": "dependency.fresh",
       "level": "warn",
       "ok": true,
-      "duration_ms": 186,
+      "duration_ms": 168,
       "evidence": {
         "direct_deps_count": 3,
         "stale_count": 0,
@@ -1460,14 +1460,14 @@
             "status": "fresh",
             "latestVersion": "17.4.2",
             "publishedAt": "2026-04-12T16:41:11.574Z",
-            "ageMonths": 0.89
+            "ageMonths": 0.9
           },
           {
             "name": "zod",
             "status": "fresh",
             "latestVersion": "4.4.3",
             "publishedAt": "2026-05-04T07:06:40.819Z",
-            "ageMonths": 0.17
+            "ageMonths": 0.18
           }
         ]
       },
@@ -1507,7 +1507,7 @@
       "id": "accessibility.wcag_aa_pass",
       "level": "required",
       "ok": true,
-      "duration_ms": 1552,
+      "duration_ms": 1626,
       "evidence": {
         "file": "/home/runner/work/HermesProof/HermesProof/site/index.html",
         "counts": {
@@ -1554,18 +1554,18 @@
       "id": "perf.budgets_pass",
       "level": "required",
       "ok": true,
-      "duration_ms": 4099,
+      "duration_ms": 4256,
       "evidence": {
         "perf_schema_version": 1,
         "ok": true,
-        "started_utc": "2026-05-09T12:22:54.933Z",
-        "duration_ms": 4097,
+        "started_utc": "2026-05-09T15:04:56.887Z",
+        "duration_ms": 4255,
         "iterations": 200,
         "node_version": "v20.20.2",
         "platform": "linux",
         "arch": "x64",
         "cpu_count": 4,
-        "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+        "cpu_model": "AMD EPYC 7763 64-Core Processor",
         "budgets": {
           "doctor_p95_ms": 300,
           "lock_p95_ms": 50,
@@ -1575,64 +1575,64 @@
           "hermes_doctor_cold_start": {
             "stats": {
               "n": 200,
-              "min_ms": 0.3606,
-              "max_ms": 1.5027,
-              "mean_ms": 0.4504,
-              "p50_ms": 0.4385,
-              "p95_ms": 0.5217,
-              "p99_ms": 0.986
+              "min_ms": 0.4084,
+              "max_ms": 1.0859,
+              "mean_ms": 0.505,
+              "p50_ms": 0.4973,
+              "p95_ms": 0.5756,
+              "p99_ms": 0.7631
             },
             "budget": {
               "budget_ms": 300,
-              "p95_ms": 0.5217,
+              "p95_ms": 0.5756,
               "pass": true,
-              "headroom_ms": 299.4783
+              "headroom_ms": 299.4244
             }
           },
           "lock_acquire": {
             "stats": {
               "n": 200,
-              "min_ms": 5.2467,
-              "max_ms": 17.9827,
-              "mean_ms": 6.1239,
-              "p50_ms": 5.8626,
-              "p95_ms": 7.2744,
-              "p99_ms": 14.6471
+              "min_ms": 5.3276,
+              "max_ms": 11.0658,
+              "mean_ms": 5.967,
+              "p50_ms": 5.8084,
+              "p95_ms": 7.3188,
+              "p99_ms": 10.3999
             },
             "budget": {
               "budget_ms": 50,
-              "p95_ms": 7.2744,
+              "p95_ms": 7.3188,
               "pass": true,
-              "headroom_ms": 42.7256
+              "headroom_ms": 42.6812
             }
           },
           "heartbeat": {
             "stats": {
               "n": 200,
-              "min_ms": 1.7442,
-              "max_ms": 4.5053,
-              "mean_ms": 2.0525,
-              "p50_ms": 1.9759,
-              "p95_ms": 2.3999,
-              "p99_ms": 3.5239
+              "min_ms": 1.9006,
+              "max_ms": 5.2279,
+              "mean_ms": 2.3973,
+              "p50_ms": 2.3894,
+              "p95_ms": 2.8657,
+              "p99_ms": 3.5107
             },
             "budget": {
               "budget_ms": 20,
-              "p95_ms": 2.3999,
+              "p95_ms": 2.8657,
               "pass": true,
-              "headroom_ms": 17.6001
+              "headroom_ms": 17.1343
             }
           }
         },
         "source": "fresh"
       },
-      "details": "hermes_doctor_cold_start=0.5ms<300ms? Y; lock_acquire=7.3ms<50ms? Y; heartbeat=2.4ms<20ms? Y"
+      "details": "hermes_doctor_cold_start=0.6ms<300ms? Y; lock_acquire=7.3ms<50ms? Y; heartbeat=2.9ms<20ms? Y"
     },
     {
       "id": "docs.reflects_changes",
       "level": "warn",
       "ok": true,
-      "duration_ms": 11,
+      "duration_ms": 10,
       "evidence": {
         "base": "origin/main",
         "head": "HEAD",
@@ -1647,7 +1647,7 @@
       "id": "release.checksums_present",
       "level": "warn",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 0,
       "evidence": {
         "root": "/home/runner/work/HermesProof/HermesProof",
         "scanned": [
