@@ -74,4 +74,39 @@ describe("CapabilityDispatch", () => {
       assert.ok(ranked[i].dispatch_score >= ranked[i + 1].dispatch_score);
     }
   });
+
+  it("P1-15: accepts injected reputation + skills (DI) instead of constructing parallel instances", async () => {
+    // Verify the DI form: when an external module already has a
+    // ReputationTracker + SkillRotation against the same workspace,
+    // CapabilityDispatch reuses them rather than spinning up parallel
+    // instances. Pre-fix, two instances would silently diverge if either
+    // grew in-memory state.
+    const { ReputationTracker } = await import("./reputation.mjs");
+    const { SkillRotation } = await import("./skill-rotation.mjs");
+    const di = await import("./capability-dispatch.mjs");
+
+    const sharedRep = new ReputationTracker({ workspaceRoot: tmpDir, stateDirName: ".hermes-di" });
+    const sharedSkills = new SkillRotation({ workspaceRoot: tmpDir, stateDirName: ".hermes-di" });
+    await sharedRep.init();
+    await sharedSkills.init();
+
+    const injected = new di.CapabilityDispatch({
+      workspaceRoot: tmpDir,
+      stateDirName: ".hermes-di",
+      reputation: sharedRep,
+      skills: sharedSkills,
+    });
+    await injected.init();
+
+    // Identity check: dispatch.reputation must be the SAME object as the one
+    // we passed in (not a freshly constructed peer).
+    assert.equal(injected.reputation, sharedRep, "dispatch.reputation must be the injected instance");
+    assert.equal(injected.skills, sharedSkills, "dispatch.skills must be the injected instance");
+
+    // Functional check: write through the SHARED instance, read through
+    // the dispatch's reference — must see the same data.
+    await sharedRep.recordOutcome("di-actor", "merge");
+    const score = await injected.reputation.getScore("di-actor");
+    assert.equal(score.score, 2.0, "must observe writes made through the shared instance");
+  });
 });

@@ -35,10 +35,22 @@ export class CapabilityDispatch {
    * @param {string} opts.workspaceRoot
    * @param {string} [opts.stateDirName]
    */
-  constructor({ workspaceRoot, stateDirName = ".hermes3d_orchestrator" } = {}) {
+  /**
+   * @param {object} opts
+   * @param {string} opts.workspaceRoot
+   * @param {string} [opts.stateDirName]
+   * @param {ReputationTracker} [opts.reputation] — optional pre-existing instance.
+   *   Pass this in DI-style when the server (or another consumer) has already
+   *   created a ReputationTracker against the same workspace; otherwise a fresh
+   *   instance is created. Audit P1-15 (2026-05-03) flagged that the prior
+   *   constructor always created its own instances, parallel to the server's,
+   *   so any future in-memory state would silently diverge between the two.
+   * @param {SkillRotation} [opts.skills] — same pattern.
+   */
+  constructor({ workspaceRoot, stateDirName = ".hermes3d_orchestrator", reputation, skills } = {}) {
     if (!workspaceRoot) throw new Error("CapabilityDispatch requires workspaceRoot");
-    this.reputation = new ReputationTracker({ workspaceRoot, stateDirName });
-    this.skills = new SkillRotation({ workspaceRoot, stateDirName });
+    this.reputation = reputation ?? new ReputationTracker({ workspaceRoot, stateDirName });
+    this.skills = skills ?? new SkillRotation({ workspaceRoot, stateDirName });
   }
 
   async init() {

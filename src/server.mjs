@@ -47,7 +47,11 @@ const manager = new HermesLockManager({ workspaceRoot, stateDirName });
 const gates = new GateRunner({ workspaceRoot });
 const skills = new SkillRotation({ workspaceRoot, stateDirName });
 const reputation = new ReputationTracker({ workspaceRoot, stateDirName });
-const dispatch = new CapabilityDispatch({ workspaceRoot, stateDirName });
+// P1-15 (audit 2026-05-03): inject the server's already-created reputation +
+// skills into CapabilityDispatch instead of letting it construct its own
+// parallel instances. This guarantees any in-memory state added later (caches,
+// mutexes, subscriptions) stays in a single instance per process.
+const dispatch = new CapabilityDispatch({ workspaceRoot, stateDirName, reputation, skills });
 const a2a = new A2AStub({ workspaceRoot, stateDirName });
 const anon = new AnonymousOrchestrator({ workspaceRoot, stateDirName });
 // Auto-load any of the 62 Continue LLM provider classes from
@@ -590,12 +594,39 @@ registerTool(
   },
   async (args) => {
     try {
-      const [allSkills, leaderboard] = await Promise.all([
+      // P1-14 (audit 2026-05-03): also pull anonymous orchestrator state so a
+      // newly-claimed role with no recorded task is still visible. Pre-fix the
+      // tool described "active agents with their role" but the implementation
+      // only built actors from skill+reputation ledgers, missing role claimers.
+      const [allSkills, leaderboard, anonState] = await Promise.all([
         skills.listActors(),
         reputation.leaderboard(),
+        anon.getState(),
       ]);
       const repMap = Object.fromEntries(leaderboard.map((a) => [a.actor_id, a]));
-      const allActorIds = [...new Set([...Object.keys(allSkills), ...leaderboard.map((a) => a.actor_id)])];
+
+      // Build per-actor roles map from anon-orch state. Each actor can hold
+      // multiple roles concurrently (e.g. BUILDER + GATE-SMITH).
+      const rolesByActor = new Map();
+      const anonActorIds = new Set();
+      for (const [role, claimers] of Object.entries(anonState.active_roles || {})) {
+        for (const claim of claimers) {
+          anonActorIds.add(claim.actor_id);
+          if (!rolesByActor.has(claim.actor_id)) rolesByActor.set(claim.actor_id, []);
+          rolesByActor.get(claim.actor_id).push({
+            role,
+            claimed_at: claim.claimed_at,
+            expires_at: claim.expires_at,
+            purpose: claim.purpose ?? null,
+          });
+        }
+      }
+
+      const allActorIds = [...new Set([
+        ...Object.keys(allSkills),
+        ...leaderboard.map((a) => a.actor_id),
+        ...anonActorIds,
+      ])];
 
       let dispatchRanks = {};
       if (args?.task_type) {
@@ -624,6 +655,7 @@ registerTool(
           total_tasks: skill.total_tasks,
           task_counts: skill.task_counts,
           last_active_ts: skill.last_active_ts,
+          roles: rolesByActor.get(actor_id) ?? [],
         };
         if (args?.task_type) entry.dispatch_score = dispatchRanks[actor_id] ?? 0;
         if (args?.include_history) entry.recent_events = historyMap[actor_id] ?? [];
