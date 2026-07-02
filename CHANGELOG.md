@@ -10,7 +10,8 @@ adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 - Runtime workspace switching for multi-repo use: `hermes_get_workspace` reports the active root and `hermes_set_workspace` switches to another existing absolute workspace directory, records `workspace.switch` evidence, and refuses to strand active locks unless `allowActiveLocks` is explicit.
 - Live collaboration tools: `hermes_live_status` returns the active workspace's lock/queue/event/agent snapshot, and `hermes_wait_for_events` long-polls event outbox changes for request/response-friendly realtime agent coordination.
 - Unlock-request workflow: `hermes_request_unlock` discovers current lock owners, creates grouped handoff requests, emits `handoff.created` events, and points owners to `hermes_approve_handoff` for proof-backed transfer.
-- Truth-gate and stdio round-trip coverage for the expanded 47-tool MCP surface, including dynamic workspace switching, active-lock guard behavior, live event observation, and unlock handoff transfer.
+- Agent workflow layer: `hermes_update_presence`, `hermes_list_presence`, `hermes_find_agents`, `hermes_send_message`, `hermes_get_inbox`, `hermes_ack_message`, `hermes_wait_for_unlock`, and `hermes_complete_work` add skills-aware routing, durable inboxes, unlock waiting, stale-owner recovery routing, and one-call completion/release.
+- Truth-gate and stdio round-trip coverage for the expanded 55-tool MCP surface, including dynamic workspace switching, active-lock guard behavior, live event observation, unlock handoff transfer, presence, inbox acknowledgement, skills routing, and completion release.
 
 ## [0.6.0] — 2026-05-03
 

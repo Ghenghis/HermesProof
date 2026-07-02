@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs thirty-five independent ver
 | 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 47 MCP tools |
+| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 55 MCP tools |
 | 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -108,7 +108,7 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **47 MCP tools** for coordination, workspace switching, unlock requests, live status, event long-polling, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
+The server exposes **55 MCP tools** for coordination, workspace switching, agent presence, inbox messaging, skills routing, unlock requests, live status, event long-polling, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
@@ -122,6 +122,9 @@ QUEUE           enqueue_task        list_pending_tasks  pick_task
                 recover_stale_tasks
 WORKSPACE       get_workspace       set_workspace
 REALTIME        live_status         wait_for_events
+PRESENCE        update_presence     list_presence       find_agents
+INBOX           send_message        get_inbox           ack_message
+COMPLETION      wait_for_unlock     complete_work
 DIAGNOSTICS     get_state           recover_stale_locks doctor              read_policy
                 list_agents
 ANONYMOUS       anonymous_claim     anonymous_release   anonymous_state
@@ -148,6 +151,8 @@ The v0.4 trigger bridge is deliberately passive. HermesProof writes durable even
 │   ├── blocked/        malformed or scope-blocked queue tasks
 │   └── done/           completed queue tasks
 ├── handoffs/           pending + decided handoff requests
+├── presence/           one live status record per agent owner
+├── inbox/              durable per-owner agent messages
 ├── evidence/
 │   └── ledger.ndjson   append-only attestation log
 ├── events/
@@ -396,12 +401,17 @@ For multi-repo work, the MCP config can keep one default `MCP_LOCK_WORKSPACE`, t
 
 When an agent needs a locked file, use a handoff instead of editing around the lock:
 
-1. Requester calls `hermes_request_unlock` with the files and reason.
-2. Current owner watches `hermes_live_status` or `hermes_wait_for_events` for `handoff.created`.
-3. Current owner calls `hermes_approve_handoff` with the request id.
-4. HermesProof transfers lock ownership, appends evidence, and emits `handoff.approved`.
+1. Agents call `hermes_update_presence` with status, skills, task, files, and interrupt preference.
+2. Requester calls `hermes_request_unlock` with the files and reason.
+3. HermesProof discovers active owners, creates handoff requests, and sends inbox messages.
+4. Current owner watches `hermes_live_status`, `hermes_wait_for_events`, or `hermes_get_inbox`.
+5. Current owner calls `hermes_approve_handoff` with the request id.
+6. Requester calls `hermes_wait_for_unlock`, then resumes when ownership transfers.
+7. Finishing agent calls `hermes_complete_work` so evidence, task release, lock release, notifications, and presence update happen together while preserving advertised skills.
 
-Expired locks remain a separate recovery path: call `hermes_recover_stale_locks` only after TTL expiry and with a note explaining the takeover.
+Expired locks remain a separate recovery path: `hermes_request_unlock` reports `stale_available` and points to `hermes_recover_stale_locks` after TTL expiry; recover with a note explaining the takeover.
+
+When a task needs a different skill, call `hermes_find_agents` with `requiredSkills` and `taskType`, then send the chosen agent a `hermes_send_message` inbox item.
 
 ---
 

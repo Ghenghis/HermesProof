@@ -15,6 +15,13 @@ import { A2AStub } from "./core/a2a-stub.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
 import { loadRegistryProviders } from "./core/registry-providers.mjs";
+import {
+  ensureDir,
+  readJson,
+  shaId,
+  utcNow,
+  writeJsonAtomic
+} from "./core/fs-utils.mjs";
 
 // Env-file resolution precedence (HermesProof v0.6):
 //   1. HERMES3D_PROFILE=vps + HERMES3D_VPS_ENV_FILE  (deploy mode)
@@ -231,6 +238,11 @@ const EventType = z.enum([
   "task.released",
   "task.blocked",
   "task.recovered",
+  "agent.presence",
+  "message.sent",
+  "message.acked",
+  "unlock.requested",
+  "work.completed",
   "handoff.created",
   "handoff.approved",
   "handoff.denied",
@@ -244,6 +256,11 @@ const EventType = z.enum([
 ]);
 const NextActor = z.enum(["claude", "codex", "human", "unassigned"]).default("unassigned");
 const RecommendedAction = z.enum(["review_pr", "fix_scope", "merge", "review_handoff", "acknowledge", "none"]).default("none");
+const PresenceStatus = z.enum(["working", "idle", "blocked", "waiting", "reviewing", "testing", "done"]).default("working");
+const MessageType = z.enum(["note", "unlock_request", "handoff", "blocker", "completion", "ping"]).default("note");
+const MessagePriority = z.enum(["low", "normal", "high", "urgent"]).default("normal");
+const MessageAckStatus = z.enum(["acknowledged", "done", "dismissed"]).default("acknowledged");
+const CompletionStatus = z.enum(["completed", "blocked", "partial"]).default("completed");
 const LegacyPathId = z
   .string()
   .min(2)
@@ -273,6 +290,318 @@ function queueCounts(queue) {
     claimed: queue?.claimed?.length || 0,
     blocked: queue?.blocked?.length || 0,
     done: queue?.done?.length || 0
+  };
+}
+
+function clampNumber(value, { min, max, fallback }) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function secondsFromNow(seconds) {
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function isPastIso(iso) {
+  return typeof iso === "string" && new Date(iso).getTime() < Date.now();
+}
+
+function presencePath(owner) {
+  return path.join(manager.paths.presenceDir, `${owner}.json`);
+}
+
+function inboxDir(owner) {
+  return path.join(manager.paths.inboxDir, owner);
+}
+
+function inboxMessagePath(owner, messageId) {
+  return path.join(inboxDir(owner), `${messageId}.json`);
+}
+
+function normalizeTags(values = []) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .map((value) => value.replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 64))
+    .filter(Boolean)
+  )].sort();
+}
+
+async function updatePresenceRecord({
+  owner,
+  role = "agent",
+  status = "working",
+  taskId = "",
+  files = [],
+  skills = [],
+  taskTypes = [],
+  note = "",
+  ttlSeconds = 120,
+  canInterrupt = true,
+  waitingOn = "",
+  etaUtc = "",
+  emit = true
+} = {}) {
+  const normalizedFiles = Array.isArray(files) && files.length ? manager.normalizeFiles(files) : [];
+  const ttl = clampNumber(ttlSeconds, { min: 30, max: 86_400, fallback: 120 });
+  const previous = await readJson(presencePath(owner), null);
+  const record = {
+    owner,
+    role,
+    status,
+    task_id: taskId || null,
+    files: normalizedFiles,
+    skills: normalizeTags(skills),
+    task_types: normalizeTags(taskTypes),
+    note,
+    can_interrupt: canInterrupt !== false,
+    waiting_on: waitingOn || null,
+    eta_utc: etaUtc || null,
+    updated_utc: utcNow(),
+    expires_utc: secondsFromNow(ttl),
+    ttl_seconds: ttl
+  };
+  await writeJsonAtomic(presencePath(owner), record);
+  const changed =
+    !previous ||
+    previous.status !== record.status ||
+    previous.task_id !== record.task_id ||
+    previous.waiting_on !== record.waiting_on;
+  if (emit && changed) {
+    await manager.emitManualEvent({
+      event_type: "agent.presence",
+      owner,
+      task_id: taskId || null,
+      files: normalizedFiles,
+      summary: `${owner} is ${status}`,
+      next_actor: status === "blocked" ? "human" : "unassigned",
+      recommended_action: status === "blocked" ? "fix_scope" : "acknowledge",
+      payload: { role, status, note, can_interrupt: record.can_interrupt, waiting_on: record.waiting_on }
+    });
+  }
+  return { ok: true, status: "updated", presence: { ...record, is_stale: false } };
+}
+
+async function listPresenceRecords({ includeStale = true } = {}) {
+  await ensureDir(manager.paths.presenceDir);
+  const names = await fs.readdir(manager.paths.presenceDir).catch(() => []);
+  const records = [];
+  for (const name of names.filter((item) => item.endsWith(".json"))) {
+    const record = await readJson(path.join(manager.paths.presenceDir, name), null);
+    if (!record) continue;
+    const isStale = isPastIso(record.expires_utc);
+    if (!includeStale && isStale) continue;
+    records.push({ ...record, is_stale: isStale });
+  }
+  records.sort((a, b) => Number(a.is_stale) - Number(b.is_stale) || a.owner.localeCompare(b.owner));
+  return { ok: true, workspace_root: manager.workspaceRoot, count: records.length, presence: records };
+}
+
+async function findAgentCandidates({
+  requiredSkills = [],
+  taskType = "",
+  includeBusy = true,
+  limit = 10
+} = {}) {
+  const required = normalizeTags(requiredSkills);
+  const taskTag = normalizeTags(taskType ? [taskType] : [])[0] || "";
+  const [presence, locks] = await Promise.all([
+    listPresenceRecords({ includeStale: false }),
+    manager.listLocks()
+  ]);
+  const lockCounts = new Map();
+  for (const lock of locks.locks) {
+    lockCounts.set(lock.owner, (lockCounts.get(lock.owner) || 0) + 1);
+  }
+  const candidates = [];
+  for (const record of presence.presence) {
+    const skills = normalizeTags(record.skills || []);
+    const taskTypes = normalizeTags(record.task_types || []);
+    const missing = required.filter((skill) => !skills.includes(skill));
+    if (missing.length) continue;
+    if (taskTag && taskTypes.length && !taskTypes.includes(taskTag)) continue;
+    const busy = ["working", "reviewing", "testing"].includes(record.status);
+    if (!includeBusy && busy) continue;
+    const activeLockCount = lockCounts.get(record.owner) || 0;
+    const score =
+      100 +
+      required.length * 10 +
+      (taskTag && taskTypes.includes(taskTag) ? 10 : 0) +
+      (record.status === "idle" ? 20 : 0) +
+      (record.status === "waiting" ? 10 : 0) +
+      (record.can_interrupt ? 5 : -20) -
+      activeLockCount * 3;
+    candidates.push({
+      owner: record.owner,
+      role: record.role,
+      status: record.status,
+      skills,
+      task_types: taskTypes,
+      can_interrupt: record.can_interrupt,
+      active_lock_count: activeLockCount,
+      score,
+      missing_required_skills: missing,
+      note: record.note || ""
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score || a.owner.localeCompare(b.owner));
+  const bounded = clampNumber(limit, { min: 1, max: 50, fallback: 10 });
+  return {
+    ok: true,
+    workspace_root: manager.workspaceRoot,
+    required_skills: required,
+    task_type: taskTag || null,
+    count: candidates.length,
+    candidates: candidates.slice(0, bounded)
+  };
+}
+
+async function sendInboxMessage({
+  sender,
+  recipients,
+  type = "note",
+  priority = "normal",
+  subject = "",
+  body = "",
+  taskId = "",
+  files = [],
+  requiresAck = true,
+  metadata = {}
+} = {}) {
+  const normalizedFiles = Array.isArray(files) && files.length ? manager.normalizeFiles(files) : [];
+  const now = utcNow();
+  const written = [];
+  for (const recipient of [...new Set(recipients)]) {
+    const messageId = `msg_${shaId(`${sender}:${recipient}:${subject}:${now}:${Math.random()}`, 16)}`;
+    const message = {
+      id: messageId,
+      status: "unread",
+      type,
+      priority,
+      sender,
+      recipient,
+      subject,
+      body,
+      task_id: taskId || null,
+      files: normalizedFiles,
+      requires_ack: requiresAck !== false,
+      metadata,
+      created_utc: now,
+      acked_utc: null,
+      ack_status: null,
+      ack_note: null
+    };
+    await ensureDir(inboxDir(recipient));
+    await writeJsonAtomic(inboxMessagePath(recipient, messageId), message);
+    written.push(message);
+  }
+  await manager.emitManualEvent({
+    event_type: "message.sent",
+    owner: sender,
+    task_id: taskId || null,
+    files: normalizedFiles,
+    summary: subject || `Message from ${sender}`,
+    next_actor: "unassigned",
+    recommended_action: requiresAck === false ? "acknowledge" : "review_handoff",
+    payload: {
+      type,
+      priority,
+      recipients: [...new Set(recipients)],
+      message_ids: written.map((message) => message.id),
+      metadata
+    }
+  });
+  return { ok: true, status: "sent", count: written.length, messages: written };
+}
+
+async function readInbox({ owner, includeAcked = false, type = "", limit = 50 } = {}) {
+  await ensureDir(inboxDir(owner));
+  const names = await fs.readdir(inboxDir(owner)).catch(() => []);
+  const messages = [];
+  for (const name of names.filter((item) => item.endsWith(".json"))) {
+    const message = await readJson(path.join(inboxDir(owner), name), null);
+    if (!message) continue;
+    if (!includeAcked && message.acked_utc) continue;
+    if (type && message.type !== type) continue;
+    messages.push(message);
+  }
+  messages.sort((a, b) => String(b.created_utc).localeCompare(String(a.created_utc)));
+  const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 50 });
+  return { ok: true, owner, count: messages.length, messages: messages.slice(0, bounded) };
+}
+
+async function ackInboxMessage({ owner, messageId, status = "acknowledged", note = "" } = {}) {
+  const file = inboxMessagePath(owner, messageId);
+  const message = await readJson(file, null);
+  if (!message) return { ok: false, status: "missing", message_id: messageId };
+  message.status = status;
+  message.acked_utc = utcNow();
+  message.ack_status = status;
+  message.ack_note = note;
+  await writeJsonAtomic(file, message);
+  await manager.emitManualEvent({
+    event_type: "message.acked",
+    owner,
+    task_id: message.task_id || null,
+    files: message.files || [],
+    summary: `Message ${status}: ${message.subject || message.id}`,
+    next_actor: "unassigned",
+    recommended_action: "acknowledge",
+    payload: { message_id: message.id, sender: message.sender, status, note }
+  });
+  return { ok: true, status, message };
+}
+
+async function getUnlockState({ requester, files }) {
+  const requestedFiles = manager.normalizeFiles(files);
+  const [locks, state] = await Promise.all([
+    manager.listLocks(),
+    manager.getStateSummary()
+  ]);
+  const locksByFile = new Map(locks.locks.map((lock) => [lock.file, lock]));
+  const unlocked = [];
+  const ownedByRequester = [];
+  const blocked = [];
+  const stale = [];
+  for (const file of requestedFiles) {
+    const lock = locksByFile.get(file);
+    if (!lock) {
+      unlocked.push(file);
+    } else if (lock.owner === requester) {
+      ownedByRequester.push(file);
+    } else if (lock.is_stale) {
+      stale.push(lock);
+      blocked.push(lock);
+    } else {
+      blocked.push(lock);
+    }
+  }
+  const relevantHandoffs = state.handoffs.filter((handoff) =>
+    handoff.requester === requester &&
+    Array.isArray(handoff.files) &&
+    handoff.files.some((file) => requestedFiles.includes(file))
+  );
+  const denied = relevantHandoffs.filter((handoff) => handoff.status === "denied");
+  const pending = relevantHandoffs.filter((handoff) => handoff.status === "requested");
+  let status = "blocked";
+  if (blocked.length === 0) status = "ready";
+  else if (denied.length) status = "denied";
+  else if (stale.length === blocked.length) status = "stale_available";
+  else if (pending.length) status = "pending";
+  return {
+    ok: true,
+    status,
+    workspace_root: manager.workspaceRoot,
+    requested_files: requestedFiles,
+    unlocked,
+    owned_by_requester: ownedByRequester,
+    blocked,
+    stale,
+    pending_handoffs: pending,
+    denied_handoffs: denied,
+    relevant_handoffs: relevantHandoffs
   };
 }
 
@@ -367,16 +696,18 @@ registerTool(
     inputSchema: {
       includeEvents: z.boolean().default(true),
       includeAgents: z.boolean().default(true),
+      includePresence: z.boolean().default(true),
       eventLimit: z.number().int().min(1).max(50).default(20)
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try {
-      const [state, events, agentState] = await Promise.all([
+      const [state, events, agentState, presence] = await Promise.all([
         manager.getStateSummary(),
         args?.includeEvents === false ? null : manager.listEvents({ status: "outbox", limit: args?.eventLimit || 20 }),
-        args?.includeAgents === false ? null : anon.getState()
+        args?.includeAgents === false ? null : anon.getState(),
+        args?.includePresence === false ? null : listPresenceRecords({ includeStale: true })
       ]);
       const staleLocks = state.locks.filter((lock) => lock.is_stale);
       return toolResult({
@@ -392,8 +723,177 @@ registerTool(
         outbox_event_count: events?.count || 0,
         recent_outbox_events: events?.events || [],
         anonymous_agents: agentState || null,
+        presence: presence?.presence || [],
         workspace: workspaceSnapshot()
       });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_update_presence",
+  {
+    title: "Update agent presence",
+    description: "Write the caller's live status, current task, owned files, wait reason, interrupt preference, and expiry.",
+    inputSchema: {
+      owner: Owner,
+      role: z.string().default("agent"),
+      status: PresenceStatus,
+      taskId: OptionalTaskId,
+      files: z.array(z.string()).default([]),
+      skills: z.array(z.string()).default([]),
+      taskTypes: z.array(z.string()).default([]),
+      note: z.string().default(""),
+      ttlSeconds: z.number().int().min(30).max(86_400).default(120),
+      canInterrupt: z.boolean().default(true),
+      waitingOn: z.string().default(""),
+      etaUtc: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await updatePresenceRecord({
+        owner: args.owner,
+        role: args.role,
+        status: args.status,
+        taskId: args.taskId || "",
+        files: args.files || [],
+        skills: args.skills || [],
+        taskTypes: args.taskTypes || [],
+        note: args.note || "",
+        ttlSeconds: args.ttlSeconds,
+        canInterrupt: args.canInterrupt !== false,
+        waitingOn: args.waitingOn || "",
+        etaUtc: args.etaUtc || ""
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_list_presence",
+  {
+    title: "List agent presence",
+    description: "List live and stale agent presence records for the active workspace.",
+    inputSchema: {
+      includeStale: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await listPresenceRecords({ includeStale: args?.includeStale !== false })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_find_agents",
+  {
+    title: "Find agents by skills",
+    description: "Rank live agents by advertised skills, task affinity, interrupt preference, and current lock load.",
+    inputSchema: {
+      requiredSkills: z.array(z.string()).default([]),
+      taskType: z.string().default(""),
+      includeBusy: z.boolean().default(true),
+      limit: z.number().int().min(1).max(50).default(10)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await findAgentCandidates({
+        requiredSkills: args?.requiredSkills || [],
+        taskType: args?.taskType || "",
+        includeBusy: args?.includeBusy !== false,
+        limit: args?.limit || 10
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_send_message",
+  {
+    title: "Send agent message",
+    description: "Send a durable inbox message to one or more agents in the active workspace.",
+    inputSchema: {
+      sender: Owner,
+      recipients: z.array(Owner).min(1),
+      type: MessageType,
+      priority: MessagePriority,
+      subject: z.string().min(1).max(200),
+      body: z.string().default(""),
+      taskId: OptionalTaskId,
+      files: z.array(z.string()).default([]),
+      requiresAck: z.boolean().default(true),
+      metadata: z.record(z.any()).default({})
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(await sendInboxMessage({
+        sender: args.sender,
+        recipients: args.recipients,
+        type: args.type,
+        priority: args.priority,
+        subject: args.subject,
+        body: args.body || "",
+        taskId: args.taskId || "",
+        files: args.files || [],
+        requiresAck: args.requiresAck !== false,
+        metadata: args.metadata || {}
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_get_inbox",
+  {
+    title: "Get agent inbox",
+    description: "Read durable inbox messages for one owner, with optional acknowledged-message filtering.",
+    inputSchema: {
+      owner: Owner,
+      includeAcked: z.boolean().default(false),
+      type: z.string().default(""),
+      limit: z.number().int().min(1).max(500).default(50)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await readInbox({
+        owner: args.owner,
+        includeAcked: args.includeAcked === true,
+        type: args.type || "",
+        limit: args.limit || 50
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_ack_message",
+  {
+    title: "Acknowledge message",
+    description: "Mark one inbox message acknowledged, done, or dismissed and emit an acknowledgement event.",
+    inputSchema: {
+      owner: Owner,
+      messageId: LegacyPathId,
+      status: MessageAckStatus,
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await ackInboxMessage({
+        owner: args.owner,
+        messageId: args.messageId,
+        status: args.status,
+        note: args.note || ""
+      }));
     } catch (err) { return toolError(err); }
   }
 );
@@ -473,6 +973,107 @@ registerTool(
 );
 
 registerTool(
+  "hermes_complete_work",
+  {
+    title: "Complete work and release",
+    description: "Record completion evidence, release owned locks, optionally release the task, update presence, and notify recipients.",
+    inputSchema: {
+      owner: Owner,
+      taskId: OptionalTaskId,
+      files: z.array(z.string()).default([]),
+      summary: z.string().min(1).max(2000),
+      status: CompletionStatus,
+      evidenceKind: z.string().default("completion"),
+      data: z.record(z.any()).default({}),
+      releaseFiles: z.boolean().default(true),
+      releaseTask: z.boolean().default(true),
+      notifyRecipients: z.array(Owner).default([])
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try {
+      const locks = await manager.listLocks();
+      const files = Array.isArray(args.files) && args.files.length
+        ? manager.normalizeFiles(args.files)
+        : locks.locks.filter((lock) => lock.owner === args.owner).map((lock) => lock.file);
+      const evidence = await manager.appendEvidence({
+        owner: args.owner,
+        taskId: args.taskId || "",
+        kind: args.evidenceKind || "completion",
+        summary: args.summary,
+        data: {
+          status: args.status,
+          files,
+          ...args.data
+        }
+      });
+      const releaseResult = args.releaseFiles === false
+        ? { ok: true, status: "skipped", released: [], blocked: [], missing: [] }
+        : await manager.releaseFiles({ owner: args.owner, files, note: args.summary });
+      const taskResult = args.releaseTask === false || !args.taskId
+        ? { ok: true, status: "skipped" }
+        : await manager.releaseTask({ owner: args.owner, taskId: args.taskId, note: args.summary });
+      const previousPresence = await readJson(presencePath(args.owner), null);
+      const presence = await updatePresenceRecord({
+        owner: args.owner,
+        role: previousPresence?.role || "agent",
+        status: args.status === "blocked" ? "blocked" : "done",
+        taskId: args.taskId || "",
+        files: [],
+        skills: previousPresence?.skills || [],
+        taskTypes: previousPresence?.task_types || [],
+        note: args.summary,
+        ttlSeconds: 300,
+        canInterrupt: true
+      });
+      let notifications = [];
+      if (Array.isArray(args.notifyRecipients) && args.notifyRecipients.length) {
+        const sent = await sendInboxMessage({
+          sender: args.owner,
+          recipients: args.notifyRecipients,
+          type: "completion",
+          priority: "normal",
+          subject: `Work ${args.status}: ${args.taskId || args.owner}`,
+          body: args.summary,
+          taskId: args.taskId || "",
+          files,
+          requiresAck: false,
+          metadata: { evidence_id: evidence.evidence.id, status: args.status }
+        });
+        notifications = sent.messages;
+      }
+      await manager.emitManualEvent({
+        event_type: "work.completed",
+        owner: args.owner,
+        task_id: args.taskId || null,
+        files,
+        summary: args.summary,
+        next_actor: "unassigned",
+        recommended_action: args.status === "blocked" ? "fix_scope" : "acknowledge",
+        payload: {
+          status: args.status,
+          evidence_id: evidence.evidence.id,
+          released: releaseResult.released || [],
+          blocked: releaseResult.blocked || [],
+          missing: releaseResult.missing || []
+        }
+      });
+      return toolResult({
+        ok: releaseResult.ok !== false && taskResult.ok !== false,
+        status: args.status,
+        evidence: evidence.evidence,
+        release: releaseResult,
+        task: taskResult,
+        presence: presence.presence,
+        notifications,
+        next_tools: ["hermes_live_status"]
+      });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_heartbeat",
   {
     title: "Heartbeat owned locks",
@@ -529,7 +1130,10 @@ registerTool(
       requester: Owner,
       files: Files,
       reason: z.string().default(""),
-      taskId: OptionalTaskId
+      taskId: OptionalTaskId,
+      priority: MessagePriority,
+      neededByUtc: z.string().default(""),
+      deadlineMinutes: z.number().int().min(1).max(1440).default(30)
     },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
@@ -553,13 +1157,17 @@ registerTool(
           ownedByRequester.push(file);
           continue;
         }
-        if (lock.is_stale) staleLocked.push(lock);
+        if (lock.is_stale) {
+          staleLocked.push(lock);
+          continue;
+        }
         const group = lockedByOwner.get(lock.owner) || [];
         group.push(file);
         lockedByOwner.set(lock.owner, group);
       }
 
       const handoffRequests = [];
+      const notifications = [];
       const failures = [];
       for (const [currentOwner, files] of lockedByOwner.entries()) {
         const result = await manager.requestHandoff({
@@ -569,15 +1177,53 @@ registerTool(
           reason: args.reason || "unlock requested",
           taskId: args.taskId || ""
         });
-        if (result.ok) handoffRequests.push(result.handoff);
-        else failures.push({ current_owner: currentOwner, files, result });
+        if (result.ok) {
+          handoffRequests.push(result.handoff);
+          const notification = await sendInboxMessage({
+            sender: args.requester,
+            recipients: [currentOwner],
+            type: "unlock_request",
+            priority: args.priority || "normal",
+            subject: `Unlock requested by ${args.requester}`,
+            body: args.reason || "Unlock requested for coordinated work.",
+            taskId: args.taskId || "",
+            files,
+            requiresAck: true,
+            metadata: {
+              handoff_request_id: result.handoff.id,
+              needed_by_utc: args.neededByUtc || null,
+              deadline_minutes: args.deadlineMinutes || 30
+            }
+          });
+          notifications.push(...notification.messages);
+        } else {
+          failures.push({ current_owner: currentOwner, files, result });
+        }
       }
 
       const status = failures.length
         ? "partial"
         : handoffRequests.length
-          ? "requested"
-          : "not_needed";
+          ? staleLocked.length ? "requested_with_stale" : "requested"
+          : staleLocked.length ? "stale_available" : "not_needed";
+      if (handoffRequests.length || staleLocked.length) {
+        await manager.emitManualEvent({
+          event_type: "unlock.requested",
+          owner: args.requester,
+          task_id: args.taskId || null,
+          files: requestedFiles,
+          summary: `Unlock requested by ${args.requester}`,
+          next_actor: "unassigned",
+          recommended_action: "review_handoff",
+          payload: {
+            priority: args.priority || "normal",
+            handoff_request_ids: handoffRequests.map((handoff) => handoff.id),
+            stale_files: staleLocked.map((lock) => lock.file),
+            needed_by_utc: args.neededByUtc || null,
+            deadline_minutes: args.deadlineMinutes || 30
+          }
+        });
+      }
       return toolResult({
         ok: failures.length === 0,
         status,
@@ -587,12 +1233,53 @@ registerTool(
         owned_by_requester: ownedByRequester,
         stale_locked: staleLocked,
         handoff_requests: handoffRequests,
+        notifications,
         failures,
-        next_tools: handoffRequests.length
-          ? ["hermes_wait_for_events", "hermes_approve_handoff"]
-          : staleLocked.length
-            ? ["hermes_recover_stale_locks"]
-            : []
+        next_tools: [
+          ...(handoffRequests.length ? ["hermes_wait_for_unlock", "hermes_get_inbox", "hermes_approve_handoff"] : []),
+          ...(staleLocked.length ? ["hermes_recover_stale_locks"] : [])
+        ]
+      });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_wait_for_unlock",
+  {
+    title: "Wait for unlock",
+    description: "Wait until requested files are available, transferred, denied, stale, or timed out.",
+    inputSchema: {
+      requester: Owner,
+      files: Files,
+      timeoutMs: z.number().int().min(0).max(120_000).default(30_000),
+      pollMs: z.number().int().min(250).max(5_000).default(1_000)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const timeoutMs = clampNumber(args?.timeoutMs, { min: 0, max: 120_000, fallback: 30_000 });
+      const pollMs = clampNumber(args?.pollMs, { min: 250, max: 5_000, fallback: 1_000 });
+      const deadline = Date.now() + timeoutMs;
+      let state = await getUnlockState({ requester: args.requester, files: args.files });
+      while (!["ready", "denied", "stale_available"].includes(state.status) && Date.now() < deadline) {
+        await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
+        state = await getUnlockState({ requester: args.requester, files: args.files });
+      }
+      return toolResult({
+        ...state,
+        status: ["ready", "denied", "stale_available"].includes(state.status) ? state.status : "timeout",
+        timeout_ms: timeoutMs,
+        poll_ms: pollMs,
+        next_tools:
+          state.status === "ready"
+            ? ["hermes_lock_files"]
+            : state.status === "stale_available"
+              ? ["hermes_recover_stale_locks"]
+              : state.status === "denied"
+                ? ["hermes_send_message", "hermes_find_agents"]
+                : ["hermes_live_status", "hermes_get_inbox"]
       });
     } catch (err) { return toolError(err); }
   }

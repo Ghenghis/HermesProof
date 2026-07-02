@@ -30,10 +30,15 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
 const SERVER = path.join(REPO_ROOT, "src", "server.mjs");
+
+function shaId(input, len = 24) {
+  return crypto.createHash("sha256").update(input).digest("hex").slice(0, len);
+}
 
 const V07_TOOLS = Object.freeze([
   "hermes_list_agents",
@@ -64,6 +69,17 @@ const WORKSPACE_TOOLS = Object.freeze([
 const REALTIME_TOOLS = Object.freeze([
   "hermes_live_status",
   "hermes_wait_for_events",
+]);
+
+const AGENT_WORKFLOW_TOOLS = Object.freeze([
+  "hermes_update_presence",
+  "hermes_list_presence",
+  "hermes_find_agents",
+  "hermes_send_message",
+  "hermes_get_inbox",
+  "hermes_ack_message",
+  "hermes_wait_for_unlock",
+  "hermes_complete_work",
 ]);
 
 async function startServer(workspaceRoot) {
@@ -373,6 +389,230 @@ test("unlock-request stdio round-trip: requester asks, owner approves, lock tran
       note: "unlock request flow complete",
     }));
     assert.equal(release.ok, true, `release failed: ${JSON.stringify(release)}`);
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("agent workflow stdio round-trip: presence, skills, inbox, wait, complete release", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-agent-flow-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of AGENT_WORKFLOW_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing agent workflow tool: ${expected}`);
+    }
+
+    const ownerPresence = parseToolResult(await s.call("hermes_update_presence", {
+      owner: "rt-agent-a",
+      role: "builder",
+      status: "working",
+      taskId: "rt-agent-flow",
+      files: ["src/agent-flow.txt"],
+      skills: ["python", "release", "docs"],
+      taskTypes: ["build", "release"],
+      note: "owning release prep",
+      ttlSeconds: 300,
+      canInterrupt: true,
+    }));
+    assert.equal(ownerPresence.ok, true, `presence failed: ${JSON.stringify(ownerPresence)}`);
+
+    const reviewerPresence = parseToolResult(await s.call("hermes_update_presence", {
+      owner: "rt-agent-b",
+      role: "reviewer",
+      status: "idle",
+      skills: ["review", "docs"],
+      taskTypes: ["review"],
+      note: "available for reviews",
+    }));
+    assert.equal(reviewerPresence.ok, true);
+
+    const candidates = parseToolResult(await s.call("hermes_find_agents", {
+      requiredSkills: ["review", "docs"],
+      taskType: "review",
+      includeBusy: false,
+      limit: 5,
+    }));
+    assert.equal(candidates.ok, true, `find agents failed: ${JSON.stringify(candidates)}`);
+    assert.equal(candidates.candidates[0]?.owner, "rt-agent-b");
+
+    const sent = parseToolResult(await s.call("hermes_send_message", {
+      sender: "rt-agent-a",
+      recipients: ["rt-agent-b"],
+      type: "ping",
+      priority: "normal",
+      subject: "Review availability",
+      body: "Can you review the release prep?",
+      taskId: "rt-agent-flow",
+      files: ["src/agent-flow.txt"],
+    }));
+    assert.equal(sent.ok, true, `send failed: ${JSON.stringify(sent)}`);
+    const messageId = sent.messages[0].id;
+
+    const inbox = parseToolResult(await s.call("hermes_get_inbox", {
+      owner: "rt-agent-b",
+    }));
+    assert.equal(inbox.ok, true);
+    assert.ok(inbox.messages.some((message) => message.id === messageId));
+
+    const ack = parseToolResult(await s.call("hermes_ack_message", {
+      owner: "rt-agent-b",
+      messageId,
+      status: "acknowledged",
+      note: "I can review it.",
+    }));
+    assert.equal(ack.ok, true, `ack failed: ${JSON.stringify(ack)}`);
+
+    const claim = parseToolResult(await s.call("hermes_claim_task", {
+      owner: "rt-agent-a",
+      taskId: "rt-agent-flow",
+      title: "agent workflow release prep",
+      files: ["src/agent-flow.txt"],
+    }));
+    assert.equal(claim.ok, true);
+
+    const lock = parseToolResult(await s.call("hermes_lock_files", {
+      owner: "rt-agent-a",
+      taskId: "rt-agent-flow",
+      files: ["src/agent-flow.txt"],
+      reason: "agent workflow proof",
+    }));
+    assert.equal(lock.ok, true);
+
+    const unlock = parseToolResult(await s.call("hermes_request_unlock", {
+      requester: "rt-agent-b",
+      taskId: "rt-agent-flow-review",
+      files: ["src/agent-flow.txt"],
+      reason: "review needs ownership",
+      priority: "high",
+      deadlineMinutes: 5,
+    }));
+    assert.equal(unlock.ok, true, `unlock failed: ${JSON.stringify(unlock)}`);
+    assert.equal(unlock.notifications.length, 1);
+    const requestId = unlock.handoff_requests[0].id;
+
+    const ownerInbox = parseToolResult(await s.call("hermes_get_inbox", {
+      owner: "rt-agent-a",
+      type: "unlock_request",
+    }));
+    assert.ok(ownerInbox.messages.some((message) => message.metadata?.handoff_request_id === requestId));
+
+    const pendingWait = parseToolResult(await s.call("hermes_wait_for_unlock", {
+      requester: "rt-agent-b",
+      files: ["src/agent-flow.txt"],
+      timeoutMs: 0,
+    }));
+    assert.equal(pendingWait.status, "timeout");
+
+    const approved = parseToolResult(await s.call("hermes_approve_handoff", {
+      owner: "rt-agent-a",
+      requestId,
+      decision: "approve",
+      note: "review can take it",
+    }));
+    assert.equal(approved.ok, true);
+
+    const readyWait = parseToolResult(await s.call("hermes_wait_for_unlock", {
+      requester: "rt-agent-b",
+      files: ["src/agent-flow.txt"],
+      timeoutMs: 1_000,
+      pollMs: 250,
+    }));
+    assert.equal(readyWait.status, "ready", `wait should be ready: ${JSON.stringify(readyWait)}`);
+
+    const reviewerClaim = parseToolResult(await s.call("hermes_claim_task", {
+      owner: "rt-agent-b",
+      taskId: "rt-agent-flow-review",
+      title: "review handed-off release prep",
+      files: ["src/agent-flow.txt"],
+    }));
+    assert.equal(reviewerClaim.ok, true, `reviewer claim failed: ${JSON.stringify(reviewerClaim)}`);
+
+    const completed = parseToolResult(await s.call("hermes_complete_work", {
+      owner: "rt-agent-b",
+      taskId: "rt-agent-flow-review",
+      files: ["src/agent-flow.txt"],
+      summary: "Review finished and lock released.",
+      status: "completed",
+      notifyRecipients: ["rt-agent-a"],
+    }));
+    assert.equal(completed.ok, true, `complete failed: ${JSON.stringify(completed)}`);
+    assert.deepEqual(completed.release.released, ["src/agent-flow.txt"]);
+    assert.ok(completed.presence.skills.includes("review"), "complete_work should preserve advertised skills");
+
+    const locks = parseToolResult(await s.call("hermes_list_locks", {}));
+    assert.equal(locks.count, 0, `complete_work should release locks: ${JSON.stringify(locks)}`);
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includePresence: true,
+      includeAgents: false,
+      includeEvents: true,
+      eventLimit: 50,
+    }));
+    const reviewerLive = live.presence.find((record) => record.owner === "rt-agent-b");
+    assert.equal(reviewerLive?.status, "done");
+    assert.ok(reviewerLive.skills.includes("review"));
+    assert.ok(live.recent_outbox_events.some((event) => event.event_type === "work.completed"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("unlock-request stdio round-trip: stale owner routes to recovery instead of inbox wait", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-stale-unlock-"));
+  const s = await startServer(tmp);
+  try {
+    const claim = parseToolResult(await s.call("hermes_claim_task", {
+      owner: "rt-stale-owner",
+      taskId: "rt-stale-lock",
+      title: "stale lock owner proof",
+      files: ["src/stale-lock.txt"],
+    }));
+    assert.equal(claim.ok, true);
+
+    const lock = parseToolResult(await s.call("hermes_lock_files", {
+      owner: "rt-stale-owner",
+      taskId: "rt-stale-lock",
+      files: ["src/stale-lock.txt"],
+      reason: "stale unlock proof",
+      ttlMinutes: 5,
+    }));
+    assert.equal(lock.ok, true);
+
+    const metadataFile = path.join(
+      tmp,
+      ".hermes3d_orchestrator",
+      "locks",
+      `${shaId("src/stale-lock.txt")}.lockdir`,
+      "metadata.json"
+    );
+    const metadata = JSON.parse(await fs.readFile(metadataFile, "utf8"));
+    metadata.expires_utc = new Date(Date.now() - 60_000).toISOString();
+    await fs.writeFile(metadataFile, JSON.stringify(metadata, null, 2), "utf8");
+
+    const unlock = parseToolResult(await s.call("hermes_request_unlock", {
+      requester: "rt-stale-requester",
+      taskId: "rt-stale-request",
+      files: ["src/stale-lock.txt"],
+      reason: "owner is stale, recover instead of waiting",
+      priority: "urgent",
+    }));
+    assert.equal(unlock.ok, true, `stale unlock failed: ${JSON.stringify(unlock)}`);
+    assert.equal(unlock.status, "stale_available");
+    assert.equal(unlock.handoff_requests.length, 0);
+    assert.equal(unlock.notifications.length, 0);
+    assert.ok(unlock.next_tools.includes("hermes_recover_stale_locks"));
+
+    const wait = parseToolResult(await s.call("hermes_wait_for_unlock", {
+      requester: "rt-stale-requester",
+      files: ["src/stale-lock.txt"],
+      timeoutMs: 0,
+    }));
+    assert.equal(wait.status, "stale_available");
+    assert.ok(wait.next_tools.includes("hermes_recover_stale_locks"));
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

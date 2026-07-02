@@ -97,9 +97,9 @@ Keep `MCP_LOCK_WORKSPACE` pointed at a default safe repo, then switch at runtime
 }
 ```
 
-After switching, call `hermes_live_status` to see active locks, stale locks, queue counts, recent outbox events, and anonymous-agent state. Agents that need low-latency handoff awareness can call `hermes_wait_for_events` with the last event id they observed.
+After switching, call `hermes_live_status` to see active locks, stale locks, queue counts, recent outbox events, presence, and anonymous-agent state. Agents that need low-latency handoff awareness can call `hermes_wait_for_events` with the last event id they observed.
 
-If an agent needs a locked file, call `hermes_request_unlock` with the file list and reason. HermesProof discovers the current owner, creates a handoff request, and emits a `handoff.created` event. The owner then calls `hermes_approve_handoff`; ownership transfers with evidence. Expired locks still use `hermes_recover_stale_locks` after TTL expiry.
+Each agent should call `hermes_update_presence` at the start of work and include `skills` / `taskTypes`. If an agent needs a collaborator, call `hermes_find_agents`, then `hermes_send_message`. If an agent needs a locked file, call `hermes_request_unlock` with the file list and reason. HermesProof discovers active owners, creates handoff requests, sends inbox messages, and emits `unlock.requested` / `handoff.created` events. The owner then calls `hermes_approve_handoff`; the requester waits with `hermes_wait_for_unlock`. If the lock owner is stale, `hermes_request_unlock` reports `stale_available` and points to `hermes_recover_stale_locks` instead of blocking on an absent owner. Finishing agents should call `hermes_complete_work` so evidence, task release, lock release, notifications, and presence update happen in one step.
 
 ## Per-client wiring
 

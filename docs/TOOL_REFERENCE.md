@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 47 MCP tools across coordination, workspace switching, unlock requests, live status, event long-polling, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 55 MCP tools across coordination, workspace switching, agent presence, inbox messaging, skills routing, unlock requests, live status, event long-polling, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -17,6 +17,9 @@ The server exposes 47 MCP tools across coordination, workspace switching, unlock
 | Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`                                        |
 | Workspace       | `hermes_get_workspace`, `hermes_set_workspace`                                                                                              |
 | Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
+| Presence        | `hermes_update_presence`, `hermes_list_presence`, `hermes_find_agents`                                                                      |
+| Inbox           | `hermes_send_message`, `hermes_get_inbox`, `hermes_ack_message`                                                                             |
+| Completion      | `hermes_wait_for_unlock`, `hermes_complete_work`                                                                                            |
 | Diagnostics     | `hermes_get_state`, `hermes_doctor`, `hermes_read_policy`                                                                                   |
 | Anonymous       | `hermes_list_agents`, `hermes_anonymous_claim`, `hermes_anonymous_release`, `hermes_anonymous_state`, `hermes_record_outcome`, `hermes_record_task` |
 | Dispatch        | `hermes_dispatch_recommend`                                                                                                                 |
@@ -48,6 +51,115 @@ Switches the active workspace root for later HermesProof tool calls. The target 
   "workspaceRoot": "G:\\Github\\AI-CE",
   "reason": "Coordinate Codex and KiloCode on AICE",
   "allowActiveLocks": false
+}
+```
+
+## hermes_update_presence
+
+Writes the caller's live status, current task, files, advertised skills, task affinities, wait reason, and expiry.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "status": "working",
+  "taskId": "release-prep",
+  "files": ["src/server.mjs"],
+  "skills": ["python", "docs", "testing"],
+  "taskTypes": ["build", "release"],
+  "note": "Finishing release prep",
+  "canInterrupt": true,
+  "ttlSeconds": 300
+}
+```
+
+## hermes_list_presence
+
+Lists live and stale agent presence records for the active workspace.
+
+```json
+{ "includeStale": true }
+```
+
+## hermes_find_agents
+
+Ranks live agents by advertised skills, task affinity, interrupt preference, and current lock load.
+
+```json
+{
+  "requiredSkills": ["review", "docs"],
+  "taskType": "review",
+  "includeBusy": false,
+  "limit": 5
+}
+```
+
+## hermes_send_message
+
+Writes durable inbox messages to one or more agents and emits `message.sent`.
+
+```json
+{
+  "sender": "codex-impl-01",
+  "recipients": ["kilocode-reviewer"],
+  "type": "ping",
+  "priority": "normal",
+  "subject": "Review availability",
+  "body": "Can you review the release prep?",
+  "taskId": "release-prep",
+  "files": ["docs/release.md"]
+}
+```
+
+## hermes_get_inbox
+
+Reads durable inbox messages for one owner.
+
+```json
+{
+  "owner": "kilocode-reviewer",
+  "includeAcked": false,
+  "limit": 25
+}
+```
+
+## hermes_ack_message
+
+Marks one inbox message acknowledged, done, or dismissed and emits `message.acked`.
+
+```json
+{
+  "owner": "kilocode-reviewer",
+  "messageId": "msg_...",
+  "status": "acknowledged",
+  "note": "I can review it now."
+}
+```
+
+## hermes_wait_for_unlock
+
+Waits until requested files are available, transferred, denied, stale, or timed out.
+
+```json
+{
+  "requester": "kilocode-reviewer",
+  "files": ["src/server.mjs"],
+  "timeoutMs": 30000,
+  "pollMs": 1000
+}
+```
+
+## hermes_complete_work
+
+Records completion evidence, releases owned locks, optionally releases the task, updates presence, preserves advertised skills, notifies recipients, and emits `work.completed`.
+
+```json
+{
+  "owner": "kilocode-reviewer",
+  "taskId": "release-review",
+  "files": ["docs/release.md"],
+  "summary": "Review complete and lock released.",
+  "status": "completed",
+  "notifyRecipients": ["codex-impl-01"]
 }
 ```
 
@@ -89,7 +201,7 @@ Asks a current owner to transfer locks.
 
 ## hermes_request_unlock
 
-Creates handoff requests for locked files without requiring the requester to know the current owner first. Unlocked files and files already owned by the requester are reported separately. Owners can watch `handoff.created` through `hermes_wait_for_events` or `hermes_live_status`, then approve with `hermes_approve_handoff`.
+Creates handoff requests for locked files without requiring the requester to know the current owner first. Unlocked files and files already owned by the requester are reported separately. Active owners can watch `handoff.created` through `hermes_wait_for_events`, `hermes_live_status`, or `hermes_get_inbox`, then approve with `hermes_approve_handoff`. Stale owners are not inbox-blocking; the tool reports `stale_available` and recommends `hermes_recover_stale_locks`.
 
 ```json
 {

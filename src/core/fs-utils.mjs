@@ -287,6 +287,8 @@ export function statePaths(workspaceRoot, stateDirName) {
     evidenceDir: path.join(stateDir, "evidence"),
     gatesDir: path.join(stateDir, "gates"),
     eventsDir,
+    presenceDir: path.join(stateDir, "presence"),
+    inboxDir: path.join(stateDir, "inbox"),
     eventsOutboxDir: path.join(eventsDir, "outbox"),
     eventsHandledDir: path.join(eventsDir, "handled"),
     eventsFailedDir: path.join(eventsDir, "failed"),
@@ -311,6 +313,8 @@ export async function initStateDirs(paths) {
   await ensureDir(paths.eventsOutboxDir);
   await ensureDir(paths.eventsHandledDir);
   await ensureDir(paths.eventsFailedDir);
+  await ensureDir(paths.presenceDir);
+  await ensureDir(paths.inboxDir);
   await ensureDir(paths.reviewPacketsDir);
 }
 

@@ -61,6 +61,12 @@ Required fields:
 task.claimed
 task.released
 task.blocked
+task.recovered
+agent.presence
+message.sent
+message.acked
+unlock.requested
+work.completed
 handoff.created
 handoff.approved
 handoff.denied

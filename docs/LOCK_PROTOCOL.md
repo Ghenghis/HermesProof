@@ -12,14 +12,13 @@ No agent edits a file unless it owns the lock for that file. The server enforces
 
 ```text
 0. (optional, once per session) hermes_doctor and/or hermes_read_policy
-1. hermes_claim_task
-2. hermes_lock_files
-3. edit files
-4. hermes_heartbeat during long work
-5. hermes_run_gate for allowlisted checks
-6. hermes_append_evidence
-7. hermes_release_files
-8. hermes_release_task
+1. hermes_update_presence with status, skills, task, and files
+2. hermes_claim_task
+3. hermes_lock_files
+4. edit files
+5. hermes_heartbeat during long work
+6. hermes_run_gate for allowlisted checks
+7. hermes_complete_work to append evidence, release locks, release task, and update presence
 ```
 
 ## Conflict lifecycle
@@ -29,7 +28,7 @@ No agent edits a file unless it owns the lock for that file. The server enforces
 2. Server returns blocked with current_owner.
 3. Agent stops. No edit.
 4. Agent calls hermes_request_unlock with files + reason.
-5. HermesProof discovers owners and emits handoff.created events.
+5. HermesProof discovers active owners and emits handoff.created events.
 6. Current owner approves or denies via hermes_approve_handoff.
 7. If approved, ownership transfers.
 8. If denied, requester must choose another file/task.
@@ -40,13 +39,24 @@ No agent edits a file unless it owns the lock for that file. The server enforces
 ## Live interaction loop
 
 ```text
-1. Agent calls hermes_live_status before work to see locks, queue, handoffs, and recent events.
+1. Agent calls hermes_live_status before work to see locks, queue, handoffs, presence, inbox-triggering events, and recent events.
 2. Agent claims and locks files.
 3. If blocked, requester calls hermes_request_unlock.
-4. Owner watches hermes_wait_for_events after its last seen event id.
+4. Owner watches hermes_wait_for_events after its last seen event id or checks hermes_get_inbox.
 5. Owner approves with hermes_approve_handoff or denies with a note.
 6. If approved, ownership transfers.
-7. Requester resumes after hermes_wait_for_events reports handoff.approved.
+7. Requester resumes after hermes_wait_for_unlock reports ready.
+```
+
+## Skills routing
+
+Agents should advertise lightweight skill tags in `hermes_update_presence`, such as `python`, `docs`, `testing`, `review`, or `release`. HermesProof does not execute skills; it uses tags to help agents find the best available collaborator through `hermes_find_agents`.
+
+```text
+1. Agent A is blocked or needs review.
+2. Agent A calls hermes_find_agents with requiredSkills and taskType.
+3. Agent A sends the chosen agent a hermes_send_message inbox item.
+4. Agent B acknowledges with hermes_ack_message and claims or requests the needed files.
 ```
 
 ## Stale lock lifecycle
@@ -58,7 +68,7 @@ No agent edits a file unless it owns the lock for that file. The server enforces
 4. Server archives stale lock metadata to evidence.
 ```
 
-Stale recovery is not a normal collaboration path. Prefer handoff.
+Stale recovery is not a normal collaboration path. Prefer handoff for active owners. If `hermes_request_unlock` sees only stale owners for the requested files, it reports `stale_available` and recommends `hermes_recover_stale_locks` instead of waiting on an inbox reply that may never arrive.
 
 ## Event semantics
 
@@ -70,6 +80,12 @@ Events are emitted for:
 task.claimed
 task.released
 task.blocked
+task.recovered
+agent.presence
+message.sent
+message.acked
+unlock.requested
+work.completed
 handoff.created
 handoff.approved
 handoff.denied
