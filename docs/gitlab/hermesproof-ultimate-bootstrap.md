@@ -4,7 +4,7 @@ HermesProof generated this governance branch to capture high-value GitLab Ultima
 - `CODEOWNERS` for code-owner review coverage.
 - `.gitlab/hermesproof-ultimate.yml` with SAST, secret detection, dependency scanning, and HermesProof truth-gate jobs.
 - `docs/gitlab/security-policy-template.yml` as a reusable security policy template.
-- `.gitlab-ci.yml` was created because the project did not already have a root GitLab CI file.
+- Existing `.gitlab-ci.yml` content was left untouched. Review the include file and wire it into the project pipeline deliberately.
 ## Next Review
 1. Confirm CODEOWNER refs are correct for this project.
 2. Confirm the truth-gate job matches the repo runtime before merging.
