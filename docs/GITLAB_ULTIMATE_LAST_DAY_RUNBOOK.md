@@ -89,7 +89,7 @@ Do not continue pretending. The correct state is:
 
 ```text
 blocked: GitLab token not available in launching environment
-needed: GITLAB_TOKEN or GLAB_TOKEN with Maintainer/Owner access to target projects
+needed: a supported GitLab token env var or dedicated GitLab env file with Maintainer/Owner access to target projects
 ```
 
 HermesProof must not print token values, private env-file paths, or private file contents.

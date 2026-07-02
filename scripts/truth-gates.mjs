@@ -334,6 +334,7 @@ const expectedTools = [
   "hermes_enqueue_task",
   "hermes_emit_event",
   "hermes_complete_work",
+  "hermes_connect_project",
   "hermes_find_agents",
   "hermes_gitlab_create_merge_request",
   "hermes_gitlab_bootstrap_ultimate",
@@ -344,12 +345,14 @@ const expectedTools = [
   "hermes_get_agent_profile",
   "hermes_get_inbox",
   "hermes_get_state",
+  "hermes_get_test_mode",
   "hermes_get_workspace",
   "hermes_heartbeat",
   "hermes_join_project",
   "hermes_list_agents",
   "hermes_list_events",
   "hermes_list_agent_profiles",
+  "hermes_list_bug_tickets",
   "hermes_list_gates",
   "hermes_list_locks",
   "hermes_list_pending_tasks",
@@ -369,10 +372,14 @@ const expectedTools = [
   "hermes_request_handoff",
   "hermes_request_unlock",
   "hermes_register_agent_profile",
+  "hermes_report_bug",
   "hermes_run_gate",
+  "hermes_set_test_mode",
   "hermes_set_workspace",
   "hermes_send_message",
+  "hermes_submit_bug_fix",
   "hermes_update_agent_capabilities",
+  "hermes_update_bug_ticket",
   "hermes_update_presence",
   "hermes_user_check_authorization",
   "hermes_user_grant_session",
@@ -1155,7 +1162,16 @@ if (!shouldSkip("backend.api_config_presence")) {
       "COHERE_API_KEY",
       "MISTRAL_API_KEY"
     ];
-    const remoteGit = ["GITLAB_TOKEN", "GLAB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+    const remoteGit = [
+      "GITLAB_TOKEN",
+      "GLAB_TOKEN",
+      "GITLAB_ACCESS_TOKEN",
+      "GITLAB_PRIVATE_TOKEN",
+      "GITLAB_PAT",
+      "GHENGHIS_GITLAB_TOKEN",
+      "GH_TOKEN",
+      "GITHUB_TOKEN"
+    ];
     const localEndpoint = ["LMSTUDIO_BASE_URL", "OLLAMA_BASE_URL", "HIPFIRE_BASE_URL"];
     const present = {
       cloud_ai: presentEnvNames(cloudAi),
@@ -1175,7 +1191,14 @@ if (!shouldSkip("backend.api_config_presence")) {
         present_env_names: present,
         missing_recommended_env_names: {
           cloud_ai_fast_path: ["DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "SILICONFLOW_API_KEY"].filter((name) => !process.env[name]),
-          gitlab: ["GITLAB_TOKEN", "GLAB_TOKEN"].filter((name) => !process.env[name])
+          gitlab: [
+            "GITLAB_TOKEN",
+            "GLAB_TOKEN",
+            "GITLAB_ACCESS_TOKEN",
+            "GITLAB_PRIVATE_TOKEN",
+            "GITLAB_PAT",
+            "GHENGHIS_GITLAB_TOKEN"
+          ].filter((name) => !process.env[name])
         },
         cli_present: cli,
         local_defaults: {
@@ -1219,7 +1242,7 @@ if (!shouldSkip("gitlab.auth_probe")) {
       details: status.status === "authenticated"
         ? `GitLab authenticated via ${status.token_source}`
         : status.status === "missing_token"
-          ? "GitLab token not configured (set GITLAB_TOKEN or GLAB_TOKEN)"
+          ? "GitLab token not configured (use a supported GitLab token env var or the dedicated GitLab env file)"
           : `GitLab auth probe failed: ${status.error || status.status}`
     };
   });

@@ -15,7 +15,7 @@ import { CapabilityDispatch } from "./core/capability-dispatch.mjs";
 import { A2AStub } from "./core/a2a-stub.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
-import { createGitLabClient } from "./core/gitlab-client.mjs";
+import { createGitLabClient, resolveGitLabConfig } from "./core/gitlab-client.mjs";
 import { loadRegistryProviders } from "./core/registry-providers.mjs";
 import {
   ensureDir,
@@ -266,15 +266,23 @@ const EventType = z.enum([
   "gitlab.project.ready",
   "gitlab.merge_request.ready",
   "gitlab.ultimate.ready",
+  "mode.testing.updated",
+  "bug.reported",
+  "bug.updated",
+  "bug.fix_submitted",
   "pr.opened"
 ]);
 const NextActor = z.enum(["claude", "codex", "human", "unassigned"]).default("unassigned");
-const RecommendedAction = z.enum(["review_pr", "fix_scope", "merge", "review_handoff", "acknowledge", "none"]).default("none");
+const RecommendedAction = z.enum(["review_pr", "fix_scope", "merge", "review_handoff", "fix_bug", "review_fix", "run_tests", "acknowledge", "none"]).default("none");
 const PresenceStatus = z.enum(["working", "idle", "blocked", "waiting", "reviewing", "testing", "done"]).default("working");
 const MessageType = z.enum(["note", "unlock_request", "handoff", "assistance_request", "blocker", "completion", "ping"]).default("note");
 const MessagePriority = z.enum(["low", "normal", "high", "urgent"]).default("normal");
 const MessageAckStatus = z.enum(["acknowledged", "done", "dismissed"]).default("acknowledged");
 const CompletionStatus = z.enum(["completed", "blocked", "partial"]).default("completed");
+const TestModeState = z.enum(["testing", "release"]).default("testing");
+const BugSeverity = z.enum(["critical", "high", "medium", "low", "info"]).default("medium");
+const BugTicketStatus = z.enum(["open", "triaged", "assigned", "in_progress", "fix_submitted", "verified", "closed", "reopened", "wontfix", "duplicate"]).default("open");
+const BugFixVerdict = z.enum(["submitted", "verified", "needs_work"]).default("submitted");
 const AgentMode = z.enum(["observe", "coordinated-dev", "release-operator", "emergency-recovery"]).default("coordinated-dev");
 const OptionalAgentMode = z.union([AgentMode, z.literal("")]).default("");
 const GitLabVisibility = z.enum(["private", "internal", "public"]).default("private");
@@ -293,6 +301,8 @@ const GitLabProjectFullPath = z
   .min(1)
   .max(255)
   .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/, "project full path must be slash-separated GitLab path segments");
+const OptionalGitLabProjectFullPath = z.union([GitLabProjectFullPath, z.literal("")]).default("");
+const OptionalGitLabProjectPath = z.union([GitLabProjectPath, z.literal("")]).default("");
 const GitLabOwnerRef = z
   .string()
   .min(2)
@@ -316,7 +326,15 @@ const CLOUD_AI_ENV_NAMES = Object.freeze([
   "MISTRAL_API_KEY"
 ]);
 const LOCAL_ENDPOINT_ENV_NAMES = Object.freeze(["LMSTUDIO_BASE_URL", "OLLAMA_BASE_URL", "HIPFIRE_BASE_URL"]);
-const REMOTE_GIT_ENV_NAMES = Object.freeze(["GITLAB_TOKEN", "GLAB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]);
+const GITLAB_TOKEN_ENV_NAMES = Object.freeze([
+  "GITLAB_TOKEN",
+  "GLAB_TOKEN",
+  "GITLAB_ACCESS_TOKEN",
+  "GITLAB_PRIVATE_TOKEN",
+  "GITLAB_PAT",
+  "GHENGHIS_GITLAB_TOKEN"
+]);
+const REMOTE_GIT_ENV_NAMES = Object.freeze([...GITLAB_TOKEN_ENV_NAMES, "GH_TOKEN", "GITHUB_TOKEN"]);
 const MODEL_SELECTOR_ENV_NAMES = Object.freeze([
   "DEEPSEEK_MODEL",
   "MINIMAX_MODEL",
@@ -379,6 +397,10 @@ function agentProfilePath(owner) {
   return path.join(manager.paths.agentProfilesDir, `${owner}.json`);
 }
 
+function bugTicketPath(ticketId) {
+  return path.join(manager.paths.bugTicketsDir, `${ticketId}.json`);
+}
+
 function inboxDir(owner) {
   return path.join(manager.paths.inboxDir, owner);
 }
@@ -421,8 +443,26 @@ function uniqueSorted(values = []) {
   return [...new Set(values.filter(Boolean))].sort();
 }
 
+function normalizeTicketId(value = "") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return `bug-${Date.now().toString(36)}-${shaId(`${manager.workspaceRoot}:${Date.now()}`, 8)}`;
+  const normalized = raw.replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 96);
+  if (!/^[a-z0-9][a-z0-9._-]{1,95}$/.test(normalized) || normalized.includes("..")) {
+    throw new Error("ticketId must normalize to 2-96 safe path characters");
+  }
+  return normalized;
+}
+
+function normalizeOptionalFiles(files = []) {
+  return Array.isArray(files) && files.length ? manager.normalizeFiles(files) : [];
+}
+
 function presentEnvNames(names = []) {
   return names.filter((name) => Boolean(process.env[name]));
+}
+
+function missingGitLabTokenMessage() {
+  return "Configure a supported GitLab token env var or the dedicated GitLab env file. Secret values and private file paths are never returned.";
 }
 
 function commandExists(name) {
@@ -436,6 +476,7 @@ function commandExists(name) {
 }
 
 function backendStatusSnapshot({ includeCli = true } = {}) {
+  const gitlabConfig = resolveGitLabConfig();
   const present = {
     cloud_ai: presentEnvNames(CLOUD_AI_ENV_NAMES),
     local_endpoint: presentEnvNames(LOCAL_ENDPOINT_ENV_NAMES),
@@ -445,7 +486,7 @@ function backendStatusSnapshot({ includeCli = true } = {}) {
   const cli = includeCli
     ? { gh: commandExists("gh"), glab: commandExists("glab"), git: commandExists("git") }
     : null;
-  const gitlabEnvConfigured = present.remote_git.includes("GITLAB_TOKEN") || present.remote_git.includes("GLAB_TOKEN");
+  const gitlabEnvConfigured = Boolean(gitlabConfig.ok);
   const githubEnvConfigured = present.remote_git.includes("GH_TOKEN") || present.remote_git.includes("GITHUB_TOKEN");
   const backendEnvCount =
     present.cloud_ai.length +
@@ -456,6 +497,7 @@ function backendStatusSnapshot({ includeCli = true } = {}) {
     cloud_ai_available: present.cloud_ai.length > 0,
     local_ai_endpoint_configured: present.local_endpoint.length > 0,
     gitlab_api_token_configured: gitlabEnvConfigured,
+    gitlab_private_env_file_loaded: gitlabConfig.gitlab_env_file_status === "loaded",
     gitlab_cli_available: Boolean(cli?.glab),
     gitlab_fast_path_available: gitlabEnvConfigured,
     github_fast_path_available: githubEnvConfigured || Boolean(cli?.gh),
@@ -471,10 +513,17 @@ function backendStatusSnapshot({ includeCli = true } = {}) {
       source: loadedEnvFileInfo.source,
       status: loadedEnvFileInfo.status
     },
+    gitlab_config: {
+      configured: Boolean(gitlabConfig.ok),
+      base_url: gitlabConfig.base_url,
+      token_source: gitlabConfig.token_source,
+      gitlab_env_file_status: gitlabConfig.gitlab_env_file_status,
+      gitlab_env_file_source: gitlabConfig.gitlab_env_file_source
+    },
     present_env_names: present,
     missing_recommended_env_names: {
       cloud_ai_fast_path: ["DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "SILICONFLOW_API_KEY"].filter((name) => !process.env[name]),
-      gitlab: ["GITLAB_TOKEN", "GLAB_TOKEN"].filter((name) => !process.env[name])
+      gitlab: GITLAB_TOKEN_ENV_NAMES.filter((name) => !process.env[name])
     },
     cli_present: cli,
     readiness,
@@ -488,6 +537,15 @@ function gitLabFullPath({ projectFullPath = "", namespacePath = "", projectPath 
   const namespace = String(namespacePath || "").replace(/^\/+|\/+$/g, "");
   const project = String(projectPath || "").replace(/^\/+|\/+$/g, "");
   return namespace ? `${namespace}/${project}` : project;
+}
+
+function splitGitLabFullPath(fullPath = "") {
+  const normalized = String(fullPath || "").replace(/^\/+|\/+$/g, "");
+  const parts = normalized.split("/").filter(Boolean);
+  return {
+    namespacePath: parts.slice(0, -1).join("/"),
+    projectPath: parts.at(-1) || ""
+  };
 }
 
 function redactRemoteUrl(value = "") {
@@ -574,6 +632,32 @@ function configureGitRemote({
     remote_name: remoteName,
     remote_url: redactRemoteUrl(desiredUrl),
     stderr_tail: add.stderr.slice(-300)
+  };
+}
+
+function gitWorkspaceSnapshot() {
+  const inside = runGit(["rev-parse", "--is-inside-work-tree"]);
+  if (!inside.ok) {
+    return {
+      ok: false,
+      status: "not_git_workspace",
+      stderr_tail: inside.stderr.slice(-300)
+    };
+  }
+  const branch = runGit(["branch", "--show-current"]);
+  const remotes = runGit(["remote", "-v"]);
+  return {
+    ok: true,
+    status: "git_workspace",
+    branch: branch.ok ? branch.stdout.trim() : "",
+    remotes: remotes.ok
+      ? remotes.stdout
+          .split(/\r?\n/)
+          .map((line) => redactRemoteUrl(line.trim()))
+          .filter(Boolean)
+          .slice(0, 50)
+      : [],
+    remote_probe_ok: remotes.ok
   };
 }
 
@@ -918,6 +1002,408 @@ async function applyDispatchScores(candidates, taskTag) {
         : `presence/lock-load plus learned dispatch score ${dispatchScore}`
     };
   });
+}
+
+async function readTestMode() {
+  const mode = await readJson(manager.paths.testModeFile, null);
+  if (!mode) {
+    return {
+      mode: "release",
+      testing_enabled: false,
+      updated_utc: null,
+      updated_by: null,
+      reason: "",
+      release_blocking_open_tickets: true
+    };
+  }
+  return {
+    mode: mode.mode === "testing" ? "testing" : "release",
+    testing_enabled: mode.mode === "testing",
+    updated_utc: mode.updated_utc || null,
+    updated_by: mode.updated_by || null,
+    reason: mode.reason || "",
+    release_blocking_open_tickets: mode.release_blocking_open_tickets !== false
+  };
+}
+
+async function setTestModeState({ owner, mode = "testing", reason = "", releaseBlockingOpenTickets = true } = {}) {
+  const normalizedMode = mode === "release" ? "release" : "testing";
+  const record = {
+    mode: normalizedMode,
+    testing_enabled: normalizedMode === "testing",
+    updated_utc: utcNow(),
+    updated_by: owner,
+    reason,
+    release_blocking_open_tickets: releaseBlockingOpenTickets !== false
+  };
+  await writeJsonAtomic(manager.paths.testModeFile, record);
+  const evidence = await manager.appendEvidence({
+    owner,
+    kind: "mode.testing",
+    summary: `HermesProof workspace mode set to ${normalizedMode}`,
+    data: record
+  });
+  await manager.emitManualEvent({
+    event_type: "mode.testing.updated",
+    owner,
+    task_id: null,
+    files: [],
+    summary: `Testing mode ${normalizedMode === "testing" ? "enabled" : "disabled"}`,
+    next_actor: "unassigned",
+    recommended_action: normalizedMode === "testing" ? "run_tests" : "acknowledge",
+    payload: record
+  });
+  return { ok: true, status: "updated", workspace_root: manager.workspaceRoot, mode: record, evidence: evidence.evidence };
+}
+
+async function readBugTicket(ticketId) {
+  return await readJson(bugTicketPath(ticketId), null);
+}
+
+async function reportBugTicket({
+  reporter,
+  ticketId = "",
+  title,
+  summary = "",
+  severity = "medium",
+  files = [],
+  reproduction = "",
+  expected = "",
+  actual = "",
+  evidence = [],
+  tags = [],
+  assignee = "",
+  enqueue = true,
+  priority = 0,
+  targetOwnerPattern = ".*",
+  taskId = ""
+} = {}) {
+  const id = normalizeTicketId(ticketId);
+  const now = utcNow();
+  const normalizedFiles = normalizeOptionalFiles(files);
+  const existing = await readBugTicket(id);
+  if (existing && !["closed", "wontfix", "duplicate"].includes(existing.status)) {
+    return { ok: true, status: "already_reported", workspace_root: manager.workspaceRoot, ticket: existing, idempotent: true };
+  }
+  const mode = await readTestMode();
+  const ticket = {
+    ticket_schema_version: 1,
+    ticket_id: id,
+    title,
+    summary,
+    severity,
+    status: existing?.status === "closed" ? "reopened" : "open",
+    reporter,
+    assignee: assignee || null,
+    files: normalizedFiles,
+    reproduction,
+    expected,
+    actual,
+    evidence: Array.isArray(evidence) ? evidence.slice(0, 50) : [],
+    tags: normalizeTags(tags),
+    task_id: taskId || `bug-${id}`,
+    testing_mode_at_report: mode.mode,
+    release_blocker: mode.release_blocking_open_tickets !== false && ["critical", "high", "medium"].includes(severity),
+    created_utc: existing?.created_utc || now,
+    updated_utc: now,
+    updates: existing?.updates || [],
+    fixes: existing?.fixes || []
+  };
+  await writeJsonAtomic(bugTicketPath(id), ticket);
+  let queued = null;
+  if (enqueue) {
+    queued = await manager.enqueueTask({
+      taskId: ticket.task_id,
+      title: `Bug: ${title}`,
+      summary: summary || reproduction || actual || title,
+      files_hint: normalizedFiles,
+      priority,
+      target_owner_pattern: targetOwnerPattern,
+      data: {
+        kind: "bug_ticket",
+        ticket_id: id,
+        severity,
+        release_blocker: ticket.release_blocker
+      },
+      enqueued_by: reporter
+    });
+  }
+  const evidenceEntry = await manager.appendEvidence({
+    owner: reporter,
+    taskId: ticket.task_id,
+    kind: "bug.reported",
+    summary: `Bug reported: ${id} ${title}`,
+    data: { ticket, queued_status: queued?.status || null }
+  });
+  await manager.emitManualEvent({
+    event_type: "bug.reported",
+    owner: reporter,
+    task_id: ticket.task_id,
+    files: normalizedFiles,
+    summary: `Bug reported: ${id} ${title}`,
+    next_actor: "unassigned",
+    recommended_action: "fix_bug",
+    payload: {
+      ticket_id: id,
+      severity,
+      status: ticket.status,
+      assignee: ticket.assignee,
+      release_blocker: ticket.release_blocker,
+      queued_status: queued?.status || null
+    }
+  });
+  const live = await listPresenceRecords({ includeStale: false });
+  const activeAgents = live.presence
+    .filter((record) => record.owner !== reporter)
+    .map((record) => record.owner)
+    .slice(0, 25);
+  let notifications = null;
+  if (activeAgents.length) {
+    notifications = await sendInboxMessage({
+      sender: reporter,
+      recipients: activeAgents,
+      type: "note",
+      priority: ["critical", "high"].includes(severity) ? "high" : "normal",
+      subject: `Bug ticket ${id}: ${title}`,
+      body: summary || reproduction || actual || title,
+      taskId: ticket.task_id,
+      files: normalizedFiles,
+      requiresAck: false,
+      metadata: {
+        kind: "bug_ticket",
+        ticket_id: id,
+        severity,
+        status: ticket.status,
+        release_blocker: ticket.release_blocker
+      }
+    });
+  }
+  return {
+    ok: true,
+    status: "reported",
+    workspace_root: manager.workspaceRoot,
+    ticket,
+    queued,
+    notifications,
+    evidence: evidenceEntry.evidence,
+    next_tools: ["hermes_lock_files", "hermes_submit_bug_fix", "hermes_update_bug_ticket", "hermes_run_gate"]
+  };
+}
+
+async function listBugTickets({
+  status = "active",
+  severity = "",
+  assignee = "",
+  reporter = "",
+  releaseBlockersOnly = false,
+  limit = 100
+} = {}) {
+  await ensureDir(manager.paths.bugTicketsDir);
+  const names = await fs.readdir(manager.paths.bugTicketsDir).catch(() => []);
+  const tickets = [];
+  const terminal = new Set(["closed", "wontfix", "duplicate"]);
+  for (const name of names.filter((item) => item.endsWith(".json"))) {
+    const ticket = await readJson(path.join(manager.paths.bugTicketsDir, name), null);
+    if (!ticket) continue;
+    if (status === "active" && terminal.has(ticket.status)) continue;
+    if (status !== "all" && status !== "active" && ticket.status !== status) continue;
+    if (severity && ticket.severity !== severity) continue;
+    if (assignee && ticket.assignee !== assignee) continue;
+    if (reporter && ticket.reporter !== reporter) continue;
+    if (releaseBlockersOnly && !ticket.release_blocker) continue;
+    tickets.push(ticket);
+  }
+  const severityRank = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  tickets.sort((a, b) =>
+    (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9) ||
+    String(a.updated_utc || "").localeCompare(String(b.updated_utc || ""))
+  );
+  const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 100 });
+  return { ok: true, workspace_root: manager.workspaceRoot, status, count: tickets.length, tickets: tickets.slice(0, bounded) };
+}
+
+async function updateBugTicket({
+  owner,
+  ticketId,
+  status = "",
+  assignee = "",
+  severity = "",
+  note = "",
+  tags = [],
+  releaseBlocker = null,
+  evidence = []
+} = {}) {
+  const id = normalizeTicketId(ticketId);
+  const ticket = await readBugTicket(id);
+  if (!ticket) return { ok: false, status: "missing", workspace_root: manager.workspaceRoot, ticket_id: id };
+  const next = {
+    ...ticket,
+    status: status || ticket.status,
+    assignee: assignee === "" ? ticket.assignee : assignee || null,
+    severity: severity || ticket.severity,
+    release_blocker: typeof releaseBlocker === "boolean" ? releaseBlocker : ticket.release_blocker,
+    tags: tags.length ? uniqueSorted([...normalizeTags(ticket.tags || []), ...normalizeTags(tags)]) : ticket.tags || [],
+    updated_utc: utcNow(),
+    updates: [
+      ...(ticket.updates || []),
+      {
+        ts_utc: utcNow(),
+        owner,
+        status: status || ticket.status,
+        note,
+        evidence: Array.isArray(evidence) ? evidence.slice(0, 25) : []
+      }
+    ]
+  };
+  await writeJsonAtomic(bugTicketPath(id), next);
+  const evidenceEntry = await manager.appendEvidence({
+    owner,
+    taskId: next.task_id || "",
+    kind: "bug.updated",
+    summary: `Bug updated: ${id} -> ${next.status}`,
+    data: { ticket_id: id, status: next.status, note, release_blocker: next.release_blocker }
+  });
+  await manager.emitManualEvent({
+    event_type: "bug.updated",
+    owner,
+    task_id: next.task_id || null,
+    files: next.files || [],
+    summary: `Bug updated: ${id} -> ${next.status}`,
+    next_actor: "unassigned",
+    recommended_action: ["fix_submitted"].includes(next.status) ? "review_fix" : "acknowledge",
+    payload: { ticket_id: id, status: next.status, severity: next.severity, release_blocker: next.release_blocker }
+  });
+  let notifications = null;
+  if (next.assignee) {
+    notifications = await sendInboxMessage({
+      sender: owner,
+      recipients: [next.assignee],
+      type: "note",
+      priority: ["critical", "high"].includes(next.severity) ? "high" : "normal",
+      subject: `Bug ticket ${id} updated: ${next.status}`,
+      body: note || `Ticket ${id} is now ${next.status}.`,
+      taskId: next.task_id || "",
+      files: next.files || [],
+      requiresAck: false,
+      metadata: {
+        kind: "bug_ticket",
+        ticket_id: id,
+        status: next.status,
+        severity: next.severity,
+        release_blocker: next.release_blocker
+      }
+    });
+  }
+  return { ok: true, status: "updated", workspace_root: manager.workspaceRoot, ticket: next, notifications, evidence: evidenceEntry.evidence };
+}
+
+async function submitBugFix({
+  owner,
+  ticketId,
+  summary = "",
+  branch = "",
+  commit = "",
+  mergeRequestUrl = "",
+  gates = [],
+  files = [],
+  verdict = "submitted",
+  closeTicket = false,
+  evidence = []
+} = {}) {
+  const id = normalizeTicketId(ticketId);
+  const ticket = await readBugTicket(id);
+  if (!ticket) return { ok: false, status: "missing", workspace_root: manager.workspaceRoot, ticket_id: id };
+  const now = utcNow();
+  const normalizedFiles = files.length ? normalizeOptionalFiles(files) : ticket.files || [];
+  const fix = {
+    ts_utc: now,
+    owner,
+    summary,
+    branch,
+    commit,
+    merge_request_url: mergeRequestUrl,
+    gates: Array.isArray(gates) ? gates.slice(0, 50) : [],
+    files: normalizedFiles,
+    verdict,
+    evidence: Array.isArray(evidence) ? evidence.slice(0, 50) : []
+  };
+  const nextStatus = closeTicket || verdict === "verified" ? "verified" : verdict === "needs_work" ? "reopened" : "fix_submitted";
+  const next = {
+    ...ticket,
+    status: nextStatus,
+    updated_utc: now,
+    fixes: [...(ticket.fixes || []), fix],
+    updates: [
+      ...(ticket.updates || []),
+      {
+        ts_utc: now,
+        owner,
+        status: nextStatus,
+        note: summary,
+        evidence: fix.evidence
+      }
+    ]
+  };
+  await writeJsonAtomic(bugTicketPath(id), next);
+  const evidenceEntry = await manager.appendEvidence({
+    owner,
+    taskId: next.task_id || "",
+    kind: "bug.fix_submitted",
+    summary: `Bug fix ${verdict}: ${id}`,
+    data: { ticket_id: id, fix, next_status: nextStatus }
+  });
+  await manager.emitManualEvent({
+    event_type: "bug.fix_submitted",
+    owner,
+    task_id: next.task_id || null,
+    files: normalizedFiles,
+    summary: `Bug fix ${verdict}: ${id}`,
+    next_actor: "unassigned",
+    recommended_action: nextStatus === "verified" ? "acknowledge" : "review_fix",
+    payload: {
+      ticket_id: id,
+      status: nextStatus,
+      branch,
+      commit,
+      merge_request_url: mergeRequestUrl,
+      gate_count: fix.gates.length
+    }
+  });
+  const reviewers = (await listPresenceRecords({ includeStale: false })).presence
+    .filter((record) => record.owner !== owner && (record.status === "idle" || record.can_interrupt))
+    .map((record) => record.owner)
+    .slice(0, 10);
+  const notifications = reviewers.length && nextStatus !== "verified"
+    ? await sendInboxMessage({
+        sender: owner,
+        recipients: reviewers,
+        type: "note",
+        priority: ["critical", "high"].includes(next.severity) ? "high" : "normal",
+        subject: `Review bug fix ${id}`,
+        body: summary || `A fix was submitted for ticket ${id}.`,
+        taskId: next.task_id || "",
+        files: normalizedFiles,
+        requiresAck: false,
+        metadata: {
+          kind: "bug_fix",
+          ticket_id: id,
+          status: nextStatus,
+          branch,
+          commit,
+          merge_request_url: mergeRequestUrl
+        }
+      })
+    : null;
+  return {
+    ok: true,
+    status: "submitted",
+    workspace_root: manager.workspaceRoot,
+    ticket: next,
+    fix,
+    notifications,
+    evidence: evidenceEntry.evidence,
+    next_tools: nextStatus === "verified" ? ["hermes_complete_work"] : ["hermes_update_bug_ticket", "hermes_run_gate"]
+  };
 }
 
 async function requestAssistance({
@@ -1487,6 +1973,218 @@ registerTool(
 );
 
 registerTool(
+  "hermes_connect_project",
+  {
+    title: "Connect project",
+    description: "Switch to a workspace, optionally ensure/wire its GitLab project over SSH/HTTPS, publish agent presence, and return redacted access/status in one call.",
+    inputSchema: {
+      owner: Owner,
+      workspaceRoot: WorkspaceRoot,
+      reason: z.string().default(""),
+      allowActiveLocks: z.boolean().default(false),
+      projectFullPath: OptionalGitLabProjectFullPath,
+      namespacePath: GitLabNamespacePath,
+      projectPath: OptionalGitLabProjectPath,
+      name: z.string().default(""),
+      visibility: GitLabVisibility,
+      description: z.string().default(""),
+      initializeWithReadme: z.boolean().default(false),
+      ensureGitLabProject: z.boolean().default(false),
+      addRemote: z.boolean().default(true),
+      remoteName: z.string().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/).default("gitlab"),
+      remoteProtocol: GitRemoteProtocol,
+      updateExistingRemote: z.boolean().default(false),
+      probeGitLab: z.boolean().default(false),
+      joinPresence: z.boolean().default(true),
+      displayName: z.string().default(""),
+      host: z.string().default(""),
+      model: z.string().default(""),
+      mode: AgentMode,
+      role: z.string().default("agent"),
+      status: PresenceStatus,
+      skills: z.array(z.string()).default([]),
+      taskTypes: z.array(z.string()).default([]),
+      hostSupplies: z.array(z.string()).default([]),
+      hermesproofSupplies: z.array(z.string()).default([]),
+      notes: z.string().default(""),
+      taskId: OptionalTaskId,
+      files: z.array(z.string()).default([]),
+      ttlSeconds: z.number().int().min(30).max(86_400).default(300),
+      canInterrupt: z.boolean().default(true),
+      includeInbox: z.boolean().default(true),
+      includeEvents: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const desiredFullPath = gitLabFullPath({
+        projectFullPath: args.projectFullPath,
+        namespacePath: args.namespacePath,
+        projectPath: args.projectPath
+      });
+      const split = splitGitLabFullPath(desiredFullPath);
+      const namespacePath = args.namespacePath || split.namespacePath;
+      const projectPath = args.projectPath || split.projectPath;
+      const workspace = await activateWorkspace(args.workspaceRoot, {
+        owner: args.owner,
+        reason: args.reason || (desiredFullPath ? `connect project ${desiredFullPath}` : "connect workspace"),
+        validateExists: true,
+        allowActiveLocks: args.allowActiveLocks === true
+      });
+
+      const client = createGitLabClient();
+      const gitlabStatus = await client.status({
+        probe: args.probeGitLab === true,
+        includeIdentity: false
+      });
+
+      let projectResult = null;
+      let remote = null;
+      if (desiredFullPath || projectPath) {
+        if (!client.config.ok) {
+          projectResult = {
+            ok: false,
+            status: "missing_token",
+            configured: false,
+            project_full_path: desiredFullPath || projectPath,
+            message: missingGitLabTokenMessage()
+          };
+        } else if (args.ensureGitLabProject === true) {
+          projectResult = await client.ensureProject({
+            namespacePath,
+            projectPath,
+            name: args.name,
+            visibility: args.visibility,
+            description: args.description,
+            initializeWithReadme: args.initializeWithReadme
+          });
+        } else {
+          const project = await client.getProject(desiredFullPath || projectPath);
+          projectResult = project
+            ? {
+                ok: true,
+                status: "exists",
+                created: false,
+                base_url: client.config.base_url,
+                token_source: client.config.token_source,
+                project
+              }
+            : {
+                ok: false,
+                status: "missing",
+                created: false,
+                base_url: client.config.base_url,
+                token_source: client.config.token_source,
+                project_full_path: desiredFullPath || projectPath,
+                message: "GitLab project was not found or token cannot access it. Pass ensureGitLabProject=true to create it when the namespace exists."
+              };
+        }
+        if (projectResult?.ok && args.addRemote !== false) {
+          remote = configureGitRemote({
+            project: projectResult.project,
+            remoteName: args.remoteName,
+            protocol: args.remoteProtocol,
+            updateExistingRemote: args.updateExistingRemote
+          });
+        }
+      }
+
+      let joined = null;
+      if (args.joinPresence !== false) {
+        const registered = await registerAgentProfile({
+          ...args,
+          workspaceRoots: [workspace.workspace_root],
+          defaultWorkspaceRoot: workspace.workspace_root,
+          gitRemotes: remote?.remote_url ? [remote.remote_url] : [],
+          updatePresence: false
+        });
+        const presence = await updatePresenceRecord({
+          owner: args.owner,
+          role: args.role,
+          status: args.status,
+          taskId: args.taskId || "",
+          files: args.files || [],
+          skills: args.skills || [],
+          taskTypes: args.taskTypes || [],
+          note: args.notes || `Connected to ${workspace.workspace_root}`,
+          ttlSeconds: args.ttlSeconds,
+          canInterrupt: args.canInterrupt
+        });
+        const [inbox, events, profiles] = await Promise.all([
+          args.includeInbox === false ? null : readInbox({ owner: args.owner, includeAcked: false, limit: 50 }),
+          args.includeEvents === false ? null : manager.listEvents({ status: "outbox", limit: 25 }),
+          listAgentProfiles({ includePresence: true, limit: 100 })
+        ]);
+        joined = {
+          status: registered.status === "registered" ? "joined" : "refreshed",
+          profile: registered.profile,
+          presence: presence.presence,
+          inbox,
+          agent_profiles: profiles.profiles,
+          recent_outbox_events: events?.events || []
+        };
+      }
+
+      const state = await manager.getStateSummary();
+      const git = gitWorkspaceSnapshot();
+      const evidence = await manager.appendEvidence({
+        owner: args.owner,
+        taskId: args.taskId || "",
+        kind: "project.connect",
+        summary: `HermesProof project connected: ${workspace.workspace_root}`,
+        data: {
+          workspace_root: workspace.workspace_root,
+          previous_workspace_root: workspace.previous_workspace_root,
+          gitlab_status: {
+            status: gitlabStatus.status,
+            configured: gitlabStatus.configured,
+            authenticated: gitlabStatus.authenticated,
+            token_source: gitlabStatus.token_source || null,
+            base_url: gitlabStatus.base_url
+          },
+          project: projectResult
+            ? {
+                ok: projectResult.ok,
+                status: projectResult.status,
+                created: projectResult.created,
+                project: projectResult.project || null
+              }
+            : null,
+          remote
+        }
+      });
+      return toolResult({
+        ok: true,
+        status: "connected",
+        workspace,
+        gitlab_status: gitlabStatus,
+        project: projectResult,
+        remote,
+        git,
+        joined,
+        live_summary: {
+          active_lock_count: state.locks.length,
+          queue_counts: queueCounts(state.queue),
+          handoff_count: state.handoffs.length,
+          task_count: state.tasks.length
+        },
+        backend_status: backendStatusSnapshot({ includeCli: true }),
+        evidence: evidence.evidence,
+        next_tools: [
+          "hermes_live_status",
+          "hermes_lock_files",
+          "hermes_run_gate",
+          "hermes_gitlab_create_merge_request",
+          "hermes_wait_for_events",
+          "hermes_get_inbox"
+        ]
+      });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_live_status",
   {
     title: "Live coordination status",
@@ -1496,7 +2194,7 @@ registerTool(
       includeAgents: z.boolean().default(true),
       includePresence: z.boolean().default(true),
       includeProfiles: z.boolean().default(false),
-      eventLimit: z.number().int().min(1).max(50).default(20)
+      eventLimit: z.number().int().min(1).max(500).default(20)
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
@@ -1596,7 +2294,7 @@ registerTool(
         return toolResult({
           ok: false,
           status: "missing_token",
-          message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment.",
+          message: missingGitLabTokenMessage(),
           backend_status: backendStatusSnapshot({ includeCli: true })
         });
       }
@@ -1667,7 +2365,7 @@ registerTool(
     try {
       const client = createGitLabClient();
       if (!client.config.ok) {
-        return toolResult({ ok: false, status: "missing_token", message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment." });
+        return toolResult({ ok: false, status: "missing_token", message: missingGitLabTokenMessage() });
       }
       return toolResult(await client.listMergeRequests(args));
     } catch (err) { return toolError(err); }
@@ -1697,7 +2395,7 @@ registerTool(
     try {
       const client = createGitLabClient();
       if (!client.config.ok) {
-        return toolResult({ ok: false, status: "missing_token", message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment." });
+        return toolResult({ ok: false, status: "missing_token", message: missingGitLabTokenMessage() });
       }
       const result = await client.createMergeRequest(args);
       const evidence = await manager.appendEvidence({
@@ -1746,7 +2444,7 @@ registerTool(
     try {
       const client = createGitLabClient();
       if (!client.config.ok) {
-        return toolResult({ ok: false, status: "missing_token", message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment." });
+        return toolResult({ ok: false, status: "missing_token", message: missingGitLabTokenMessage() });
       }
       return toolResult(await client.ultimateGovernanceStatus({
         projectFullPath: args.projectFullPath,
@@ -1788,7 +2486,7 @@ registerTool(
         return toolResult({
           ok: false,
           status: "missing_token",
-          message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment.",
+          message: missingGitLabTokenMessage(),
           backend_status: backendStatusSnapshot({ includeCli: true })
         });
       }
@@ -2016,6 +2714,144 @@ registerTool(
         next_tools: ["hermes_wait_for_inbox", "hermes_request_assistance", "hermes_live_status", "hermes_pick_task", "hermes_get_inbox"]
       });
     } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_set_test_mode",
+  {
+    title: "Set testing mode",
+    description: "Enable or disable workspace testing mode. Testing mode makes bug-ticket intake explicit; release mode treats open blocker tickets as release risks.",
+    inputSchema: {
+      owner: Owner,
+      mode: TestModeState,
+      reason: z.string().default(""),
+      releaseBlockingOpenTickets: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await setTestModeState({
+        owner: args.owner,
+        mode: args.mode,
+        reason: args.reason || "",
+        releaseBlockingOpenTickets: args.releaseBlockingOpenTickets !== false
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_get_test_mode",
+  {
+    title: "Get testing mode",
+    description: "Read the active workspace testing/release mode flag and whether open tickets block release readiness.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async () => {
+    try {
+      return toolResult({ ok: true, workspace_root: manager.workspaceRoot, mode: await readTestMode() });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_report_bug",
+  {
+    title: "Report bug ticket",
+    description: "Create a durable workspace bug ticket from agent findings, optionally enqueueing it as a repair task for another agent.",
+    inputSchema: {
+      reporter: Owner,
+      ticketId: z.string().max(96).default(""),
+      title: z.string().min(1).max(240),
+      summary: z.string().default(""),
+      severity: BugSeverity,
+      files: z.array(z.string()).default([]),
+      reproduction: z.string().default(""),
+      expected: z.string().default(""),
+      actual: z.string().default(""),
+      evidence: z.array(z.record(z.any())).default([]),
+      tags: z.array(z.string()).default([]),
+      assignee: z.union([Owner, z.literal("")]).default(""),
+      enqueue: z.boolean().default(true),
+      priority: z.number().int().min(-1000).max(1000).default(0),
+      targetOwnerPattern: z.string().min(1).max(256).default(".*"),
+      taskId: OptionalTaskId
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await reportBugTicket(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_list_bug_tickets",
+  {
+    title: "List bug tickets",
+    description: "List active or historical workspace bug tickets, with filters for status, severity, owner, and release blockers.",
+    inputSchema: {
+      status: z.union([BugTicketStatus, z.enum(["active", "all"])]).default("active"),
+      severity: z.union([BugSeverity, z.literal("")]).default(""),
+      assignee: z.union([Owner, z.literal("")]).default(""),
+      reporter: z.union([Owner, z.literal("")]).default(""),
+      releaseBlockersOnly: z.boolean().default(false),
+      limit: z.number().int().min(1).max(500).default(100)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await listBugTickets(args || {})); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_update_bug_ticket",
+  {
+    title: "Update bug ticket",
+    description: "Triages, assigns, reopens, closes, downgrades, or annotates a workspace bug ticket with evidence.",
+    inputSchema: {
+      owner: Owner,
+      ticketId: z.string().min(1).max(96),
+      status: z.union([BugTicketStatus, z.literal("")]).default(""),
+      assignee: z.union([Owner, z.literal("")]).default(""),
+      severity: z.union([BugSeverity, z.literal("")]).default(""),
+      note: z.string().default(""),
+      tags: z.array(z.string()).default([]),
+      releaseBlocker: z.union([z.boolean(), z.null()]).default(null),
+      evidence: z.array(z.record(z.any())).default([])
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await updateBugTicket(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_submit_bug_fix",
+  {
+    title: "Submit bug fix",
+    description: "Attach a patch/fix result to a bug ticket with branch, commit, MR URL, changed files, and gate evidence for review or closure.",
+    inputSchema: {
+      owner: Owner,
+      ticketId: z.string().min(1).max(96),
+      summary: z.string().default(""),
+      branch: z.string().default(""),
+      commit: z.string().default(""),
+      mergeRequestUrl: z.string().default(""),
+      gates: z.array(z.record(z.any())).default([]),
+      files: z.array(z.string()).default([]),
+      verdict: BugFixVerdict,
+      closeTicket: z.boolean().default(false),
+      evidence: z.array(z.record(z.any())).default([])
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await submitBugFix(args)); } catch (err) { return toolError(err); }
   }
 );
 

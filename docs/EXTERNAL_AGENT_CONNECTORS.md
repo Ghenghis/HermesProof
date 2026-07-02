@@ -135,7 +135,7 @@ HermesProof can prove the workflow around Git, but it does not store GitLab cred
 For GitLab push/create-repo work, the host must provide one of:
 
 - `glab auth login`
-- `GITLAB_TOKEN` or `GLAB_TOKEN` in the process environment
+- a supported GitLab token env var or dedicated GitLab env file available to the HermesProof process
 - an existing Git credential helper entry with create/push permission
 
 Recommended release flow:

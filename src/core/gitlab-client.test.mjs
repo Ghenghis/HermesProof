@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createGitLabClient } from "./gitlab-client.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createGitLabClient, resolveGitLabConfig } from "./gitlab-client.mjs";
 
 function jsonResponse(status, body) {
   return {
@@ -12,9 +15,41 @@ function jsonResponse(status, body) {
   };
 }
 
+function isolatedEnv(values = {}) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-gitlab-env-empty-"));
+  const envPath = path.join(tmp, ".env.gitlab");
+  fs.writeFileSync(envPath, "# intentionally empty for test isolation\n");
+  return { ...values, HERMESPROOF_GITLAB_ENV_FILE: envPath };
+}
+
+test("GitLab config loads the dedicated env file safely and uses the last duplicate token", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-gitlab-env-"));
+  const envPath = path.join(tmp, ".env.gitlab");
+  fs.writeFileSync(envPath, [
+    "GITLAB_TOKEN=stale-token",
+    "GITLAB_TOKEN=fresh-token",
+    "GITLAB_BASE_URL=https://gitlab.example.test",
+    ""
+  ].join("\n"));
+
+  const config = resolveGitLabConfig({
+    env: {
+      GITLAB_TOKEN: "process-token",
+      HERMESPROOF_GITLAB_ENV_FILE: envPath
+    }
+  });
+
+  assert.equal(config.ok, true);
+  assert.equal(config.token, "fresh-token");
+  assert.equal(config.token_source, "gitlab_env_file:GITLAB_TOKEN");
+  assert.equal(config.base_url, "https://gitlab.example.test");
+  assert.equal(config.gitlab_env_file_status, "loaded");
+  assert.ok(!JSON.stringify({ ...config, token: undefined }).includes("fresh-token"));
+});
+
 test("GitLab Ultimate bootstrap dry-run produces a safe plan without API calls", async () => {
   const client = createGitLabClient({
-    env: { GITLAB_TOKEN: "token-for-test", GITLAB_BASE_URL: "https://gitlab.example.test" },
+    env: isolatedEnv({ GITLAB_TOKEN: "token-for-test", GITLAB_BASE_URL: "https://gitlab.example.test" }),
     fetchImpl: async () => {
       throw new Error("dry-run should not call GitLab");
     }
@@ -38,7 +73,7 @@ test("GitLab Ultimate bootstrap dry-run produces a safe plan without API calls",
 test("GitLab Ultimate status returns ready when governance controls are present", async () => {
   const requests = [];
   const client = createGitLabClient({
-    env: { GLAB_TOKEN: "token-for-test", GITLAB_BASE_URL: "https://gitlab.example.test" },
+    env: isolatedEnv({ GLAB_TOKEN: "token-for-test", GITLAB_BASE_URL: "https://gitlab.example.test" }),
     fetchImpl: async (url, init) => {
       requests.push({ method: init.method, path: url.pathname });
       if (init.method === "GET" && url.pathname.endsWith("/projects/Ghenghis%2FHermesProof")) {
@@ -106,7 +141,7 @@ test("GitLab Ultimate status returns ready when governance controls are present"
 test("GitLab Ultimate bootstrap preserves an existing root GitLab CI file", async () => {
   const commitBodies = [];
   const client = createGitLabClient({
-    env: { GITLAB_TOKEN: "token-for-test", GITLAB_BASE_URL: "https://gitlab.example.test" },
+    env: isolatedEnv({ GITLAB_TOKEN: "token-for-test", GITLAB_BASE_URL: "https://gitlab.example.test" }),
     fetchImpl: async (url, init) => {
       const body = init.body ? JSON.parse(init.body) : null;
       if (init.method === "PUT" && url.pathname.endsWith("/projects/Ghenghis%2FHermesProof")) {

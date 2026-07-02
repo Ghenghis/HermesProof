@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 70 MCP tools across coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 77 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -15,7 +15,8 @@ The server exposes 70 MCP tools across coordination, workspace switching, agent 
 | Evidence        | `hermes_append_evidence`, `hermes_verify_evidence`                                                                                          |
 | Events          | `hermes_list_events`, `hermes_emit_event`, `hermes_mark_event_handled`                                                                      |
 | Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`                                        |
-| Workspace       | `hermes_get_workspace`, `hermes_set_workspace`                                                                                              |
+| Workspace       | `hermes_get_workspace`, `hermes_set_workspace`, `hermes_connect_project`                                                                    |
+| Test / Tickets  | `hermes_get_test_mode`, `hermes_set_test_mode`, `hermes_report_bug`, `hermes_list_bug_tickets`, `hermes_update_bug_ticket`, `hermes_submit_bug_fix` |
 | Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
 | Backend         | `hermes_backend_status`                                                                                                                     |
 | GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`, `hermes_gitlab_ultimate_status`, `hermes_gitlab_bootstrap_ultimate` |
@@ -58,6 +59,108 @@ Switches the active workspace root for later HermesProof tool calls. The target 
 }
 ```
 
+## hermes_connect_project
+
+Switches to a workspace, optionally finds/creates the GitLab project, optionally adds or updates a local git remote, publishes the caller's agent presence, and returns inbox/live/backend status in one redacted response. Use this when an agent moves from one repo to another or joins a project after work has already started.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "workspaceRoot": "G:\\Github\\AI-CE",
+  "projectFullPath": "Ghenghis/AICE",
+  "ensureGitLabProject": false,
+  "addRemote": true,
+  "remoteName": "ghenghis-aice",
+  "remoteProtocol": "ssh",
+  "status": "idle",
+  "skills": ["code", "review", "gitlab"],
+  "taskTypes": ["release", "repair"]
+}
+```
+
+## hermes_set_test_mode
+
+Enables workspace testing mode or returns the workspace to release mode. Testing mode is project-local, so switching from HermesProof to AI-CE switches to that workspace's own mode and ticket board.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "mode": "testing",
+  "reason": "KiloCode is reporting findings during release hardening",
+  "releaseBlockingOpenTickets": true
+}
+```
+
+## hermes_get_test_mode
+
+Reads the active workspace testing/release flag and whether open tickets block release readiness.
+
+```json
+{}
+```
+
+## hermes_report_bug
+
+Creates a workspace-local bug ticket from an agent finding, emits `bug.reported`, notifies active agents, and can enqueue the ticket as a normal HermesProof repair task.
+
+```json
+{
+  "reporter": "kilocode-fix-01",
+  "ticketId": "aice-chat-scan-types",
+  "title": "AICE Chat scan type dropdown hides CE value types",
+  "severity": "high",
+  "files": ["src/aice_chat/agent_chat.py"],
+  "reproduction": "Open the panel and compare its value types to Cheat Engine.",
+  "expected": "Full CE scan type surface is available.",
+  "actual": "Only a reduced subset appears.",
+  "tags": ["aice", "scan", "ui"],
+  "enqueue": true
+}
+```
+
+## hermes_list_bug_tickets
+
+Lists active or historical tickets for the current workspace. Use this before picking work so agents can avoid duplicating each other.
+
+```json
+{
+  "status": "active",
+  "releaseBlockersOnly": true,
+  "limit": 50
+}
+```
+
+## hermes_update_bug_ticket
+
+Assigns, triages, reopens, closes, downgrades, or annotates a ticket with evidence.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "ticketId": "aice-chat-scan-types",
+  "status": "assigned",
+  "assignee": "kilocode-fix-01",
+  "note": "Take the Lua panel; Codex is handling Python normalization."
+}
+```
+
+## hermes_submit_bug_fix
+
+Attaches a fix result to a ticket with branch, commit, MR URL, changed files, and gate evidence. This does not bypass file locks or release gates; it records the fix for review.
+
+```json
+{
+  "owner": "kilocode-fix-01",
+  "ticketId": "aice-chat-scan-types",
+  "summary": "Expanded CE scan types and added proof tests.",
+  "branch": "kilocode/aice-scan-types",
+  "commit": "abc123",
+  "gates": [{ "gate": "python -m pytest", "status": "pass" }],
+  "files": ["external/cheatengine-mcp-bridge/ce_chat_panel.lua"],
+  "verdict": "submitted"
+}
+```
+
 ## hermes_backend_status
 
 Returns a redacted backend/API readiness snapshot. Secret values and private env-file paths are never returned; only env var names, booleans, and source labels are shown.
@@ -68,7 +171,7 @@ Returns a redacted backend/API readiness snapshot. Secret values and private env
 
 ## hermes_gitlab_status
 
-Checks GitLab configuration and optional API authentication with `GITLAB_TOKEN` or `GLAB_TOKEN`. Use `probe:false` for a local redacted config check without a network call.
+Checks GitLab configuration and optional API authentication with a supported GitLab token env var or the dedicated GitLab env file. Use `probe:false` for a local redacted config check without a network call.
 
 ```json
 {

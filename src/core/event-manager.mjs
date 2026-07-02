@@ -46,6 +46,11 @@ export const EVENT_TYPES = new Set([
   "gate.passed",
   "gitlab.project.ready",
   "gitlab.merge_request.ready",
+  "gitlab.ultimate.ready",
+  "mode.testing.updated",
+  "bug.reported",
+  "bug.updated",
+  "bug.fix_submitted",
   "pr.opened"
 ]);
 
@@ -55,6 +60,9 @@ export const RECOMMENDED_ACTIONS = new Set([
   "fix_scope",
   "merge",
   "review_handoff",
+  "fix_bug",
+  "review_fix",
+  "run_tests",
   "acknowledge",
   "none"
 ]);

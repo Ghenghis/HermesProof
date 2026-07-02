@@ -4,7 +4,7 @@
 <img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-seven gates sequentially" width="100%"/>
 </div>
 
-This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees. The current server surface exposes 70 MCP tools.
+This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees. The current server surface exposes 77 MCP tools.
 
 The single best diagnostic is `npm run truth-gates` — it surfaces thirty-seven independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
 

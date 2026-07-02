@@ -64,6 +64,7 @@ const V07_TOOLS = Object.freeze([
 const WORKSPACE_TOOLS = Object.freeze([
   "hermes_get_workspace",
   "hermes_set_workspace",
+  "hermes_connect_project",
 ]);
 
 const REALTIME_TOOLS = Object.freeze([
@@ -91,6 +92,12 @@ const AGENT_PROFILE_TOOLS = Object.freeze([
   "hermes_list_agent_profiles",
   "hermes_update_agent_capabilities",
   "hermes_join_project",
+  "hermes_get_test_mode",
+  "hermes_set_test_mode",
+  "hermes_report_bug",
+  "hermes_list_bug_tickets",
+  "hermes_update_bug_ticket",
+  "hermes_submit_bug_fix",
 ]);
 
 const BACKEND_GITLAB_TOOLS = Object.freeze([
@@ -763,6 +770,91 @@ test("agent profile stdio round-trip: register, filter, update capabilities, liv
     assert.equal(joined.presence.status, "idle");
     assert.equal(joined.inbox.count, 0);
     assert.equal(joined.backend_status.secret_values_returned, false);
+
+    const mode = parseToolResult(await s.call("hermes_set_test_mode", {
+      owner: "codex-join-agent",
+      mode: "testing",
+      reason: "round-trip bug-ticket intake proof",
+    }));
+    assert.equal(mode.ok, true, `set test mode failed: ${JSON.stringify(mode)}`);
+    assert.equal(mode.mode.mode, "testing");
+
+    const currentMode = parseToolResult(await s.call("hermes_get_test_mode", {}));
+    assert.equal(currentMode.ok, true);
+    assert.equal(currentMode.mode.testing_enabled, true);
+
+    const bug = parseToolResult(await s.call("hermes_report_bug", {
+      reporter: "codex-join-agent",
+      ticketId: "scan-panel-types",
+      title: "Scan panel hides full CE value types",
+      summary: "KiloCode found that the panel dropdown did not expose CE bridge scan types.",
+      severity: "high",
+      files: ["src/server.mjs"],
+      reproduction: "Open the panel and inspect the value-type dropdown.",
+      expected: "Agents can pick full CE scan types.",
+      actual: "Only a reduced subset is visible.",
+      tags: ["aice", "scan"],
+      enqueue: true,
+      targetOwnerPattern: ".*",
+      evidence: [{ kind: "screenshot", id: "local-proof" }],
+    }));
+    assert.equal(bug.ok, true, `report bug failed: ${JSON.stringify(bug)}`);
+    assert.equal(bug.ticket.ticket_id, "scan-panel-types");
+    assert.equal(bug.ticket.release_blocker, true);
+    assert.equal(bug.queued.status, "enqueued");
+
+    const tickets = parseToolResult(await s.call("hermes_list_bug_tickets", {
+      status: "active",
+      releaseBlockersOnly: true,
+    }));
+    assert.equal(tickets.ok, true);
+    assert.equal(tickets.count, 1);
+    assert.equal(tickets.tickets[0].ticket_id, "scan-panel-types");
+
+    const triaged = parseToolResult(await s.call("hermes_update_bug_ticket", {
+      owner: "codex-join-agent",
+      ticketId: "scan-panel-types",
+      status: "assigned",
+      assignee: "minimax-m3-cechat-01",
+      note: "Assign to the agent with CE chat context.",
+      tags: ["ui"],
+    }));
+    assert.equal(triaged.ok, true, `update bug failed: ${JSON.stringify(triaged)}`);
+    assert.equal(triaged.ticket.status, "assigned");
+    assert.equal(triaged.ticket.assignee, "minimax-m3-cechat-01");
+
+    const fix = parseToolResult(await s.call("hermes_submit_bug_fix", {
+      owner: "minimax-m3-cechat-01",
+      ticketId: "scan-panel-types",
+      summary: "Expanded value type workflow and added tests.",
+      branch: "codex/aice-scan-types",
+      commit: "abc123",
+      gates: [{ gate: "npm test", status: "pass" }],
+      files: ["src/server.mjs"],
+      verdict: "submitted",
+    }));
+    assert.equal(fix.ok, true, `submit bug fix failed: ${JSON.stringify(fix)}`);
+    assert.equal(fix.ticket.status, "fix_submitted");
+    assert.equal(fix.fix.commit, "abc123");
+
+    const afterTicketLive = parseToolResult(await s.call("hermes_live_status", {
+      includeEvents: true,
+      includePresence: true,
+      eventLimit: 100,
+    }));
+    const eventTypes = afterTicketLive.recent_outbox_events.map((event) => event.event_type);
+    assert.ok(eventTypes.includes("mode.testing.updated"));
+    assert.ok(eventTypes.includes("bug.reported"));
+    assert.ok(eventTypes.includes("bug.updated"));
+    assert.ok(eventTypes.includes("bug.fix_submitted"));
+
+    const releaseMode = parseToolResult(await s.call("hermes_set_test_mode", {
+      owner: "codex-join-agent",
+      mode: "release",
+      reason: "round-trip proof complete",
+    }));
+    assert.equal(releaseMode.ok, true);
+    assert.equal(releaseMode.mode.testing_enabled, false);
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });
@@ -771,9 +863,16 @@ test("agent profile stdio round-trip: register, filter, update capabilities, liv
 
 test("backend and GitLab stdio round-trip: status is redacted and missing-token paths are safe", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-backend-gitlab-"));
+  const emptyGitLabEnv = path.join(tmp, ".env.gitlab");
+  await fs.writeFile(emptyGitLabEnv, "# empty GitLab env for stdio test isolation\n");
   const s = await startServer(tmp, {
     GITLAB_TOKEN: "",
     GLAB_TOKEN: "",
+    GITLAB_ACCESS_TOKEN: "",
+    GITLAB_PRIVATE_TOKEN: "",
+    GITLAB_PAT: "",
+    GHENGHIS_GITLAB_TOKEN: "",
+    HERMESPROOF_GITLAB_ENV_FILE: emptyGitLabEnv,
     GH_TOKEN: "",
     GITHUB_TOKEN: "",
   });
@@ -793,6 +892,22 @@ test("backend and GitLab stdio round-trip: status is redacted and missing-token 
     assert.equal(status.ok, true);
     assert.equal(status.status, "missing_token");
     assert.equal(status.configured, false);
+
+    const connected = parseToolResult(await s.call("hermes_connect_project", {
+      owner: "gitlab-proof-agent",
+      workspaceRoot: tmp,
+      status: "idle",
+      skills: ["gitlab", "coordination"],
+      taskTypes: ["release"],
+      hermesproofSupplies: ["locks", "gitlab", "inbox"],
+      notes: "connect without leaking or requiring GitLab credentials",
+    }));
+    assert.equal(connected.ok, true, `connect project failed: ${JSON.stringify(connected)}`);
+    assert.equal(connected.status, "connected");
+    assert.equal(connected.gitlab_status.status, "missing_token");
+    assert.equal(connected.joined.presence.status, "idle");
+    assert.equal(connected.backend_status.secret_values_returned, false);
+    assert.ok(!JSON.stringify(connected).includes("PRIVATE-TOKEN"));
 
     const ensured = parseToolResult(await s.call("hermes_gitlab_ensure_project", {
       owner: "gitlab-proof-agent",

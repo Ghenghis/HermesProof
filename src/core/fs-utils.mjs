@@ -290,10 +290,12 @@ export function statePaths(workspaceRoot, stateDirName) {
     presenceDir: path.join(stateDir, "presence"),
     inboxDir: path.join(stateDir, "inbox"),
     agentProfilesDir: path.join(stateDir, "agent_profiles"),
+    bugTicketsDir: path.join(stateDir, "bug_tickets"),
     eventsOutboxDir: path.join(eventsDir, "outbox"),
     eventsHandledDir: path.join(eventsDir, "handled"),
     eventsFailedDir: path.join(eventsDir, "failed"),
     reviewPacketsDir: path.join(stateDir, "review_packets"),
+    testModeFile: path.join(stateDir, "test_mode.json"),
     eventsFile: path.join(stateDir, "events.ndjson"),
     evidenceFile: path.join(stateDir, "evidence", "ledger.ndjson"),
     configFile: path.join(stateDir, "config.json")
@@ -317,6 +319,7 @@ export async function initStateDirs(paths) {
   await ensureDir(paths.presenceDir);
   await ensureDir(paths.inboxDir);
   await ensureDir(paths.agentProfilesDir);
+  await ensureDir(paths.bugTicketsDir);
   await ensureDir(paths.reviewPacketsDir);
 }
 

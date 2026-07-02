@@ -1,5 +1,17 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 const DEFAULT_GITLAB_BASE_URL = "https://gitlab.com";
 const HERMESPROOF_CI_INCLUDE_PATH = ".gitlab/hermesproof-ultimate.yml";
+const GITLAB_TOKEN_ENV_NAMES = Object.freeze([
+  "GITLAB_TOKEN",
+  "GLAB_TOKEN",
+  "GITLAB_ACCESS_TOKEN",
+  "GITLAB_PRIVATE_TOKEN",
+  "GITLAB_PAT",
+  "GHENGHIS_GITLAB_TOKEN"
+]);
 
 export class GitLabHttpError extends Error {
   constructor(message, { status = 0, code = "gitlab_http_error", body = null } = {}) {
@@ -12,14 +24,72 @@ export class GitLabHttpError extends Error {
 }
 
 export function resolveGitLabConfig({ env = process.env } = {}) {
-  const tokenSource = env.GITLAB_TOKEN ? "GITLAB_TOKEN" : env.GLAB_TOKEN ? "GLAB_TOKEN" : null;
-  const baseUrl = (env.GITLAB_BASE_URL || env.GITLAB_URL || DEFAULT_GITLAB_BASE_URL).replace(/\/+$/, "");
+  const gitlabEnv = readGitLabEnvFile({ env });
+  const merged = { ...env, ...gitlabEnv.values };
+  const tokenSource = GITLAB_TOKEN_ENV_NAMES.find((name) => merged[name]) || null;
+  const baseUrl = (merged.GITLAB_BASE_URL || merged.GITLAB_URL || DEFAULT_GITLAB_BASE_URL).replace(/\/+$/, "");
   return {
     ok: Boolean(tokenSource),
     base_url: baseUrl,
-    token_source: tokenSource,
-    token: tokenSource ? env[tokenSource] : null
+    token_source: tokenSource
+      ? gitlabEnv.values[tokenSource]
+        ? `gitlab_env_file:${tokenSource}`
+        : tokenSource
+      : null,
+    token: tokenSource ? merged[tokenSource] : null,
+    gitlab_env_file_status: gitlabEnv.status,
+    gitlab_env_file_source: gitlabEnv.source
   };
+}
+
+export function readGitLabEnvFile({ env = process.env } = {}) {
+  const explicit = env.HERMESPROOF_GITLAB_ENV_FILE || env.HERMES3D_GITLAB_ENV_FILE || env.GITLAB_ENV_FILE || "";
+  const candidates = [];
+  if (explicit) {
+    candidates.push({ source: "explicit_gitlab_env_file", path: explicit });
+  }
+  if (process.platform === "win32") {
+    candidates.push({ source: "operator_default_gitlab_env_file", path: "G:\\private\\.env.gitlab" });
+  } else {
+    candidates.push({
+      source: "operator_default_gitlab_env_file",
+      path: path.join(os.homedir(), ".config", "hermes", "gitlab.env")
+    });
+  }
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate.path)) continue;
+      const values = parseGitLabEnvText(fs.readFileSync(candidate.path, "utf8"));
+      return { status: "loaded", source: candidate.source, values };
+    } catch {
+      return { status: "load_failed", source: candidate.source, values: {} };
+    }
+  }
+  return { status: "not_found", source: null, values: {} };
+}
+
+function parseGitLabEnvText(text) {
+  const values = {};
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    const key = match[1];
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (
+      GITLAB_TOKEN_ENV_NAMES.includes(key) ||
+      key === "GITLAB_BASE_URL" ||
+      key === "GITLAB_URL"
+    ) {
+      values[key] = value;
+    }
+  }
+  return values;
 }
 
 function encodePath(value) {
@@ -360,7 +430,7 @@ export function createGitLabClient({
         token_source: null,
         authenticated: false,
         identity_returned: false,
-        message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment."
+        message: "Configure a supported GitLab token env var or the dedicated GitLab env file."
       };
     }
     if (!probe) {
@@ -473,17 +543,60 @@ export function createGitLabClient({
     allowForcePush = false,
     codeOwnerApprovalRequired = true
   } = {}) {
-    const existing = await getProtectedBranch({ projectFullPath, branch });
-    const body = {
+    const listed = await listProtectedBranches(projectFullPath).catch(() => []);
+    const listedExisting = Array.isArray(listed)
+      ? listed.find((item) => item?.name === branch)
+      : null;
+    const existing = await getProtectedBranch({ projectFullPath, branch }).catch(() => null) || listedExisting;
+    const createBody = {
       allow_force_push: allowForcePush === true,
       code_owner_approval_required: codeOwnerApprovalRequired === true,
       allowed_to_push: [{ access_level: pushAccessLevel }],
       allowed_to_merge: [{ access_level: mergeAccessLevel }],
       allowed_to_unprotect: [{ access_level: unprotectAccessLevel }]
     };
+    const updateBody = {
+      allow_force_push: allowForcePush === true,
+      code_owner_approval_required: codeOwnerApprovalRequired === true
+    };
+    if (existing?.push_access_levels?.length) {
+      updateBody.allowed_to_push = existing.push_access_levels.map((level) => ({
+        id: level.id,
+        access_level: level.access_level ?? pushAccessLevel
+      })).filter((level) => level.id);
+    }
+    if (existing?.merge_access_levels?.length) {
+      updateBody.allowed_to_merge = existing.merge_access_levels.map((level) => ({
+        id: level.id,
+        access_level: level.access_level ?? mergeAccessLevel
+      })).filter((level) => level.id);
+    }
+    if (existing?.unprotect_access_levels?.length) {
+      updateBody.allowed_to_unprotect = existing.unprotect_access_levels.map((level) => ({
+        id: level.id,
+        access_level: level.access_level ?? unprotectAccessLevel
+      })).filter((level) => level.id);
+    }
     const raw = existing
-      ? await request("PATCH", `/projects/${encodePath(projectFullPath)}/protected_branches/${encodePath(branch)}`, { body })
-      : await request("POST", `/projects/${encodePath(projectFullPath)}/protected_branches`, { body: { name: branch, ...body } });
+      ? await request("PATCH", `/projects/${encodePath(projectFullPath)}/protected_branches/${encodePath(branch)}`, { body: updateBody })
+      : await request("POST", `/projects/${encodePath(projectFullPath)}/protected_branches`, { body: { name: branch, ...createBody } })
+          .catch(async (error) => {
+            if (error?.status !== 422) throw error;
+            const refreshed = await getProtectedBranch({ projectFullPath, branch })
+              .catch(async () => {
+                const refreshedList = await listProtectedBranches(projectFullPath).catch(() => []);
+                return Array.isArray(refreshedList)
+                  ? refreshedList.find((item) => item?.name === branch)
+                  : null;
+              });
+            if (!refreshed) throw error;
+            return request("PATCH", `/projects/${encodePath(projectFullPath)}/protected_branches/${encodePath(branch)}`, {
+              body: {
+                allow_force_push: allowForcePush === true,
+                code_owner_approval_required: codeOwnerApprovalRequired === true
+              }
+            });
+          });
     return {
       ok: true,
       status: existing ? "updated" : "created",
@@ -950,6 +1063,7 @@ export function createGitLabClient({
     getProject,
     ensureProject,
     updateProjectSettings,
+    listProtectedBranches,
     ultimateGovernanceStatus,
     bootstrapUltimateGovernance,
     listMergeRequests,
