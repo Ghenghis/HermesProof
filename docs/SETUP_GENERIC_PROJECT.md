@@ -77,6 +77,30 @@ npm run init-project -- `
 | `MCP_LOCK_STATE_DIR` | optional  | Override the hidden state dir name. Default: `.hermes3d_orchestrator`.     |
 | `HERMES3D_WORKSPACE` | optional  | Legacy alias for `MCP_LOCK_WORKSPACE`. Honored when the new name is unset. |
 
+### Shared install across many workspaces
+
+Keep `MCP_LOCK_WORKSPACE` pointed at a default safe repo, then switch at runtime when an agent starts work in a different project:
+
+```json
+{ "tool": "hermes_get_workspace", "arguments": {} }
+```
+
+```json
+{
+  "tool": "hermes_set_workspace",
+  "arguments": {
+    "owner": "codex-impl-01",
+    "workspaceRoot": "C:\\path\\to\\AnotherProject",
+    "reason": "Start coordinated edits in AnotherProject",
+    "allowActiveLocks": false
+  }
+}
+```
+
+After switching, call `hermes_live_status` to see active locks, stale locks, queue counts, recent outbox events, and anonymous-agent state. Agents that need low-latency handoff awareness can call `hermes_wait_for_events` with the last event id they observed.
+
+If an agent needs a locked file, call `hermes_request_unlock` with the file list and reason. HermesProof discovers the current owner, creates a handoff request, and emits a `handoff.created` event. The owner then calls `hermes_approve_handoff`; ownership transfers with evidence. Expired locks still use `hermes_recover_stale_locks` after TTL expiry.
+
 ## Per-client wiring
 
 The wizard is the recommended way to wire clients. The manual command below is

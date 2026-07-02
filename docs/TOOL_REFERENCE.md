@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 42 MCP tools across coordination, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 47 MCP tools across coordination, workspace switching, unlock requests, live status, event long-polling, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -10,11 +10,13 @@ The server exposes 42 MCP tools across coordination, gates, evidence, events, qu
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claim / release | `hermes_claim_task`, `hermes_release_task`                                                                                                  |
 | Lock            | `hermes_lock_files`, `hermes_release_files`, `hermes_heartbeat`, `hermes_list_locks`, `hermes_recover_stale_locks`                         |
-| Handoff         | `hermes_request_handoff`, `hermes_approve_handoff`, `hermes_create_blocked_handoff`                                                         |
+| Handoff         | `hermes_request_handoff`, `hermes_request_unlock`, `hermes_approve_handoff`, `hermes_create_blocked_handoff`                                 |
 | Gate            | `hermes_run_gate`, `hermes_list_gates`                                                                                                      |
 | Evidence        | `hermes_append_evidence`, `hermes_verify_evidence`                                                                                          |
 | Events          | `hermes_list_events`, `hermes_emit_event`, `hermes_mark_event_handled`                                                                      |
 | Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`                                        |
+| Workspace       | `hermes_get_workspace`, `hermes_set_workspace`                                                                                              |
+| Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
 | Diagnostics     | `hermes_get_state`, `hermes_doctor`, `hermes_read_policy`                                                                                   |
 | Anonymous       | `hermes_list_agents`, `hermes_anonymous_claim`, `hermes_anonymous_release`, `hermes_anonymous_state`, `hermes_record_outcome`, `hermes_record_task` |
 | Dispatch        | `hermes_dispatch_recommend`                                                                                                                 |
@@ -27,6 +29,27 @@ The server exposes 42 MCP tools across coordination, gates, evidence, events, qu
 ## hermes_get_state
 
 Returns active locks, tasks, handoff requests, workspace root, and state directory.
+
+## hermes_get_workspace
+
+Returns the active workspace root, state directory, registry-provider load status, environment mapping, and recent runtime workspace switches. Use this before locking files when multiple projects share one MCP server process.
+
+```json
+{}
+```
+
+## hermes_set_workspace
+
+Switches the active workspace root for later HermesProof tool calls. The target has to be an existing absolute directory. The tool writes `workspace.switch` evidence in the target workspace. If the current workspace still has active locks, the switch is rejected unless `allowActiveLocks` is explicitly true.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "workspaceRoot": "G:\\Github\\AI-CE",
+  "reason": "Coordinate Codex and KiloCode on AICE",
+  "allowActiveLocks": false
+}
+```
 
 ## hermes_claim_task
 
@@ -61,6 +84,19 @@ Asks a current owner to transfer locks.
   "currentOwner": "codex-impl-01",
   "files": ["03_implementation/ui/src/tabs/Dashboard.tsx"],
   "reason": "Reviewer needs to apply one approved patch."
+}
+```
+
+## hermes_request_unlock
+
+Creates handoff requests for locked files without requiring the requester to know the current owner first. Unlocked files and files already owned by the requester are reported separately. Owners can watch `handoff.created` through `hermes_wait_for_events` or `hermes_live_status`, then approve with `hermes_approve_handoff`.
+
+```json
+{
+  "requester": "codex-impl-01",
+  "files": ["src/example.mjs", "docs/release.md"],
+  "reason": "Need release-prep edits",
+  "taskId": "release-prep"
 }
 ```
 
@@ -110,6 +146,32 @@ Lists durable trigger-bridge events in chronological order. The event bridge is 
 ```
 
 `status` may be `outbox`, `handled`, `failed`, or `all`.
+
+## hermes_live_status
+
+Returns a compact snapshot for the active workspace: active locks, stale locks, queue counts, handoff count, recent outbox events, and anonymous-agent state. This is the quickest way for an agent to orient before claiming or editing.
+
+```json
+{
+  "includeEvents": true,
+  "includeAgents": true,
+  "eventLimit": 20
+}
+```
+
+## hermes_wait_for_events
+
+Long-polls the event outbox and returns events newer than `afterEventId`. This gives agents a request/response-friendly way to watch collaboration changes without a separate filesystem watcher.
+
+```json
+{
+  "status": "outbox",
+  "afterEventId": "evt_20260702T120000000Z_ab12cd",
+  "limit": 25,
+  "timeoutMs": 15000,
+  "pollMs": 1000
+}
+```
 
 ## hermes_emit_event
 

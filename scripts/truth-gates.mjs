@@ -303,12 +303,14 @@ const expectedTools = [
   "hermes_enqueue_task",
   "hermes_emit_event",
   "hermes_get_state",
+  "hermes_get_workspace",
   "hermes_heartbeat",
   "hermes_list_agents",
   "hermes_list_events",
   "hermes_list_gates",
   "hermes_list_locks",
   "hermes_list_pending_tasks",
+  "hermes_live_status",
   "hermes_lock_files",
   "hermes_mark_event_handled",
   "hermes_pick_task",
@@ -320,10 +322,13 @@ const expectedTools = [
   "hermes_release_files",
   "hermes_release_task",
   "hermes_request_handoff",
+  "hermes_request_unlock",
   "hermes_run_gate",
+  "hermes_set_workspace",
   "hermes_user_check_authorization",
   "hermes_user_grant_session",
   "hermes_user_revoke_session",
+  "hermes_wait_for_events",
   "hermes_verify_evidence"
 ];
 

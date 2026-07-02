@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs thirty-five independent ver
 | 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 42 MCP tools |
+| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 47 MCP tools |
 | 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -108,18 +108,20 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **42 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
+The server exposes **47 MCP tools** for coordination, workspace switching, unlock requests, live status, event long-polling, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
 LOCK            lock_files          release_files       heartbeat           list_locks
-HANDOFF         request_handoff     approve_handoff
+HANDOFF         request_handoff     request_unlock      approve_handoff
 GATE            run_gate            list_gates
 EVIDENCE        append_evidence     verify_evidence
 EVENTS          list_events         emit_event          mark_event_handled
                 create_blocked_handoff
 QUEUE           enqueue_task        list_pending_tasks  pick_task
                 recover_stale_tasks
+WORKSPACE       get_workspace       set_workspace
+REALTIME        live_status         wait_for_events
 DIAGNOSTICS     get_state           recover_stale_locks doctor              read_policy
                 list_agents
 ANONYMOUS       anonymous_claim     anonymous_release   anonymous_state
@@ -367,6 +369,39 @@ tool_timeout_sec = 60
 | `HERMES3D_WORKSPACE`   | —                        | Legacy alias for `MCP_LOCK_WORKSPACE` (still honored)              |
 | `MCP_LOCK_STATE_DIR`   | `.hermes3d_orchestrator` | Name of the state dir inside the workspace; rejects slashes / `..` |
 | `MCP_LOCK_SERVER_NAME` | `hermes3d-locks`         | Name surfaced to MCP clients (only used by `print-configs`)        |
+
+### Runtime workspace switching
+
+For multi-repo work, the MCP config can keep one default `MCP_LOCK_WORKSPACE`, then agents can switch the active root at runtime:
+
+```json
+{ "tool": "hermes_get_workspace", "arguments": {} }
+```
+
+```json
+{
+  "tool": "hermes_set_workspace",
+  "arguments": {
+    "owner": "codex-impl-01",
+    "workspaceRoot": "G:\\Github\\AI-CE",
+    "reason": "Start AICE coordination pass",
+    "allowActiveLocks": false
+  }
+}
+```
+
+`hermes_set_workspace` accepts only existing absolute directories, records `workspace.switch` evidence in the target workspace, and blocks switching away from a workspace with active locks unless `allowActiveLocks` is explicit.
+
+### Blocked-file interaction
+
+When an agent needs a locked file, use a handoff instead of editing around the lock:
+
+1. Requester calls `hermes_request_unlock` with the files and reason.
+2. Current owner watches `hermes_live_status` or `hermes_wait_for_events` for `handoff.created`.
+3. Current owner calls `hermes_approve_handoff` with the request id.
+4. HermesProof transfers lock ownership, appends evidence, and emits `handoff.approved`.
+
+Expired locks remain a separate recovery path: call `hermes_recover_stale_locks` only after TTL expiry and with a note explaining the takeover.
 
 ---
 

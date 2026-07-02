@@ -56,6 +56,16 @@ const V07_TOOLS = Object.freeze([
   "hermes_agent_revoke_session",
 ]);
 
+const WORKSPACE_TOOLS = Object.freeze([
+  "hermes_get_workspace",
+  "hermes_set_workspace",
+]);
+
+const REALTIME_TOOLS = Object.freeze([
+  "hermes_live_status",
+  "hermes_wait_for_events",
+]);
+
 async function startServer(workspaceRoot) {
   const proc = spawn(process.execPath, [SERVER], {
     env: { ...process.env, MCP_LOCK_WORKSPACE: workspaceRoot },
@@ -161,6 +171,208 @@ test("v0.7 stdio round-trip: all 18 v0.7 tools are registered with all 4 MCP ann
       if (lacking.length) missing.push(`${t.name} missing: ${lacking.join(", ")}`);
     }
     assert.equal(missing.length, 0, `annotation gaps:\n  ${missing.join("\n  ")}`);
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("workspace stdio round-trip: runtime workspace can switch safely", async () => {
+  const tmpA = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-ws-a-"));
+  const tmpB = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-ws-b-"));
+  const s = await startServer(tmpA);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of WORKSPACE_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing workspace tool: ${expected}`);
+    }
+
+    const initial = parseToolResult(await s.call("hermes_get_workspace", {}));
+    assert.equal(path.resolve(initial.workspace_root), path.resolve(tmpA));
+
+    const relativeRejected = parseToolResult(await s.call("hermes_set_workspace", {
+      owner: "rt-agent-1",
+      workspaceRoot: "relative-workspace",
+      reason: "round-trip invalid path",
+    }));
+    assert.equal(relativeRejected.ok, false);
+    assert.match(relativeRejected.message, /absolute path/i);
+
+    const switched = parseToolResult(await s.call("hermes_set_workspace", {
+      owner: "rt-agent-1",
+      workspaceRoot: tmpB,
+      reason: "round-trip workspace switch",
+    }));
+    assert.equal(switched.ok, true, `switch failed: ${JSON.stringify(switched)}`);
+    assert.equal(path.resolve(switched.workspace_root), path.resolve(tmpB));
+    assert.ok(switched.evidence?.entry_hash, "workspace switch should append proof evidence");
+
+    const state = parseToolResult(await s.call("hermes_get_state", {}));
+    assert.equal(path.resolve(state.workspace_root), path.resolve(tmpB));
+
+    const claim = parseToolResult(await s.call("hermes_claim_task", {
+      owner: "rt-agent-1",
+      taskId: "rt-workspace-switch",
+      title: "workspace switch guard",
+      files: ["README.md"],
+    }));
+    assert.equal(claim.ok, true, `claim failed: ${JSON.stringify(claim)}`);
+
+    const lock = parseToolResult(await s.call("hermes_lock_files", {
+      owner: "rt-agent-1",
+      taskId: "rt-workspace-switch",
+      files: ["README.md"],
+      reason: "prove workspace switch refuses stranded locks",
+    }));
+    assert.equal(lock.ok, true, `lock failed: ${JSON.stringify(lock)}`);
+
+    const blocked = parseToolResult(await s.call("hermes_set_workspace", {
+      owner: "rt-agent-1",
+      workspaceRoot: tmpA,
+      reason: "should be blocked by active lock",
+    }));
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.message, /active locks/i);
+
+    const release = parseToolResult(await s.call("hermes_release_files", {
+      owner: "rt-agent-1",
+      files: ["README.md"],
+      note: "workspace switch guard complete",
+    }));
+    assert.equal(release.ok, true, `release failed: ${JSON.stringify(release)}`);
+
+    const switchedBack = parseToolResult(await s.call("hermes_set_workspace", {
+      owner: "rt-agent-1",
+      workspaceRoot: tmpA,
+      reason: "round-trip switch back after release",
+    }));
+    assert.equal(switchedBack.ok, true, `switch back failed: ${JSON.stringify(switchedBack)}`);
+    assert.equal(path.resolve(switchedBack.workspace_root), path.resolve(tmpA));
+  } finally {
+    s.stop();
+    await fs.rm(tmpA, { recursive: true, force: true });
+    await fs.rm(tmpB, { recursive: true, force: true });
+  }
+});
+
+test("realtime stdio round-trip: live status and event wait observe workspace events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-live-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of REALTIME_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing realtime tool: ${expected}`);
+    }
+
+    const before = parseToolResult(await s.call("hermes_wait_for_events", {
+      status: "outbox",
+      timeoutMs: 0,
+      limit: 5,
+    }));
+    assert.equal(before.ok, true);
+
+    const emitted = parseToolResult(await s.call("hermes_emit_event", {
+      event_type: "task.enqueued",
+      task_id: "rt-live-event",
+      owner: "rt-agent-1",
+      summary: "round-trip live event",
+      next_actor: "codex",
+      recommended_action: "review_handoff",
+      payload: { source: "v07-stdio-roundtrip" },
+    }));
+    assert.equal(emitted.ok, true, `emit failed: ${JSON.stringify(emitted)}`);
+
+    const waited = parseToolResult(await s.call("hermes_wait_for_events", {
+      status: "outbox",
+      afterEventId: before.last_event_id || "",
+      timeoutMs: 1_000,
+      pollMs: 250,
+      limit: 10,
+    }));
+    assert.equal(waited.ok, true);
+    assert.equal(waited.status, "events", `wait should observe emitted event: ${JSON.stringify(waited)}`);
+    assert.ok(waited.events.some((event) => event.event_id === emitted.event.event_id));
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includeEvents: true,
+      includeAgents: false,
+      eventLimit: 10,
+    }));
+    assert.equal(live.ok, true, `live status failed: ${JSON.stringify(live)}`);
+    assert.equal(path.resolve(live.workspace_root), path.resolve(tmp));
+    assert.ok(live.outbox_event_count >= 1);
+    assert.ok(live.recent_outbox_events.some((event) => event.event_id === emitted.event.event_id));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("unlock-request stdio round-trip: requester asks, owner approves, lock transfers", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-unlock-"));
+  const s = await startServer(tmp);
+  try {
+    const claim = parseToolResult(await s.call("hermes_claim_task", {
+      owner: "rt-owner-a",
+      taskId: "rt-unlock-owner",
+      title: "own locked file",
+      files: ["src/locked.txt"],
+    }));
+    assert.equal(claim.ok, true, `claim failed: ${JSON.stringify(claim)}`);
+
+    const lock = parseToolResult(await s.call("hermes_lock_files", {
+      owner: "rt-owner-a",
+      taskId: "rt-unlock-owner",
+      files: ["src/locked.txt"],
+      reason: "prove unlock request flow",
+    }));
+    assert.equal(lock.ok, true, `lock failed: ${JSON.stringify(lock)}`);
+
+    const unlock = parseToolResult(await s.call("hermes_request_unlock", {
+      requester: "rt-owner-b",
+      taskId: "rt-unlock-requester",
+      files: ["src/locked.txt", "src/free.txt"],
+      reason: "need to finish release prep",
+    }));
+    assert.equal(unlock.ok, true, `unlock request failed: ${JSON.stringify(unlock)}`);
+    assert.equal(unlock.status, "requested");
+    assert.deepEqual(unlock.unlocked, ["src/free.txt"]);
+    assert.equal(unlock.handoff_requests.length, 1);
+    const requestId = unlock.handoff_requests[0].id;
+
+    const waited = parseToolResult(await s.call("hermes_wait_for_events", {
+      status: "outbox",
+      timeoutMs: 1_000,
+      pollMs: 250,
+      limit: 50,
+    }));
+    assert.equal(waited.ok, true);
+    assert.ok(
+      waited.events.some((event) => event.event_type === "handoff.created" && event.payload?.request_id === requestId),
+      `handoff event missing from wait result: ${JSON.stringify(waited)}`
+    );
+
+    const approved = parseToolResult(await s.call("hermes_approve_handoff", {
+      owner: "rt-owner-a",
+      requestId,
+      decision: "approve",
+      note: "transferring for release prep",
+    }));
+    assert.equal(approved.ok, true, `approval failed: ${JSON.stringify(approved)}`);
+    assert.equal(approved.status, "approved");
+
+    const locks = parseToolResult(await s.call("hermes_list_locks", {}));
+    const transferred = locks.locks.find((item) => item.file === "src/locked.txt");
+    assert.equal(transferred?.owner, "rt-owner-b", `lock did not transfer: ${JSON.stringify(locks)}`);
+
+    const release = parseToolResult(await s.call("hermes_release_files", {
+      owner: "rt-owner-b",
+      files: ["src/locked.txt"],
+      note: "unlock request flow complete",
+    }));
+    assert.equal(release.ok, true, `release failed: ${JSON.stringify(release)}`);
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

@@ -2,6 +2,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { config as loadDotenv } from "dotenv";
 import { resolveEnvFile } from "./core/env-file.mjs";
 import { HermesLockManager } from "./core/lock-manager.mjs";
@@ -38,45 +40,174 @@ maybeLoadDotenv();
 
 // Workspace resolution priority: MCP_LOCK_WORKSPACE > HERMES3D_WORKSPACE > cwd.
 // The orchestrator can be installed into any project, not just Hermes3D.
-const workspaceRoot =
+const configuredWorkspaceRoot =
   process.env.MCP_LOCK_WORKSPACE ||
   process.env.HERMES3D_WORKSPACE ||
   process.cwd();
-const stateDirName = process.env.MCP_LOCK_STATE_DIR || undefined;
-const manager = new HermesLockManager({ workspaceRoot, stateDirName });
-const gates = new GateRunner({ workspaceRoot });
-const skills = new SkillRotation({ workspaceRoot, stateDirName });
-const reputation = new ReputationTracker({ workspaceRoot, stateDirName });
-// P1-15 (audit 2026-05-03): inject the server's already-created reputation +
-// skills into CapabilityDispatch instead of letting it construct its own
-// parallel instances. This guarantees any in-memory state added later (caches,
-// mutexes, subscriptions) stays in a single instance per process.
-const dispatch = new CapabilityDispatch({ workspaceRoot, stateDirName, reputation, skills });
-const a2a = new A2AStub({ workspaceRoot, stateDirName });
-const anon = new AnonymousOrchestrator({ workspaceRoot, stateDirName });
-// Auto-load any of the 62 Continue LLM provider classes from
-// policies/provider-registry/registry.yaml. Per the user's directive: don't
-// exclude any providers. The 6 hardcoded built-ins remain the fast path; the
-// registry extends the failover chain with whatever else has API keys in env.
-const registryLoad = await loadRegistryProviders({ workspaceRoot }).catch((err) => {
-  console.error("[hermesproof] registry load failed (non-fatal):", err?.message);
-  return { ok: false, providers: [] };
-});
-const hermesAgent = new HermesAgentBridge({
-  orchestrator: anon,
-  enabled: process.env.HERMES_AGENT_ENABLED === "1",
-  scope: process.env.HERMES_AGENT_SCOPE
-    ? process.env.HERMES_AGENT_SCOPE.split(",").map((s) => s.trim()).filter(Boolean)
-    : null,
-  projectGoals: process.env.HERMES_AGENT_PROJECT_GOALS || null,
-  registryProviders: registryLoad.providers || [],
-});
-await manager.init();
-await skills.init();
-await reputation.init();
-await dispatch.init();
-await a2a.init();
-await anon.init();
+const configuredStateDirName = process.env.MCP_LOCK_STATE_DIR || undefined;
+const workspaceSwitchHistory = [];
+
+let runtime = null;
+let manager;
+let gates;
+let skills;
+let reputation;
+let dispatch;
+let a2a;
+let anon;
+let hermesAgent;
+
+async function assertExistingWorkspaceDirectory(workspaceRoot) {
+  const stat = await fs.stat(workspaceRoot).catch((err) => {
+    throw new Error(`workspaceRoot does not exist: ${workspaceRoot} (${err.code || err.message})`);
+  });
+  if (!stat.isDirectory()) {
+    throw new Error(`workspaceRoot is not a directory: ${workspaceRoot}`);
+  }
+}
+
+async function buildRuntime(workspaceRoot) {
+  const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+  const nextManager = new HermesLockManager({ workspaceRoot: resolvedWorkspaceRoot, stateDirName: configuredStateDirName });
+  const nextGates = new GateRunner({ workspaceRoot: resolvedWorkspaceRoot });
+  const nextSkills = new SkillRotation({ workspaceRoot: resolvedWorkspaceRoot, stateDirName: configuredStateDirName });
+  const nextReputation = new ReputationTracker({ workspaceRoot: resolvedWorkspaceRoot, stateDirName: configuredStateDirName });
+  // P1-15 (audit 2026-05-03): inject the server's already-created reputation +
+  // skills into CapabilityDispatch instead of letting it construct its own
+  // parallel instances. This guarantees any in-memory state added later (caches,
+  // mutexes, subscriptions) stays in a single instance per process.
+  const nextDispatch = new CapabilityDispatch({
+    workspaceRoot: resolvedWorkspaceRoot,
+    stateDirName: configuredStateDirName,
+    reputation: nextReputation,
+    skills: nextSkills
+  });
+  const nextA2a = new A2AStub({ workspaceRoot: resolvedWorkspaceRoot, stateDirName: configuredStateDirName });
+  const nextAnon = new AnonymousOrchestrator({ workspaceRoot: resolvedWorkspaceRoot, stateDirName: configuredStateDirName });
+  // Auto-load any of the 62 Continue LLM provider classes from
+  // policies/provider-registry/registry.yaml. Per the user's directive: don't
+  // exclude any providers. The 6 hardcoded built-ins remain the fast path; the
+  // registry extends the failover chain with whatever else has API keys in env.
+  const registryLoad = await loadRegistryProviders({ workspaceRoot: resolvedWorkspaceRoot }).catch((err) => {
+    console.error("[hermesproof] registry load failed (non-fatal):", err?.message);
+    return { ok: false, providers: [] };
+  });
+  const nextHermesAgent = new HermesAgentBridge({
+    orchestrator: nextAnon,
+    enabled: process.env.HERMES_AGENT_ENABLED === "1",
+    scope: process.env.HERMES_AGENT_SCOPE
+      ? process.env.HERMES_AGENT_SCOPE.split(",").map((s) => s.trim()).filter(Boolean)
+      : null,
+    projectGoals: process.env.HERMES_AGENT_PROJECT_GOALS || null,
+    registryProviders: registryLoad.providers || [],
+  });
+
+  await nextManager.init();
+  await nextSkills.init();
+  await nextReputation.init();
+  await nextDispatch.init();
+  await nextA2a.init();
+  await nextAnon.init();
+
+  return {
+    workspaceRoot: resolvedWorkspaceRoot,
+    stateDirName: nextManager.stateDirName,
+    registryProviderCount: (registryLoad.providers || []).length,
+    registryLoadOk: registryLoad.ok !== false,
+    manager: nextManager,
+    gates: nextGates,
+    skills: nextSkills,
+    reputation: nextReputation,
+    dispatch: nextDispatch,
+    a2a: nextA2a,
+    anon: nextAnon,
+    hermesAgent: nextHermesAgent,
+    activatedUtc: new Date().toISOString()
+  };
+}
+
+function workspaceSnapshot() {
+  return {
+    ok: true,
+    workspace_root: runtime?.workspaceRoot || null,
+    state_dir: manager?.paths?.stateDir || null,
+    state_dir_name: runtime?.stateDirName || null,
+    registry_provider_count: runtime?.registryProviderCount || 0,
+    registry_load_ok: runtime?.registryLoadOk === true,
+    activated_utc: runtime?.activatedUtc || null,
+    env_vars_used: {
+      MCP_LOCK_WORKSPACE: process.env.MCP_LOCK_WORKSPACE || null,
+      HERMES3D_WORKSPACE: process.env.HERMES3D_WORKSPACE || null,
+      MCP_LOCK_STATE_DIR: process.env.MCP_LOCK_STATE_DIR || null
+    },
+    recent_workspace_switches: workspaceSwitchHistory.slice(-10)
+  };
+}
+
+async function activateWorkspace(
+  workspaceRoot,
+  { owner = "system", reason = "startup", validateExists = false, allowActiveLocks = false } = {}
+) {
+  const raw = String(workspaceRoot || "").trim();
+  if (!raw) throw new Error("workspaceRoot is required");
+  if (validateExists && !path.isAbsolute(raw)) {
+    throw new Error(`workspaceRoot must be an absolute path for runtime switching: ${raw}`);
+  }
+  const resolvedWorkspaceRoot = path.resolve(raw);
+  if (validateExists) await assertExistingWorkspaceDirectory(resolvedWorkspaceRoot);
+
+  const previousWorkspaceRoot = runtime?.workspaceRoot || null;
+  if (
+    validateExists &&
+    previousWorkspaceRoot &&
+    previousWorkspaceRoot !== resolvedWorkspaceRoot &&
+    manager &&
+    !allowActiveLocks
+  ) {
+    const activeLocks = await manager.listLocks();
+    if (activeLocks.count > 0) {
+      throw new Error(
+        `active locks exist in current workspace ${previousWorkspaceRoot}; release them or pass allowActiveLocks=true`
+      );
+    }
+  }
+  const nextRuntime = await buildRuntime(resolvedWorkspaceRoot);
+  runtime = nextRuntime;
+  manager = nextRuntime.manager;
+  gates = nextRuntime.gates;
+  skills = nextRuntime.skills;
+  reputation = nextRuntime.reputation;
+  dispatch = nextRuntime.dispatch;
+  a2a = nextRuntime.a2a;
+  anon = nextRuntime.anon;
+  hermesAgent = nextRuntime.hermesAgent;
+  process.env.MCP_LOCK_WORKSPACE = resolvedWorkspaceRoot;
+
+  const entry = {
+    ts_utc: new Date().toISOString(),
+    owner,
+    reason,
+    previous_workspace_root: previousWorkspaceRoot,
+    workspace_root: resolvedWorkspaceRoot
+  };
+  workspaceSwitchHistory.push(entry);
+  if (workspaceSwitchHistory.length > 25) workspaceSwitchHistory.shift();
+
+  return {
+    ok: true,
+    status: previousWorkspaceRoot === resolvedWorkspaceRoot ? "unchanged" : "switched",
+    previous_workspace_root: previousWorkspaceRoot,
+    workspace_root: resolvedWorkspaceRoot,
+    state_dir: manager.paths.stateDir,
+    state_dir_name: nextRuntime.stateDirName,
+    registry_provider_count: nextRuntime.registryProviderCount,
+    registry_load_ok: nextRuntime.registryLoadOk,
+    reason,
+    recent_workspace_switches: workspaceSwitchHistory.slice(-10)
+  };
+}
+
+await activateWorkspace(configuredWorkspaceRoot, { owner: "system", reason: "startup", validateExists: false });
 
 const server = new McpServer({
   name: "hermes3d-lock-orchestrator",
@@ -91,6 +222,7 @@ const Owner = z
   .describe("Unique agent/session owner, e.g. claude-lead, codex-impl-01, windsurf-cascade.");
 
 const Files = z.array(z.string().min(1)).min(1).describe("Workspace-relative file paths to lock, release, or hand off.");
+const WorkspaceRoot = z.string().min(1).describe("Absolute local workspace directory to govern with HermesProof locks.");
 const JsonObject = z.record(z.any()).optional().default({});
 const EventStatus = z.enum(["outbox", "handled", "failed", "all"]).default("outbox");
 const EventType = z.enum([
@@ -131,6 +263,19 @@ function toolError(err) {
   return toolResult({ ok: false, status: "error", message: err?.message || String(err) });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function queueCounts(queue) {
+  return {
+    pending: queue?.pending?.length || 0,
+    claimed: queue?.claimed?.length || 0,
+    blocked: queue?.blocked?.length || 0,
+    done: queue?.done?.length || 0
+  };
+}
+
 // Tool registration helper. Uses registerTool when available so we can declare
 // annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint)
 // per MCP spec 2025-11-25; falls back to legacy server.tool() shape if not.
@@ -161,6 +306,95 @@ registerTool(
   },
   async () => {
     try { return toolResult(await manager.getStateSummary()); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_get_workspace",
+  {
+    title: "Get active workspace",
+    description: "Read the active workspace root, state directory, environment mapping, and recent runtime workspace switches.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async () => {
+    try { return toolResult(workspaceSnapshot()); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_set_workspace",
+  {
+    title: "Set active workspace",
+    description: "Switch the active workspace root for subsequent HermesProof tool calls. The target path has to be an existing absolute directory.",
+    inputSchema: {
+      owner: Owner.default("agent"),
+      workspaceRoot: WorkspaceRoot,
+      reason: z.string().default(""),
+      allowActiveLocks: z.boolean().default(false)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try {
+      const result = await activateWorkspace(args.workspaceRoot, {
+        owner: args.owner,
+        reason: args.reason || "runtime workspace switch",
+        validateExists: true,
+        allowActiveLocks: args.allowActiveLocks === true
+      });
+      const evidence = await manager.appendEvidence({
+        owner: args.owner,
+        kind: "workspace.switch",
+        summary: `HermesProof workspace ${result.status}: ${result.workspace_root}`,
+        data: {
+          previous_workspace_root: result.previous_workspace_root,
+          workspace_root: result.workspace_root,
+          reason: result.reason,
+          allow_active_locks: args.allowActiveLocks === true
+        }
+      });
+      return toolResult({ ...result, evidence: evidence.evidence });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_live_status",
+  {
+    title: "Live coordination status",
+    description: "Read a compact coordination snapshot for the active workspace: locks, stale locks, queue counts, outbox events, and anonymous-agent state.",
+    inputSchema: {
+      includeEvents: z.boolean().default(true),
+      includeAgents: z.boolean().default(true),
+      eventLimit: z.number().int().min(1).max(50).default(20)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const [state, events, agentState] = await Promise.all([
+        manager.getStateSummary(),
+        args?.includeEvents === false ? null : manager.listEvents({ status: "outbox", limit: args?.eventLimit || 20 }),
+        args?.includeAgents === false ? null : anon.getState()
+      ]);
+      const staleLocks = state.locks.filter((lock) => lock.is_stale);
+      return toolResult({
+        ok: true,
+        workspace_root: state.workspace_root,
+        state_dir: state.state_dir,
+        active_lock_count: state.locks.length,
+        stale_lock_count: staleLocks.length,
+        stale_locks: staleLocks,
+        queue_counts: queueCounts(state.queue),
+        handoff_count: state.handoffs.length,
+        task_count: state.tasks.length,
+        outbox_event_count: events?.count || 0,
+        recent_outbox_events: events?.events || [],
+        anonymous_agents: agentState || null,
+        workspace: workspaceSnapshot()
+      });
+    } catch (err) { return toolError(err); }
   }
 );
 
@@ -287,6 +521,84 @@ registerTool(
 );
 
 registerTool(
+  "hermes_request_unlock",
+  {
+    title: "Request unlock",
+    description: "Create handoff requests for locked files without requiring the requester to know each current owner first.",
+    inputSchema: {
+      requester: Owner,
+      files: Files,
+      reason: z.string().default(""),
+      taskId: OptionalTaskId
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const requestedFiles = manager.normalizeFiles(args.files);
+      const locks = await manager.listLocks();
+      const locksByFile = new Map(locks.locks.map((lock) => [lock.file, lock]));
+      const unlocked = [];
+      const ownedByRequester = [];
+      const lockedByOwner = new Map();
+      const staleLocked = [];
+
+      for (const file of requestedFiles) {
+        const lock = locksByFile.get(file);
+        if (!lock) {
+          unlocked.push(file);
+          continue;
+        }
+        if (lock.owner === args.requester) {
+          ownedByRequester.push(file);
+          continue;
+        }
+        if (lock.is_stale) staleLocked.push(lock);
+        const group = lockedByOwner.get(lock.owner) || [];
+        group.push(file);
+        lockedByOwner.set(lock.owner, group);
+      }
+
+      const handoffRequests = [];
+      const failures = [];
+      for (const [currentOwner, files] of lockedByOwner.entries()) {
+        const result = await manager.requestHandoff({
+          requester: args.requester,
+          currentOwner,
+          files,
+          reason: args.reason || "unlock requested",
+          taskId: args.taskId || ""
+        });
+        if (result.ok) handoffRequests.push(result.handoff);
+        else failures.push({ current_owner: currentOwner, files, result });
+      }
+
+      const status = failures.length
+        ? "partial"
+        : handoffRequests.length
+          ? "requested"
+          : "not_needed";
+      return toolResult({
+        ok: failures.length === 0,
+        status,
+        workspace_root: manager.workspaceRoot,
+        requested_files: requestedFiles,
+        unlocked,
+        owned_by_requester: ownedByRequester,
+        stale_locked: staleLocked,
+        handoff_requests: handoffRequests,
+        failures,
+        next_tools: handoffRequests.length
+          ? ["hermes_wait_for_events", "hermes_approve_handoff"]
+          : staleLocked.length
+            ? ["hermes_recover_stale_locks"]
+            : []
+      });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_approve_handoff",
   {
     title: "Approve or deny handoff",
@@ -334,6 +646,62 @@ registerTool(
   },
   async (args) => {
     try { return toolResult(await manager.listEvents(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_wait_for_events",
+  {
+    title: "Wait for events",
+    description: "Long-poll the active workspace event outbox and return events newer than an optional event id.",
+    inputSchema: {
+      status: EventStatus,
+      afterEventId: z.string().default(""),
+      limit: z.number().int().min(1).max(100).default(25),
+      timeoutMs: z.number().int().min(0).max(55_000).default(15_000),
+      pollMs: z.number().int().min(250).max(5_000).default(1_000)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const status = args?.status || "outbox";
+      const limit = Math.max(1, Math.min(100, Number(args?.limit || 25)));
+      const afterEventId = String(args?.afterEventId || "");
+      const timeoutMs = Math.max(0, Math.min(55_000, Number(args?.timeoutMs || 15_000)));
+      const pollMs = Math.max(250, Math.min(5_000, Number(args?.pollMs || 1_000)));
+      const deadline = Date.now() + timeoutMs;
+      let listed = null;
+      let events = [];
+
+      do {
+        listed = await manager.listEvents({ status, limit: 500 });
+        events = listed.events || [];
+        if (afterEventId) {
+          const index = events.findIndex((event) => event.event_id === afterEventId);
+          events = index >= 0
+            ? events.slice(index + 1)
+            : events.filter((event) => String(event.event_id || "") > afterEventId);
+        }
+        if (events.length || Date.now() >= deadline) break;
+        await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
+      } while (Date.now() <= deadline);
+
+      const limitedEvents = events.slice(0, limit);
+      return toolResult({
+        ok: true,
+        status: limitedEvents.length ? "events" : "timeout",
+        workspace_root: manager.workspaceRoot,
+        event_status: status,
+        count: limitedEvents.length,
+        total_seen: listed?.count || 0,
+        after_event_id: afterEventId || null,
+        last_event_id: limitedEvents.at(-1)?.event_id || afterEventId || null,
+        timeout_ms: timeoutMs,
+        poll_ms: pollMs,
+        events: limitedEvents
+      });
+    } catch (err) { return toolError(err); }
   }
 );
 

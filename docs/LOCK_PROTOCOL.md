@@ -28,10 +28,25 @@ No agent edits a file unless it owns the lock for that file. The server enforces
 1. Agent tries hermes_lock_files.
 2. Server returns blocked with current_owner.
 3. Agent stops. No edit.
-4. Agent calls hermes_request_handoff.
-5. Current owner approves or denies via hermes_approve_handoff.
+4. Agent calls hermes_request_unlock with files + reason.
+5. HermesProof discovers owners and emits handoff.created events.
+6. Current owner approves or denies via hermes_approve_handoff.
+7. If approved, ownership transfers.
+8. If denied, requester must choose another file/task.
+```
+
+`hermes_request_handoff` remains available when the requester already knows the exact current owner and wants the lower-level call.
+
+## Live interaction loop
+
+```text
+1. Agent calls hermes_live_status before work to see locks, queue, handoffs, and recent events.
+2. Agent claims and locks files.
+3. If blocked, requester calls hermes_request_unlock.
+4. Owner watches hermes_wait_for_events after its last seen event id.
+5. Owner approves with hermes_approve_handoff or denies with a note.
 6. If approved, ownership transfers.
-7. If denied, requester must choose another file/task.
+7. Requester resumes after hermes_wait_for_events reports handoff.approved.
 ```
 
 ## Stale lock lifecycle
