@@ -14,7 +14,7 @@ adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 - Redacted backend/GitLab tools: `hermes_backend_status`, `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`, `hermes_gitlab_ultimate_status`, and `hermes_gitlab_bootstrap_ultimate` make GitLab project/MR and last-day Ultimate governance capture first-class without returning token values or private env-file paths.
 - External agent connector guidance for Cheat Engine Chat + MiniMax M3, including a reusable profile example and standing prompt that route high-trust host access through HermesProof locks, gates, inboxes, and evidence.
 - Runtime agent profile tools: `hermes_register_agent_profile`, `hermes_get_agent_profile`, `hermes_list_agent_profiles`, `hermes_update_agent_capabilities`, and `hermes_join_project` persist structured host/capability profiles under the workspace state database and let late-joining agents hydrate current project state.
-- Truth-gate and stdio round-trip coverage for the expanded 70-tool MCP surface, including dynamic workspace switching, active-lock guard behavior, live event observation, unlock handoff transfer, assistance routing, GitLab status/project/MR paths, profiles, presence, inbox acknowledgement, skills routing, and completion release.
+- Truth-gate and stdio round-trip coverage for the expanded 77-tool MCP surface, including dynamic workspace switching, composite project connection, workspace testing mode, bug tickets, bug-fix submission, active-lock guard behavior, live event observation, unlock handoff transfer, assistance routing, GitLab status/project/MR paths, profiles, presence, inbox acknowledgement, skills routing, and completion release.
 
 ## [0.6.0] — 2026-05-03
 

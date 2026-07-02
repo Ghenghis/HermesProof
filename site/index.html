@@ -5,7 +5,7 @@
 <meta http-equiv="x-ua-compatible" content="ie=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>HermesProof — verifiable multi-agent coordination over MCP</title>
-<meta name="description" content="HermesProof is the file-lock, proof, and passive trigger-bridge layer that lets Claude, Codex, Windsurf and Cascade collaborate on the same repository without clobbering each other. Per-file locks, atomic handoffs, allowlisted gates, hash-chained evidence ledger, durable event outbox, durable task queue, Sigstore-signed proof, and a 17-gate truth bundle re-attested on every push." />
+<meta name="description" content="HermesProof is the file-lock, proof, and passive trigger-bridge layer that lets Claude, Codex, Windsurf and Cascade collaborate on the same repository without clobbering each other. Per-file locks, atomic handoffs, allowlisted gates, hash-chained evidence ledger, durable event outbox, durable task queue, GitLab-aware project coordination, workspace tickets, and a 37-gate truth bundle re-attested on every push." />
 <meta name="theme-color" content="#0a0e27" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="HermesProof — verifiable multi-agent coordination over MCP" />
@@ -52,8 +52,8 @@
 <!-- ============================================================ HERO -->
 <section class="hero container">
   <div class="hero__pills reveal">
-    <span class="pill pill--green"><span class="dot"></span>truth-gates 17 / 17 PASS</span>
-    <span class="pill pill--purple"><span class="dot"></span>24 MCP tools</span>
+    <span class="pill pill--green"><span class="dot"></span>truth-gates 31 pass / 0 fail</span>
+    <span class="pill pill--purple"><span class="dot"></span>77 MCP tools</span>
     <span class="pill pill--cyan"><span class="dot"></span>4 clients wired</span>
     <span class="pill pill--pink"><span class="dot"></span>Sigstore-signed proof</span>
   </div>
@@ -126,7 +126,7 @@
     <div class="card card--pink reveal">
       <div class="card__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
       <h3>Truth-gate proof bundle</h3>
-      <p>Nine independent verifications run on every push. If any required gate fails, CI fails. If all pass, a fresh <code>PROOF/latest.json</code> is committed back. The repo proves itself.</p>
+      <p>Thirty-seven verification rows run on every push. If any required gate fails, CI fails. If all pass, a fresh <code>PROOF/latest.json</code> is committed back. The repo proves itself.</p>
     </div>
   </div>
 </section>
@@ -156,7 +156,7 @@
       <ul style="font-family: var(--mono); font-size: 13px; color: var(--text-dim); list-style: none; padding: 0;">
         <li><span style="color: var(--green-2);">events.ndjson</span> — every state change appended</li>
         <li><span style="color: var(--green-2);">evidence/ledger.ndjson</span> — gates · attestations · timestamps</li>
-        <li><span style="color: var(--purple-2);">PROOF/latest.json</span> — 9-gate truth bundle</li>
+        <li><span style="color: var(--purple-2);">PROOF/latest.json</span> — 37-gate truth bundle</li>
         <li><span style="color: var(--cyan-2);">PROOF_E2E_REPORT.md</span> — human-readable summary</li>
       </ul>
     </div>
@@ -179,11 +179,11 @@
 <section id="gates" class="container">
   <div class="section-head reveal">
     <span class="kicker">Truth gates</span>
-    <h2>Nine independent attestations. One exit code.</h2>
-    <p><code>npm run truth-gates</code> runs seventeen verifications in sequence. <strong>Exit 0 only when every required gate passes.</strong> Output is structured (<code>PROOF/latest.json</code>) and human-readable (<code>PROOF_E2E_REPORT.md</code>).</p>
+    <h2>Thirty-seven verifications. One exit code.</h2>
+    <p><code>npm run truth-gates</code> runs thirty-seven verification rows in sequence. <strong>Exit 0 only when every required gate passes.</strong> Output is structured (<code>PROOF/latest.json</code>) and human-readable (<code>PROOF_E2E_REPORT.md</code>).</p>
   </div>
   <div class="diagram reveal">
-    <img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline animation showing nine gates running sequentially" />
+    <img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline animation showing thirty-seven gates running sequentially" />
   </div>
 
   <div class="gates" style="margin-top: 32px;">
@@ -203,13 +203,13 @@
       <div class="gate__num">03</div>
       <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       <h4>tests.unit</h4>
-      <p>All 12 unit tests pass via direct <code>node --test</code>. We bypass <code>npm test</code> so reporter output isn't lost in pipe routing.</p>
+      <p>All required Node tests pass via direct <code>node --test</code>; current proof reports 308 pass, 0 fail, and 1 skip.</p>
     </div>
     <div class="gate reveal">
       <div class="gate__num">04</div>
       <div class="gate__check"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       <h4>server.stdio_handshake</h4>
-      <p>Real <code>node src/server.mjs</code> spawns. Performs MCP <code>initialize</code> and <code>tools/list</code>. Returns 24 named tools.</p>
+      <p>Real <code>node src/server.mjs</code> spawns. Performs MCP <code>initialize</code> and <code>tools/list</code>. Returns the exact 77-tool surface.</p>
     </div>
     <div class="gate reveal">
       <div class="gate__num">05</div>
@@ -256,8 +256,8 @@
   </div>
   <div class="grid-3 reveal" style="margin-top: 2rem;">
     <div class="card">
-      <h4>4 new MCP tools</h4>
-      <p><code>hermes_emit_event</code> · <code>hermes_list_events</code> · <code>hermes_mark_event_handled</code> · <code>hermes_create_blocked_handoff</code> — v0.4 brought the total to <strong>20</strong>; v0.5's queue tools push it to <strong>24</strong>.</p>
+      <h4>Durable event tools</h4>
+      <p><code>hermes_emit_event</code> · <code>hermes_list_events</code> · <code>hermes_mark_event_handled</code> · <code>hermes_create_blocked_handoff</code> remain the passive trigger core; the current server exposes <strong>77</strong> tools across locks, projects, tickets, agents, GitLab, gates, and proof.</p>
     </div>
     <div class="card">
       <h4>3 watcher modes</h4>
@@ -278,8 +278,8 @@
 <section id="architecture" class="container">
   <div class="section-head reveal">
     <span class="kicker">Architecture</span>
-    <h2>One stdio process. Twenty-four tools. Five persistence surfaces.</h2>
-    <p>HermesProof is intentionally small — a single Node process per workspace that speaks JSON-RPC over stdio. Its only side effects are inside one hidden directory: locks, tasks, handoffs, evidence, events.</p>
+    <h2>One stdio process. Seventy-seven tools. Workspace-local state.</h2>
+    <p>HermesProof is intentionally small at runtime: a single Node process per workspace that speaks JSON-RPC over stdio. Its side effects stay inside one hidden directory: locks, tasks, handoffs, evidence, events, agent state, testing mode, and bug tickets.</p>
   </div>
   <div class="diagram reveal">
     <img src="./diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" />
@@ -318,6 +318,30 @@
       <h4>DIAGNOSTICS</h4>
       <ul><li>hermes_get_state</li><li>hermes_list_locks</li><li>hermes_recover_stale_locks</li><li>hermes_doctor</li><li>hermes_read_policy</li></ul>
     </div>
+    <div class="tool-group reveal">
+      <h4>WORKSPACE / PROJECT</h4>
+      <ul><li>hermes_get_workspace</li><li>hermes_set_workspace</li><li>hermes_connect_project</li><li>hermes_join_project</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>LIVE / INBOX</h4>
+      <ul><li>hermes_live_status</li><li>hermes_wait_for_events</li><li>hermes_update_presence</li><li>hermes_send_message</li><li>hermes_wait_for_inbox</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>TICKETS / MODE</h4>
+      <ul><li>hermes_set_test_mode</li><li>hermes_get_test_mode</li><li>hermes_report_bug</li><li>hermes_list_bug_tickets</li><li>hermes_submit_bug_fix</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>GITLAB / BACKEND</h4>
+      <ul><li>hermes_backend_status</li><li>hermes_gitlab_status</li><li>hermes_gitlab_ensure_project</li><li>hermes_gitlab_create_merge_request</li><li>hermes_gitlab_bootstrap_ultimate</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>AGENT ROUTING</h4>
+      <ul><li>hermes_register_agent_profile</li><li>hermes_find_agents</li><li>hermes_request_assistance</li><li>hermes_record_task</li><li>hermes_dispatch_recommend</li></ul>
+    </div>
+    <div class="tool-group reveal">
+      <h4>A2A / USER / BRIDGE</h4>
+      <ul><li>hermes_a2a_create_task</li><li>hermes_anonymous_claim</li><li>hermes_user_grant_session</li><li>hermes_agent_health</li><li>hermes_agent_request_user_session</li></ul>
+    </div>
   </div>
 
   <div style="margin-top: 40px;" class="reveal">
@@ -329,6 +353,10 @@
 │       └── metadata.json       <span style="color: var(--text-faint)">{ owner, role, ttl, claimedAt, lastHeartbeat }</span>
 ├── tasks/                      <span style="color: var(--text-faint)">active task records by id</span>
 ├── handoffs/                   <span style="color: var(--text-faint)">pending + decided handoff requests</span>
+├── bug_tickets/                <span style="color: var(--text-faint)">workspace bugs, fixes, reviewers, and evidence</span>
+├── agent_profiles/             <span style="color: var(--text-faint)">late-joining agent capability profiles</span>
+├── inbox/                      <span style="color: var(--text-faint)">durable agent-to-agent messages</span>
+├── test_mode.json              <span style="color: var(--text-faint)">workspace testing/release mode flag</span>
 ├── evidence/
 │   └── ledger.ndjson           <span style="color: var(--text-faint)">append-only attestation log</span>
 └── events.ndjson               <span style="color: var(--text-faint)">append-only event stream</span></pre></div>
@@ -483,8 +511,8 @@
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 17/17 gates against your machine
-npm test                                                           # 12 unit tests
+npm run truth-gates                                                # required gates against your machine
+npm test                                                           # full Node test suite
 npm run doctor -- --workspace G:\Github\my-project                 # readiness probe (read-only) — change path to YOUR repo
 
 npm run init-project    -- --workspace G:\Github\my-project
@@ -497,8 +525,8 @@ claude mcp list                                                    # expect "her
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 17/17 gates against your machine
-npm test                                                           # 12 unit tests
+npm run truth-gates                                                # required gates against your machine
+npm test                                                           # full Node test suite
 npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
 
 npm run init-project    -- --workspace ~/projects/your-repo
@@ -511,8 +539,8 @@ claude mcp list                                                    # expect "her
 cd HermesProof
 npm install
 
-npm run truth-gates                                                # 17/17 gates against your machine
-npm test                                                           # 12 unit tests
+npm run truth-gates                                                # required gates against your machine
+npm test                                                           # full Node test suite
 npm run doctor -- --workspace ~/projects/your-repo                 # readiness probe (read-only)
 
 npm run init-project    -- --workspace ~/projects/your-repo
@@ -592,14 +620,14 @@ tool_timeout_sec = 60
 <section id="stats" class="container">
   <div class="section-head reveal">
     <span class="kicker">By the numbers</span>
-    <h2>Small surface. Strong guarantees.</h2>
+    <h2>Focused runtime. Strong guarantees.</h2>
   </div>
   <div class="stats">
-    <div class="stat reveal"><div class="stat__num"><span data-count-to="17">0</span></div><div class="stat__label">Truth gates</div></div>
-    <div class="stat reveal"><div class="stat__num"><span data-count-to="24">0</span></div><div class="stat__label">MCP tools</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="37">0</span></div><div class="stat__label">Truth gates</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="77">0</span></div><div class="stat__label">MCP tools</div></div>
     <div class="stat reveal"><div class="stat__num"><span data-count-to="4">0</span></div><div class="stat__label">Clients wired</div></div>
-    <div class="stat reveal"><div class="stat__num"><span data-count-to="14.2" data-decimals="1" data-suffix="s">0</span></div><div class="stat__label">Full proof time</div></div>
-    <div class="stat reveal"><div class="stat__num"><span data-count-to="12">0</span></div><div class="stat__label">Unit tests</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="48.5" data-decimals="1" data-suffix="s">0</span></div><div class="stat__label">Full proof time</div></div>
+    <div class="stat reveal"><div class="stat__num"><span data-count-to="308">0</span></div><div class="stat__label">Passing tests</div></div>
     <div class="stat reveal"><div class="stat__num"><span data-count-to="14">0</span></div><div class="stat__label">E2E assertions</div></div>
     <div class="stat reveal"><div class="stat__num"><span data-count-to="90" data-suffix="m">0</span></div><div class="stat__label">Default lock TTL</div></div>
     <div class="stat reveal"><div class="stat__num"><span data-count-to="0">0</span></div><div class="stat__label">Shell injections</div></div>
