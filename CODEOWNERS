@@ -1,0 +1,10 @@
+# CODEOWNERS managed by HermesProof
+# Keep this file on the default branch before opening release merge requests.
+
+* @Ghenghis
+/src/ @Ghenghis
+/scripts/ @Ghenghis
+/docs/ @Ghenghis
+/.gitlab-ci.yml @Ghenghis
+/CODEOWNERS @Ghenghis
+/PROOF/ @Ghenghis

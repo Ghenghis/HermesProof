@@ -1,0 +1,3 @@
+# GitLab CI managed by HermesProof
+include:
+  - local: .gitlab/hermesproof-ultimate.yml

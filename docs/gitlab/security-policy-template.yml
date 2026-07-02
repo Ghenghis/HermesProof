@@ -1,0 +1,35 @@
+# GitLab security policy template captured by HermesProof
+# Link this file from a GitLab Security Policy Project while Ultimate is active.
+scan_execution_policy:
+  - name: HermesProof required MR scans
+    description: Run SAST, secret detection, and dependency scanning on merge requests.
+    enabled: true
+    rules:
+      - type: pipeline
+        branches:
+          - main
+    actions:
+      - scan: sast
+      - scan: secret_detection
+      - scan: dependency_scanning
+approval_policy:
+  - name: HermesProof block critical security findings
+    description: Require approval before merging critical/high new security findings.
+    enabled: true
+    rules:
+      - type: scan_finding
+        scanners: []
+        vulnerabilities_allowed: 0
+        severity_levels:
+          - critical
+          - high
+        vulnerability_states:
+          - newly_detected
+    actions:
+      - type: require_approval
+        approvals_required: 1
+        role_approvers:
+          - maintainer
+    approval_settings:
+      block_branch_modification: true
+# Target project: Ghenghis/HermesProof
