@@ -423,6 +423,7 @@ When a task needs a different skill, call `hermes_find_agents` with `requiredSki
 - **[`docs/EVENT_SCHEMA.md`](./docs/EVENT_SCHEMA.md)** — trigger bridge event envelope, lifecycle, concurrency, and retention
 - **[`docs/SECURITY_POLICY.md`](./docs/SECURITY_POLICY.md)** — what the server will and will not do, threat model, allowlist
 - **[`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md)** — composing with filesystem MCP, Codex bridges, claude-flow
+- **[`docs/EXTERNAL_AGENT_CONNECTORS.md`](./docs/EXTERNAL_AGENT_CONNECTORS.md)** — wiring external agents such as Cheat Engine Chat + MiniMax M3
 - **[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)** — repair scripts, debugging recipes, release checklist
 - **[`docs/SETUP_CLAUDE_DESKTOP.md`](./docs/SETUP_CLAUDE_DESKTOP.md)** · **[`docs/SETUP_CLAUDE_CODE.md`](./docs/SETUP_CLAUDE_CODE.md)** · **[`docs/SETUP_CODEX.md`](./docs/SETUP_CODEX.md)** · **[`docs/SETUP_WINDSURF.md`](./docs/SETUP_WINDSURF.md)**
 - **[`docs/SETUP_GENERIC_PROJECT.md`](./docs/SETUP_GENERIC_PROJECT.md)** — install into any repo (not just Hermes3D)

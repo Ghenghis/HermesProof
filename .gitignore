@@ -55,5 +55,6 @@ handoffs/STREAM/backups/
 .env_old
 secrets.txt
 secrets.json
-G_private/  # never check in shadows of G:\private\
+# Never check in shadows of G:\private\.
+G_private/
 private_keys/

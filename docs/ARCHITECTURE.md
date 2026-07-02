@@ -95,6 +95,8 @@ The reference deployment splits responsibility three ways:
 | --- | --- | --- | --- |
 | Claude Lead (architect) | docs, contracts, scope locks, review prompts | code (read-only) | `claim_task`, `lock_files`, `append_evidence` |
 | Codex (implementer) | code (`.tsx`, `.ts`, `.py`, `.mjs`, …) | docs, contracts (read-only) | full coordination + `run_gate` |
+| KiloCode / Windsurf | IDE-side repairs, local verification | owned task context | full coordination + inbox |
+| MiniMax M3 in Cheat Engine Chat | user-granted host work such as code, docs, tests, git operations | workspace and inbox | full coordination + external host tools |
 | Claude Reviewer | correction packets, review notes | everything (read-only by default) | `request_handoff` for surgical patches |
 
 The coordination contract: *no agent edits a file unless it owns the lock or holds an approved handoff*. This is enforced by the server, not by convention.

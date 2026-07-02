@@ -18,6 +18,7 @@ Every MCP-capable agent that touches the project should see these three classes 
 2. **A filesystem MCP** — gives agents read/write access to the workspace.
 3. **A Codex bridge** — only if you want Claude → Codex hand-offs in the same session.
 4. **An optional event watcher** — only if you want review packets, webhook posts, or external routing based on HermesProof events.
+5. **Optional external agent hosts** — Cheat Engine Chat, Devin-like workers, or any other host that can call MCP and has user-granted filesystem/shell/git access.
 
 Everything below explains how each external piece fits with `hermes3d-locks` without weakening its safety guarantees.
 
@@ -113,7 +114,23 @@ The same lock discipline applies: every Codex-driven edit must funnel through th
 
 ---
 
-## 4. Swarm orchestrator — `ruvnet/claude-flow`
+## 4. External agent host — Cheat Engine Chat + MiniMax M3
+
+**Pattern.** A user-owned chat host runs MiniMax M3 with local filesystem, shell, git, browser, or app automation tools. HermesProof is added as a peer MCP server so the agent can coordinate with Codex, KiloCode, Windsurf, and other agents before touching shared files.
+
+**How it composes with us.** The host provides access; HermesProof provides discipline and proof. The MiniMax agent should advertise presence and skills, claim tasks, lock files, request unlocks when blocked, run gates, and finish with `hermes_complete_work`.
+
+Use the connector guide and prompt:
+
+- [`docs/EXTERNAL_AGENT_CONNECTORS.md`](./EXTERNAL_AGENT_CONNECTORS.md)
+- [`../examples/minimax_m3_cheat_engine_chat.agent-profile.example.json`](../examples/minimax_m3_cheat_engine_chat.agent-profile.example.json)
+- [`../prompts/MINIMAX_M3_CHEAT_ENGINE_CHAT_PROMPT.md`](../prompts/MINIMAX_M3_CHEAT_ENGINE_CHAT_PROMPT.md)
+
+**Why we did not absorb it.** Chat hosts, local shells, and GitLab credentials are deployment choices. HermesProof should not own them or hide them. It records the coordination and evidence around their use.
+
+---
+
+## 5. Swarm orchestrator — `ruvnet/claude-flow`
 
 **Pattern.** A higher-level "swarm" that orchestrates Claude + Codex + Gemini agents simultaneously. Bigger surface area than a lock manager.
 
@@ -137,7 +154,7 @@ If you adopt Claude Flow for spawning, run our orchestrator under it as the per-
 
 ---
 
-## 5. Google Workspace bridge — `@google/mcp-server-workspace`
+## 6. Google Workspace bridge — `@google/mcp-server-workspace`
 
 **Pattern.** Multiple agents read/write the same Google Docs/Drive folder so specs and code stay in sync across machines.
 
@@ -157,6 +174,7 @@ If you adopt Claude Flow for spawning, run our orchestrator under it as the per-
 | Allowlisted gate runner                | (our own; not in any of the listed projects)              | shipped here                                                        |
 | Filesystem read/write                  | `@modelcontextprotocol/server-filesystem`                 | **external — coexists**                                             |
 | Codex CLI access from Claude           | `openai/codex-plugin-cc`, `cexll/codex-mcp-server`        | **external — coexists**                                             |
+| Cheat Engine Chat + MiniMax M3         | user-owned external agent host                             | **external — coexists through profile + prompt**                    |
 | Multi-agent spawning / routing         | `ruvnet/claude-flow`                                      | **external — runs above us**                                        |
 | Cloud-document sync                    | `@google/mcp-server-workspace`                            | **out of scope**                                                    |
 

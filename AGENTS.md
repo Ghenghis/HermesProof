@@ -23,6 +23,8 @@ Use stable, specific owner names:
 - `claude-reviewer-tests`
 - `codex-impl-01`
 - `codex-fix-01`
+- `kilocode-lead`
+- `minimax-m3-cechat-01`
 - `windsurf-cascade`
 
 ## Never
