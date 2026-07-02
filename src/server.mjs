@@ -265,6 +265,7 @@ const EventType = z.enum([
   "gate.passed",
   "gitlab.project.ready",
   "gitlab.merge_request.ready",
+  "gitlab.ultimate.ready",
   "pr.opened"
 ]);
 const NextActor = z.enum(["claude", "codex", "human", "unassigned"]).default("unassigned");
@@ -292,6 +293,16 @@ const GitLabProjectFullPath = z
   .min(1)
   .max(255)
   .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/, "project full path must be slash-separated GitLab path segments");
+const GitLabOwnerRef = z
+  .string()
+  .min(2)
+  .max(255)
+  .regex(/^@[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/, "GitLab CODEOWNER refs must start with @");
+const GitLabUsername = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_.-]+$/, "GitLab usernames must be a single path segment");
 const GitRemoteProtocol = z.enum(["ssh", "https"]).default("ssh");
 const CLOUD_AI_ENV_NAMES = Object.freeze([
   "DEEPSEEK_API_KEY",
@@ -1716,6 +1727,120 @@ registerTool(
         }
       });
       return toolResult({ ...result, evidence: evidence.evidence });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_gitlab_ultimate_status",
+  {
+    title: "GitLab Ultimate status",
+    description: "Inspect whether a GitLab project has the high-value Ultimate governance controls HermesProof can bootstrap: merge gates, branch protection, CODEOWNER approval, approval settings, and approval rules.",
+    inputSchema: {
+      projectFullPath: GitLabProjectFullPath,
+      defaultBranch: z.string().min(1).max(255).default("main")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const client = createGitLabClient();
+      if (!client.config.ok) {
+        return toolResult({ ok: false, status: "missing_token", message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment." });
+      }
+      return toolResult(await client.ultimateGovernanceStatus({
+        projectFullPath: args.projectFullPath,
+        defaultBranch: args.defaultBranch || "main"
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_gitlab_bootstrap_ultimate",
+  {
+    title: "GitLab Ultimate bootstrap",
+    description: "Idempotently capture high-value GitLab Ultimate controls for one project: protected default branch, CODEOWNER approval, MR approval settings, merge-train/pipeline gates, CODEOWNERS, GitLab CI security/proof jobs, optional approval rule, and governance MR.",
+    inputSchema: {
+      owner: Owner,
+      projectFullPath: GitLabProjectFullPath,
+      defaultBranch: z.string().min(1).max(255).default("main"),
+      governanceBranch: z.string().max(255).default(""),
+      dryRun: z.boolean().default(false),
+      bestEffort: z.boolean().default(true),
+      codeOwnerRefs: z.array(GitLabOwnerRef).default(["@Ghenghis"]),
+      approverUsernames: z.array(GitLabUsername).default([]),
+      approverUserIds: z.array(z.number().int().positive()).default([]),
+      approverGroupIds: z.array(z.number().int().positive()).default([]),
+      approvalRuleName: z.string().min(1).max(1024).default("HermesProof release approval"),
+      approvalsRequired: z.number().int().min(1).max(100).default(1),
+      commitReleaseFiles: z.boolean().default(true),
+      createGovernanceMergeRequest: z.boolean().default(true),
+      mergeMethod: z.enum(["merge", "rebase_merge", "ff"]).default("rebase_merge"),
+      taskId: OptionalTaskId
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const client = createGitLabClient();
+      if (!client.config.ok) {
+        return toolResult({
+          ok: false,
+          status: "missing_token",
+          message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment.",
+          backend_status: backendStatusSnapshot({ includeCli: true })
+        });
+      }
+      const result = await client.bootstrapUltimateGovernance({
+        projectFullPath: args.projectFullPath,
+        defaultBranch: args.defaultBranch || "main",
+        governanceBranch: args.governanceBranch || "",
+        dryRun: args.dryRun === true,
+        bestEffort: args.bestEffort !== false,
+        codeOwnerRefs: args.codeOwnerRefs || ["@Ghenghis"],
+        approverUsernames: args.approverUsernames || [],
+        approverUserIds: args.approverUserIds || [],
+        approverGroupIds: args.approverGroupIds || [],
+        approvalRuleName: args.approvalRuleName || "HermesProof release approval",
+        approvalsRequired: args.approvalsRequired || 1,
+        commitReleaseFiles: args.commitReleaseFiles !== false,
+        createGovernanceMergeRequest: args.createGovernanceMergeRequest !== false,
+        mergeMethod: args.mergeMethod || "rebase_merge"
+      });
+      if (args.dryRun !== true) {
+        const evidence = await manager.appendEvidence({
+          owner: args.owner,
+          taskId: args.taskId || "",
+          kind: "gitlab_ultimate_bootstrap",
+          summary: `GitLab Ultimate bootstrap ${result.status}: ${args.projectFullPath}`,
+          data: {
+            status: result.status,
+            ok: result.ok,
+            project_full_path: result.project_full_path,
+            default_branch: result.default_branch,
+            governance_branch: result.governance_branch,
+            steps: result.steps
+          }
+        });
+        await manager.emitManualEvent({
+          event_type: "gitlab.ultimate.ready",
+          owner: args.owner,
+          task_id: args.taskId || null,
+          files: [],
+          summary: `GitLab Ultimate bootstrap ${result.status}: ${args.projectFullPath}`,
+          next_actor: "unassigned",
+          recommended_action: result.ok ? "review_pr" : "acknowledge",
+          payload: {
+            project_full_path: args.projectFullPath,
+            status: result.status,
+            ok: result.ok,
+            governance_branch: result.governance_branch
+          }
+        });
+        return toolResult({ ...result, evidence: evidence.evidence });
+      }
+      return toolResult(result);
     } catch (err) { return toolError(err); }
   }
 );

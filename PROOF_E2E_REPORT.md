@@ -1,8 +1,8 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-07-02T13-38-57-038Z`
-- **Timestamp (UTC)**: 2026-07-02T13:38:57.038Z
-- **Duration**: 47.12s
+- **Run id**: `truth_2026-07-02T14-09-08-185Z`
+- **Timestamp (UTC)**: 2026-07-02T14:09:08.185Z
+- **Duration**: 46.46s
 - **Hermes3D workspace**: `G:\Github\Hermes3D`
 - **Node**: v26.2.0 on win32
 - **Result**: ✅ ALL REQUIRED GATES PASS
@@ -13,43 +13,43 @@ Pass / Fail / Warn / Skip: **30 / 0 / 2 / 5**
 
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| `source.integrity_manifest` | required | ✅ pass | 20 ms | 76 files hashed |
-| `deps.parity` | required | ✅ pass | 1 ms | all 3 deps installed |
-| `tests.unit` | required | ✅ pass | 31641 ms | pass=304, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 389 ms | 68 tools |
+| `source.integrity_manifest` | required | ✅ pass | 49 ms | 77 files hashed |
+| `deps.parity` | required | ✅ pass | 3 ms | all 3 deps installed |
+| `tests.unit` | required | ✅ pass | 31179 ms | pass=307, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 558 ms | 70 tools |
 | `doctor.hermes3d` | skipped | ✅ pass | 0 ms | skipped |
-| `events.directory_present` | required | ✅ pass | 26 ms | outbox/handled/failed present |
-| `tasks.directory_present` | required | ✅ pass | 22 ms | pending/claimed/blocked/done present |
-| `trigger.doctor_passes` | required | ✅ pass | 335 ms | trigger doctor ok |
-| `queue.doctor_passes` | required | ✅ pass | 533 ms | queue doctor ok |
-| `wizard.dry_run_passes` | required | ✅ pass | 544 ms | wizard dry-run ok |
-| `e2e.multi_agent_flow` | required | ✅ pass | 1042 ms | 14/14 checks; 15 ledger, 11 events |
+| `events.directory_present` | required | ✅ pass | 31 ms | outbox/handled/failed present |
+| `tasks.directory_present` | required | ✅ pass | 26 ms | pending/claimed/blocked/done present |
+| `trigger.doctor_passes` | required | ✅ pass | 476 ms | trigger doctor ok |
+| `queue.doctor_passes` | required | ✅ pass | 477 ms | queue doctor ok |
+| `wizard.dry_run_passes` | required | ✅ pass | 505 ms | wizard dry-run ok |
+| `e2e.multi_agent_flow` | required | ✅ pass | 1120 ms | 14/14 checks; 15 ledger, 11 events |
 | `workspace.integrity` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.config_presence` | skipped | ✅ pass | 0 ms | skipped |
 | `clients.claude_code_live` | skipped | ✅ pass | 0 ms | skipped |
-| `server.tool_description_hygiene` | required | ✅ pass | 5 ms | 0 suspicious patterns |
-| `security.mcp_scan_pass` | required | ✅ pass | 55 ms | 0 suspicious patterns across 16 signatures |
-| `evidence.hash_chain_valid` | required | ✅ pass | 13 ms | positive=true, negative_detected_at_idx_1=true |
+| `server.tool_description_hygiene` | required | ✅ pass | 4 ms | 0 suspicious patterns |
+| `security.mcp_scan_pass` | required | ✅ pass | 54 ms | 0 suspicious patterns across 16 signatures |
+| `evidence.hash_chain_valid` | required | ✅ pass | 10 ms | positive=true, negative_detected_at_idx_1=true |
 | `docs.master_prompt_deliverables_present` | required | ✅ pass | 3 ms | 10/10 deliverables present |
 | `provider.registry.validate` | required | ✅ pass | 3 ms | 62 entries, 62 unique provider_names |
 | `local.models.catalog.validate` | required | ✅ pass | 1 ms | schema ok; 91 valid rows |
 | `continue.llm_classes.validate` | required | ✅ pass | 1 ms | all 62 expected provider names present (62 total) |
 | `kilocode.provider.mapping.validate` | warn | ✅ pass | 0 ms | kilocode_mapping.csv not in pack — gate stub running as not_applicable |
-| `lmstudio.health` | warn | ⚠️ warn | 1034 ms | LM Studio offline: ECONNREFUSED |
-| `ollama.health` | warn | ✅ pass | 5 ms | Ollama reachable (200) |
-| `backend.api_config_presence` | warn | ✅ pass | 260 ms | backend API inventory: envs=10, gh=true, glab=false |
-| `gitlab.auth_probe` | warn | ⚠️ warn | 1 ms | GitLab token not configured (set GITLAB_TOKEN or GLAB_TOKEN) |
-| `secret.scan` | required | ✅ pass | 113 ms | fallback: 0 finding(s) |
-| `secrets.rotation_evidence_present` | warn | ✅ pass | 0 ms | env mtime 2026-06-20T17:43:43.876Z (age 11.8d <= max 90d) |
-| `sbom.cyclonedx_generated` | required | ✅ pass | 70 ms | 131 components @ G:/Github/hermes3d-mcp-lock-orchestrator/PROOF/sbom.json |
-| `licenses.scan` | required | ✅ pass | 7568 ms | 93 packages scanned; unknown=0, review=1 |
-| `dependency.fresh` | warn | ✅ pass | 626 ms | 3/3 direct deps within 12mo |
-| `security.workflow_actions_sha_pinned` | required | ✅ pass | 4 ms | 4 workflow(s), 17 uses-ref(s), all SHA-pinned |
-| `accessibility.wcag_aa_pass` | required | ✅ pass | 2563 ms | 0 critical/serious violations across 22 passing rule(s) (1 non-blocking warning(s)) |
-| `perf.budgets_pass` | required | ✅ pass | 1 ms | hermes_doctor_cold_start=1.5ms<300ms? Y; lock_acquire=6.5ms<50ms? Y; heartbeat=6.9ms<20ms? Y |
-| `docs.reflects_changes` | warn | ✅ pass | 195 ms | no version bump or ADR change in range; gate is inert |
+| `lmstudio.health` | warn | ⚠️ warn | 1026 ms | LM Studio offline: ECONNREFUSED |
+| `ollama.health` | warn | ✅ pass | 3 ms | Ollama reachable (200) |
+| `backend.api_config_presence` | warn | ✅ pass | 346 ms | backend API inventory: envs=10, gh=true, glab=false |
+| `gitlab.auth_probe` | warn | ⚠️ warn | 0 ms | GitLab token not configured (set GITLAB_TOKEN or GLAB_TOKEN) |
+| `secret.scan` | required | ✅ pass | 115 ms | fallback: 0 finding(s) |
+| `secrets.rotation_evidence_present` | warn | ✅ pass | 0 ms | env mtime 2026-06-20T17:43:43.876Z (age 11.9d <= max 90d) |
+| `sbom.cyclonedx_generated` | required | ✅ pass | 55 ms | 131 components @ G:/Github/hermes3d-mcp-lock-orchestrator/PROOF/sbom.json |
+| `licenses.scan` | required | ✅ pass | 7297 ms | 93 packages scanned; unknown=0, review=1 |
+| `dependency.fresh` | warn | ✅ pass | 603 ms | 3/3 direct deps within 12mo |
+| `security.workflow_actions_sha_pinned` | required | ✅ pass | 5 ms | 4 workflow(s), 17 uses-ref(s), all SHA-pinned |
+| `accessibility.wcag_aa_pass` | required | ✅ pass | 2334 ms | 0 critical/serious violations across 22 passing rule(s) (1 non-blocking warning(s)) |
+| `perf.budgets_pass` | required | ✅ pass | 2 ms | hermes_doctor_cold_start=1.5ms<300ms? Y; lock_acquire=6.5ms<50ms? Y; heartbeat=6.9ms<20ms? Y |
+| `docs.reflects_changes` | warn | ✅ pass | 136 ms | no version bump or ADR change in range; gate is inert |
 | `release.checksums_present` | warn | ✅ pass | 1 ms | no release artifacts in dist,release; gate dormant |
-| `quality.coderabbit_reviewed` | skipped | ✅ pass | 34 ms | no PR context (owner/repo/pr); gate inert |
+| `quality.coderabbit_reviewed` | skipped | ✅ pass | 29 ms | no PR context (owner/repo/pr); gate inert |
 
 ## Machine-readable report
 

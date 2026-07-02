@@ -99,6 +99,8 @@ const BACKEND_GITLAB_TOOLS = Object.freeze([
   "hermes_gitlab_ensure_project",
   "hermes_gitlab_list_merge_requests",
   "hermes_gitlab_create_merge_request",
+  "hermes_gitlab_ultimate_status",
+  "hermes_gitlab_bootstrap_ultimate",
 ]);
 
 async function startServer(workspaceRoot, envOverrides = {}) {
@@ -817,6 +819,21 @@ test("backend and GitLab stdio round-trip: status is redacted and missing-token 
     }));
     assert.equal(mr.ok, false);
     assert.equal(mr.status, "missing_token");
+
+    const ultimateStatus = parseToolResult(await s.call("hermes_gitlab_ultimate_status", {
+      projectFullPath: "Ghenghis/HermesProof",
+    }));
+    assert.equal(ultimateStatus.ok, false);
+    assert.equal(ultimateStatus.status, "missing_token");
+
+    const ultimateBootstrap = parseToolResult(await s.call("hermes_gitlab_bootstrap_ultimate", {
+      owner: "gitlab-proof-agent",
+      projectFullPath: "Ghenghis/HermesProof",
+      dryRun: true,
+    }));
+    assert.equal(ultimateBootstrap.ok, false);
+    assert.equal(ultimateBootstrap.status, "missing_token");
+    assert.equal(ultimateBootstrap.backend_status.secret_values_returned, false);
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

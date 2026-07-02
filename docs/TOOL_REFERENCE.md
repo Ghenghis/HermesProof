@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 68 MCP tools across coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 70 MCP tools across coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -18,7 +18,7 @@ The server exposes 68 MCP tools across coordination, workspace switching, agent 
 | Workspace       | `hermes_get_workspace`, `hermes_set_workspace`                                                                                              |
 | Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
 | Backend         | `hermes_backend_status`                                                                                                                     |
-| GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`           |
+| GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`, `hermes_gitlab_ultimate_status`, `hermes_gitlab_bootstrap_ultimate` |
 | Profiles        | `hermes_register_agent_profile`, `hermes_get_agent_profile`, `hermes_list_agent_profiles`, `hermes_update_agent_capabilities`, `hermes_join_project` |
 | Presence        | `hermes_update_presence`, `hermes_list_presence`, `hermes_find_agents`                                                                      |
 | Assistance      | `hermes_request_assistance`, `hermes_wait_for_assistance`                                                                                   |
@@ -123,6 +123,34 @@ Creates a GitLab merge request, or returns the existing open MR for the same sou
   "draft": true,
   "removeSourceBranch": false,
   "labels": ["hermesproof", "agent-coordination"]
+}
+```
+
+## hermes_gitlab_ultimate_status
+
+Checks whether one GitLab project has the high-value Ultimate controls HermesProof can automate: merge pipeline/status gates, merge trains, protected default branch, CODEOWNER approval, approval settings, and approval rules.
+
+```json
+{
+  "projectFullPath": "Ghenghis/HermesProof",
+  "defaultBranch": "main"
+}
+```
+
+## hermes_gitlab_bootstrap_ultimate
+
+Idempotently applies the last-day GitLab Ultimate capture workflow: project merge/security settings, approval settings, protected default branch with CODEOWNER approval, optional approval rule, CODEOWNERS, a HermesProof GitLab CI include with security/proof jobs, a policy template, and a governance MR. Existing root `.gitlab-ci.yml` files are preserved; HermesProof only creates a root CI file when the project does not already have one.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "projectFullPath": "Ghenghis/HermesProof",
+  "defaultBranch": "main",
+  "codeOwnerRefs": ["@Ghenghis"],
+  "approverUsernames": [],
+  "commitReleaseFiles": true,
+  "createGovernanceMergeRequest": true,
+  "dryRun": false
 }
 ```
 
