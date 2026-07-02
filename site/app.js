@@ -121,7 +121,7 @@
       { c: 'c-dim',    t: '' },
       { c: 'c-purple', t: '┌─ server.stdio_handshake' },
       { c: 'c-dim',    t: '│  MCP initialize → tools/list' },
-      { c: 'c-ok',     t: '└─ [PASS] 77 tools surfaced' },
+      { c: 'c-ok',     t: '└─ [PASS] 82 tools surfaced' },
       { c: 'c-dim',    t: '' },
       { c: 'c-purple', t: '┌─ doctor.hermes3d' },
       { c: 'c-ok',     t: '└─ [PASS] ok=true · 0 finding(s)' },

@@ -45,7 +45,7 @@ Each AC must be backed by at least one passing gate (preferred) or one verifiabl
 | `source.integrity_manifest` | All files in `src/` + `scripts/` hashable, `manifest_sha256` computed | I/O error or unreadable file |
 | `deps.parity` | Every declared dep present under `node_modules/` | One or more deps missing |
 | `tests.unit` | exit_code = 0, pass_count > 0, fail_count = 0 | Any test failure |
-| `server.stdio_handshake` | All 77 expected tools present after `tools/list` | Missing tool, unexpected tool, server crash, parse error |
+| `server.stdio_handshake` | All 82 expected tools present after `tools/list` | Missing tool, unexpected tool, server crash, parse error |
 | `doctor.hermes3d` (local) | `findings.filter(f => f.level === 'error').length === 0` | Workspace unwritable, state dir missing |
 | `e2e.multi_agent_flow` | All 14 sub-checks pass; ≥ 1 ledger entry; ≥ 1 event entry | Any step failure |
 | `workspace.integrity` (local) | Zero probe files left, zero unexpected modifications, zero unexpected untracked | Probe leak, tracked-file drift |

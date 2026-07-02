@@ -14,17 +14,17 @@ HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
 | Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
-| Server | 77 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Server | 82 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
 | Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
 | Queue manager | passive task queue, priority pickup, stale-task recovery | `src/core/queue-manager.mjs` |
 | Gate runner | allowlisted command execution | [`src/core/gate-runner.mjs`](../src/core/gate-runner.mjs) |
 | Path safety | env-var resolution, escape rejection | [`src/core/fs-utils.mjs`](../src/core/fs-utils.mjs) |
-| Persistence | task queue directories, event outbox directories, agent profiles, presence records, per-owner inboxes, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
+| Persistence | task queue directories, event outbox directories, agent profiles, presence records, per-owner inboxes, project contracts, contract reviews, bug tickets, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
 
 ## 1.1 Memory and database model
 
-HermesProof uses a file-backed state database inside each workspace. Durable memory lives under `.hermes3d_orchestrator/`: locks, tasks, handoffs, agent profiles, presence, inbox messages, events, and the hash-chained evidence ledger. The Node process uses only temporary in-memory caches and live objects; restarting the MCP server reloads durable state from disk.
+HermesProof uses a file-backed state database inside each workspace. Durable memory lives under `.hermes3d_orchestrator/`: locks, tasks, handoffs, agent profiles, presence, inbox messages, project contracts, contract reviews, bug tickets, events, and the hash-chained evidence ledger. The Node process uses only temporary in-memory caches and live objects; restarting the MCP server reloads durable state from disk.
 
 There is no required external SQL, document, or vector database. That is intentional: any repo can carry its own coordination state, and truth gates can audit it with normal filesystem tools. A future adapter can mirror state to SQLite, Postgres, or vector memory if a workspace genuinely needs cross-machine query or semantic recall, but the local file database remains the source of truth.
 
@@ -67,6 +67,19 @@ release_task marks queue work done -> tasks/done/<id>.json
 ```
 
 The queue improves pickup discipline but still does not auto-start agents.
+
+CP-HERMESPROOF-0.8 adds project contracts and anti-slop reviews:
+
+```text
+agent claim + changed files + gates
+  -> hermes_anti_slop_review reads project contract
+  -> bounded local checks run without unbounded repo scans
+  -> review JSON is saved under contract_reviews/
+  -> high/critical findings can auto-open bug tickets
+  -> contract.reviewed or slop.detected event reaches live agents
+```
+
+The contract layer is meant to keep work fast. If the caller supplies the changed file list, HermesProof skips git shortstat and scans only bounded file content, with default caps that prevent slow reviews on large repos.
 
 ## 3. Lock lifecycle
 
@@ -120,7 +133,7 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 | 01 | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02 | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03 | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 77 MCP tools |
+| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 82 MCP tools |
 | 05 | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06 | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07 | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -213,6 +226,7 @@ What HermesProof deliberately does not provide: spawning, model selection, promp
 | Shell injection through gates | `spawn(shell:false)` + hardcoded `DEFAULT_GATES` allowlist; no user-supplied command/args |
 | Race between two agents acquiring the same lock | `fs.mkdir(... recursive:false)` — EEXIST is the conflict signal |
 | Silent ownership changes | every transfer goes through `request_handoff` → `approve_handoff`, both written to event log |
+| Unproven completion claims | `hermes_anti_slop_review` checks project contracts, proof gates, protected paths, and auto-ticket thresholds |
 | Stale locks blocking forever | TTL on metadata, recovery requires explicit `hermes_recover_stale_locks` call (which itself appends evidence) |
 | Source tampering | SHA-256 manifest gate (`source.integrity_manifest`) on every CI run |
 | Workspace contamination | `workspace.integrity` gate scans `git status --porcelain` and fails on unexpected entries |
@@ -225,7 +239,7 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (77 MCP tools)
+│   ├── server.mjs                 # MCP entrypoint (82 MCP tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
 │       ├── event-manager.mjs      # event_schema_version=1 outbox bridge

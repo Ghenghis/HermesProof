@@ -1,0 +1,73 @@
+include:
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
+
+stages:
+  - validate
+  - test
+  - proof
+
+variables:
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  HERMESPROOF_CI_WORKSPACE: "$CI_PROJECT_DIR/.ci-workspace"
+  AST_ENABLE_MR_PIPELINES: "true"
+  GITLAB_ADVANCED_SAST_ENABLED: "true"
+  DS_INCLUDE_DEV_DEPENDENCIES: "true"
+
+cache:
+  key: "$CI_JOB_NAME"
+  paths:
+    - .npm/
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH'
+
+.node-job:
+  image: node:22-bookworm
+  before_script:
+    - node --version
+    - npm --version
+    - npm ci
+
+syntax:
+  extends: .node-job
+  stage: validate
+  script:
+    - node --check src/server.mjs
+    - node --check scripts/truth-gates.mjs
+    - node --check scripts/wizard.mjs
+
+unit:
+  extends: .node-job
+  stage: test
+  script:
+    - mkdir -p reports
+    - npm test -- --test-reporter=junit --test-reporter-destination=reports/node-junit.xml
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - reports/node-junit.xml
+    reports:
+      junit: reports/node-junit.xml
+
+truth-gates:
+  extends: .node-job
+  stage: proof
+  script:
+    - mkdir -p "$HERMESPROOF_CI_WORKSPACE" reports
+    - node scripts/truth-gates.mjs --ci --workspace "$HERMESPROOF_CI_WORKSPACE"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - PROOF/latest.json
+      - PROOF_E2E_REPORT.md
+      - PROOF/sbom.json
+      - PERF/latest.json
+    reports:
+      cyclonedx: PROOF/sbom.json

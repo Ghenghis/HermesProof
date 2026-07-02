@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 77 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 82 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -17,6 +17,7 @@ The server exposes 77 MCP tools across coordination, workspace switching, projec
 | Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`                                        |
 | Workspace       | `hermes_get_workspace`, `hermes_set_workspace`, `hermes_connect_project`                                                                    |
 | Test / Tickets  | `hermes_get_test_mode`, `hermes_set_test_mode`, `hermes_report_bug`, `hermes_list_bug_tickets`, `hermes_update_bug_ticket`, `hermes_submit_bug_fix` |
+| Contracts       | `hermes_upsert_project_contract`, `hermes_list_project_contracts`, `hermes_read_project_contract`, `hermes_anti_slop_review`, `hermes_list_contract_reviews` |
 | Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
 | Backend         | `hermes_backend_status`                                                                                                                     |
 | GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`, `hermes_gitlab_ultimate_status`, `hermes_gitlab_bootstrap_ultimate` |
@@ -158,6 +159,73 @@ Attaches a fix result to a ticket with branch, commit, MR URL, changed files, an
   "gates": [{ "gate": "python -m pytest", "status": "pass" }],
   "files": ["external/cheatengine-mcp-bridge/ce_chat_panel.lua"],
   "verdict": "submitted"
+}
+```
+
+## hermes_upsert_project_contract
+
+Creates or updates a workspace-local contract that tells every connected agent what claims require proof, which paths are protected, which gates count, and when risky findings should become tickets.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "contractId": "aice-release-contract",
+  "scope": "AI-CE and Cheat Engine Chat release work",
+  "requiredGates": ["python -m pytest", "python scripts/_proof_check.py"],
+  "protectedPaths": [".gitlab-ci.yml", "external/", "aice_chat/"],
+  "autoTicketThreshold": "high"
+}
+```
+
+## hermes_list_project_contracts
+
+Lists saved project contracts for the active workspace. By default it also returns the virtual `project-truth-contract` so agents always have a baseline rule set.
+
+```json
+{
+  "includeDefault": true,
+  "limit": 50
+}
+```
+
+## hermes_read_project_contract
+
+Reads one contract by id. Use this before major edits, release claims, or handoffs so all agents judge completeness against the same rules.
+
+```json
+{
+  "contractId": "project-truth-contract"
+}
+```
+
+## hermes_anti_slop_review
+
+Runs a bounded, fast review of a proposed completion claim, changed files, gates, and optional summaries. It flags unproven release claims, protected-path edits without passing gates, large blast radius without review, secret-like patterns, and destructive workflow patterns. High or critical findings can automatically open a shared bug ticket.
+
+```json
+{
+  "owner": "kilocode-review-01",
+  "taskId": "aice-chat-release-check",
+  "claim": "CE Chat scan types repaired; pytest and proof check passed.",
+  "files": ["aice_chat/agent_chat.py", "external/cheatengine-mcp-bridge/ce_chat_panel.lua"],
+  "gates": [
+    { "gate": "python -m pytest", "status": "pass" },
+    { "gate": "python scripts/_proof_check.py", "status": "pass" }
+  ],
+  "scanFileContent": true,
+  "maxFilesToScan": 25,
+  "autoTicket": true
+}
+```
+
+## hermes_list_contract_reviews
+
+Lists recent anti-slop reviews, including verdicts, severity, linked tickets, and duration. Agents use this as a shared quality board before duplicating review work.
+
+```json
+{
+  "verdict": "needs_review",
+  "limit": 25
 }
 ```
 

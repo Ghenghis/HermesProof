@@ -267,6 +267,9 @@ const EventType = z.enum([
   "gitlab.merge_request.ready",
   "gitlab.ultimate.ready",
   "mode.testing.updated",
+  "contract.updated",
+  "contract.reviewed",
+  "slop.detected",
   "bug.reported",
   "bug.updated",
   "bug.fix_submitted",
@@ -283,6 +286,8 @@ const TestModeState = z.enum(["testing", "release"]).default("testing");
 const BugSeverity = z.enum(["critical", "high", "medium", "low", "info"]).default("medium");
 const BugTicketStatus = z.enum(["open", "triaged", "assigned", "in_progress", "fix_submitted", "verified", "closed", "reopened", "wontfix", "duplicate"]).default("open");
 const BugFixVerdict = z.enum(["submitted", "verified", "needs_work"]).default("submitted");
+const ContractSeverity = z.enum(["critical", "high", "medium", "low", "info"]).default("medium");
+const AutoTicketThreshold = z.enum(["critical", "high", "medium", "low", "never"]).default("high");
 const AgentMode = z.enum(["observe", "coordinated-dev", "release-operator", "emergency-recovery"]).default("coordinated-dev");
 const OptionalAgentMode = z.union([AgentMode, z.literal("")]).default("");
 const GitLabVisibility = z.enum(["private", "internal", "public"]).default("private");
@@ -401,6 +406,14 @@ function bugTicketPath(ticketId) {
   return path.join(manager.paths.bugTicketsDir, `${ticketId}.json`);
 }
 
+function contractPath(contractId) {
+  return path.join(manager.paths.contractsDir, `${contractId}.json`);
+}
+
+function contractReviewPath(reviewId) {
+  return path.join(manager.paths.contractReviewsDir, `${reviewId}.json`);
+}
+
 function inboxDir(owner) {
   return path.join(manager.paths.inboxDir, owner);
 }
@@ -449,6 +462,15 @@ function normalizeTicketId(value = "") {
   const normalized = raw.replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 96);
   if (!/^[a-z0-9][a-z0-9._-]{1,95}$/.test(normalized) || normalized.includes("..")) {
     throw new Error("ticketId must normalize to 2-96 safe path characters");
+  }
+  return normalized;
+}
+
+function normalizeContractId(value = "") {
+  const raw = String(value || "project-contract").trim().toLowerCase();
+  const normalized = raw.replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 96);
+  if (!/^[a-z0-9][a-z0-9._-]{1,95}$/.test(normalized) || normalized.includes("..")) {
+    throw new Error("contractId must normalize to 2-96 safe path characters");
   }
   return normalized;
 }
@@ -1404,6 +1426,484 @@ async function submitBugFix({
     evidence: evidenceEntry.evidence,
     next_tools: nextStatus === "verified" ? ["hermes_complete_work"] : ["hermes_update_bug_ticket", "hermes_run_gate"]
   };
+}
+
+function defaultProjectContract() {
+  return {
+    contract_schema_version: 1,
+    contract_id: "project-truth-contract",
+    title: "Project truth and release-safety contract",
+    project: path.basename(manager.workspaceRoot),
+    scope: "Shared contract for all connected agents in this workspace.",
+    required_gates: [],
+    required_evidence: [
+      "tests or proof command output for changed behavior",
+      "exact changed files",
+      "truthful remaining gaps"
+    ],
+    protected_paths: [
+      ".gitlab-ci.yml",
+      ".github/",
+      "src/",
+      "scripts/",
+      "external/",
+      "package.json",
+      "pyproject.toml"
+    ],
+    forbidden_claim_patterns: [
+      "\\b100%\\s+complete\\b",
+      "\\beverything\\s+(?:is\\s+)?(?:fixed|working)\\b",
+      "\\bno\\s+bugs?\\s+remain\\b",
+      "\\brelease[- ]ready\\b",
+      "\\bproduction[- ]ready\\b",
+      "\\bperfect\\b"
+    ],
+    risk_patterns: [
+      { id: "raw-secret", severity: "critical", regex: "(glpat-[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_]{10,}|ghp_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9]{20,}|PRIVATE-TOKEN\\s*[:=])" },
+      { id: "prompt-injection", severity: "high", regex: "(ignore\\s+previous\\s+instructions|developer\\s+mode|reveal\\s+system\\s+prompt|disable\\s+safety)" },
+      { id: "fake-proof-language", severity: "high", regex: "(truth and proof.*without.*(?:test|gate|evidence)|verified.*without.*(?:test|gate|evidence))" },
+      { id: "destructive-git", severity: "critical", regex: "(git\\s+reset\\s+--hard|git\\s+clean\\s+-fd|git\\s+checkout\\s+--\\s+\\.)" }
+    ],
+    max_files_without_review: 25,
+    max_changed_lines_without_review: 1200,
+    auto_ticket_threshold: "high",
+    updated_utc: null,
+    updated_by: "system",
+    notes: "Default contract is virtual until saved. Agents can upsert stricter project-specific rules."
+  };
+}
+
+async function listProjectContracts({ includeDefault = true, limit = 100 } = {}) {
+  await ensureDir(manager.paths.contractsDir);
+  const names = await fs.readdir(manager.paths.contractsDir).catch(() => []);
+  const contracts = [];
+  for (const name of names.filter((item) => item.endsWith(".json"))) {
+    const contract = await readJson(path.join(manager.paths.contractsDir, name), null);
+    if (contract) contracts.push(contract);
+  }
+  contracts.sort((a, b) => String(a.contract_id || "").localeCompare(String(b.contract_id || "")));
+  if (includeDefault && !contracts.some((contract) => contract.contract_id === "project-truth-contract")) {
+    contracts.unshift(defaultProjectContract());
+  }
+  const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 100 });
+  return { ok: true, workspace_root: manager.workspaceRoot, count: contracts.length, contracts: contracts.slice(0, bounded) };
+}
+
+async function readProjectContract({ contractId = "project-truth-contract" } = {}) {
+  const id = normalizeContractId(contractId);
+  const saved = await readJson(contractPath(id), null);
+  if (saved) return { ok: true, workspace_root: manager.workspaceRoot, contract: saved, source: "saved" };
+  if (id === "project-truth-contract") {
+    return { ok: true, workspace_root: manager.workspaceRoot, contract: defaultProjectContract(), source: "default" };
+  }
+  return { ok: false, status: "missing", workspace_root: manager.workspaceRoot, contract_id: id };
+}
+
+async function upsertProjectContract({
+  owner,
+  contractId = "project-truth-contract",
+  title = "",
+  project = "",
+  scope = "",
+  requiredGates = [],
+  requiredEvidence = [],
+  protectedPaths = [],
+  forbiddenClaimPatterns = [],
+  riskPatterns = [],
+  maxFilesWithoutReview = 25,
+  maxChangedLinesWithoutReview = 1200,
+  autoTicketThreshold = "high",
+  notes = "",
+  merge = true
+} = {}) {
+  const id = normalizeContractId(contractId);
+  const previous = await readJson(contractPath(id), null) || (id === "project-truth-contract" ? defaultProjectContract() : {});
+  const now = utcNow();
+  const contract = {
+    contract_schema_version: 1,
+    contract_id: id,
+    title: title || previous.title || id,
+    project: project || previous.project || path.basename(manager.workspaceRoot),
+    scope: scope || previous.scope || "",
+    required_gates: merge ? uniqueSorted([...(previous.required_gates || []), ...normalizeStringList(requiredGates, 200)]) : normalizeStringList(requiredGates, 200),
+    required_evidence: merge ? uniqueSorted([...(previous.required_evidence || []), ...normalizeStringList(requiredEvidence, 200)]) : normalizeStringList(requiredEvidence, 200),
+    protected_paths: merge ? uniqueSorted([...(previous.protected_paths || []), ...normalizeStringList(protectedPaths, 500)]) : normalizeStringList(protectedPaths, 500),
+    forbidden_claim_patterns: merge ? uniqueSorted([...(previous.forbidden_claim_patterns || []), ...normalizeStringList(forbiddenClaimPatterns, 200)]) : normalizeStringList(forbiddenClaimPatterns, 200),
+    risk_patterns: merge
+      ? [...(previous.risk_patterns || []), ...normalizeRiskPatterns(riskPatterns)].slice(0, 300)
+      : normalizeRiskPatterns(riskPatterns),
+    max_files_without_review: clampNumber(maxFilesWithoutReview ?? previous.max_files_without_review, { min: 1, max: 5000, fallback: 25 }),
+    max_changed_lines_without_review: clampNumber(maxChangedLinesWithoutReview ?? previous.max_changed_lines_without_review, { min: 1, max: 100000, fallback: 1200 }),
+    auto_ticket_threshold: autoTicketThreshold || previous.auto_ticket_threshold || "high",
+    notes: notes || previous.notes || "",
+    created_utc: previous.created_utc || now,
+    updated_utc: now,
+    updated_by: owner
+  };
+  await writeJsonAtomic(contractPath(id), contract);
+  const evidenceEntry = await manager.appendEvidence({
+    owner,
+    kind: "contract.updated",
+    summary: `Project contract updated: ${id}`,
+    data: { contract_id: id, title: contract.title, project: contract.project }
+  });
+  await manager.emitManualEvent({
+    event_type: "contract.updated",
+    owner,
+    task_id: null,
+    files: [],
+    summary: `Project contract updated: ${id}`,
+    next_actor: "unassigned",
+    recommended_action: "acknowledge",
+    payload: { contract_id: id, title: contract.title, project: contract.project }
+  });
+  return { ok: true, status: "updated", workspace_root: manager.workspaceRoot, contract, evidence: evidenceEntry.evidence };
+}
+
+function normalizeRiskPatterns(patterns = []) {
+  if (!Array.isArray(patterns)) return [];
+  return patterns.slice(0, 300).map((pattern) => ({
+    id: String(pattern?.id || "custom-risk").slice(0, 80),
+    severity: ["critical", "high", "medium", "low", "info"].includes(pattern?.severity) ? pattern.severity : "medium",
+    regex: String(pattern?.regex || "").slice(0, 1000),
+    message: String(pattern?.message || "").slice(0, 500)
+  })).filter((pattern) => pattern.regex);
+}
+
+function severityRank(severity) {
+  return { info: 0, low: 1, medium: 2, high: 3, critical: 4 }[severity] ?? 0;
+}
+
+function maxSeverity(findings = []) {
+  return findings.reduce((best, finding) =>
+    severityRank(finding.severity) > severityRank(best) ? finding.severity : best, "info");
+}
+
+function gatePasses(gate) {
+  if (!gate || typeof gate !== "object") return false;
+  const status = String(gate.status || gate.result || gate.verdict || "").toLowerCase();
+  return gate.ok === true || gate.passed === true || status === "pass" || status === "passed" || status === "ok";
+}
+
+function hasReviewGate(gates = []) {
+  return gates.some((gate) => {
+    const name = String(gate.gate || gate.id || gate.name || gate.command || "").toLowerCase();
+    return gatePasses(gate) && /(review|approval|codequality|quality|ruff|test|pytest|truth|gate)/.test(name);
+  });
+}
+
+function compileRegex(pattern) {
+  try { return new RegExp(pattern, "i"); } catch { return null; }
+}
+
+function textMatchesAny(text, patterns = []) {
+  const hits = [];
+  for (const pattern of patterns) {
+    const regex = compileRegex(pattern);
+    if (regex && regex.test(text)) hits.push(pattern);
+  }
+  return hits;
+}
+
+function collectChangedFilesFromGit() {
+  const names = new Set();
+  for (const args of [
+    ["diff", "--name-only"],
+    ["diff", "--cached", "--name-only"],
+    ["ls-files", "--others", "--exclude-standard"]
+  ]) {
+    const result = runGit(args);
+    if (!result.ok) continue;
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const item = line.trim();
+      if (item) names.add(item.replace(/\\/g, "/"));
+    }
+  }
+  return [...names].slice(0, 1000);
+}
+
+function gitShortstat() {
+  const result = runGit(["diff", "--shortstat", "HEAD"]);
+  if (!result.ok) return { ok: false, raw: "", files: 0, insertions: 0, deletions: 0 };
+  const raw = result.stdout.trim();
+  const files = Number((raw.match(/(\d+)\s+files?\s+changed/) || [])[1] || 0);
+  const insertions = Number((raw.match(/(\d+)\s+insertions?\(\+\)/) || [])[1] || 0);
+  const deletions = Number((raw.match(/(\d+)\s+deletions?\(-\)/) || [])[1] || 0);
+  return { ok: true, raw, files, insertions, deletions, changed_lines: insertions + deletions };
+}
+
+function protectedPathHit(file, protectedPath) {
+  const normalizedFile = String(file || "").replace(/\\/g, "/");
+  const normalizedProtected = String(protectedPath || "").replace(/\\/g, "/");
+  if (!normalizedFile || !normalizedProtected) return false;
+  if (normalizedProtected.endsWith("/")) return normalizedFile.startsWith(normalizedProtected);
+  return normalizedFile === normalizedProtected || normalizedFile.startsWith(`${normalizedProtected}/`);
+}
+
+async function readSmallWorkspaceFile(relFile, maxBytes = 200_000) {
+  const normalized = manager.normalizeFiles([relFile])[0];
+  const abs = path.join(manager.workspaceRoot, normalized);
+  const stat = await fs.stat(abs).catch(() => null);
+  if (!stat || !stat.isFile() || stat.size > maxBytes) return { file: normalized, text: "", skipped: true, size: stat?.size || 0 };
+  return { file: normalized, text: await fs.readFile(abs, "utf8").catch(() => ""), skipped: false, size: stat.size };
+}
+
+async function antiSlopReview({
+  owner,
+  taskId = "",
+  summary = "",
+  claims = [],
+  files = [],
+  gates = [],
+  evidence = [],
+  contractIds = [],
+  createTicket = true,
+  autoTicketThreshold = "",
+  ticketAssignee = "",
+  enqueueTicket = true,
+  scanFileContent = true,
+  maxFilesToScan = 25,
+  maxFileScanBytes = 100_000
+} = {}) {
+  const startedMs = Date.now();
+  const allContracts = await listProjectContracts({ includeDefault: true, limit: 500 });
+  const wantedIds = normalizeStringList(contractIds, 100).map(normalizeContractId);
+  const contracts = wantedIds.length
+    ? allContracts.contracts.filter((contract) => wantedIds.includes(contract.contract_id))
+    : allContracts.contracts;
+  const explicitFileList = Array.isArray(files) && files.length > 0;
+  const explicitFiles = explicitFileList ? normalizeOptionalFiles(files) : [];
+  const changedFiles = explicitFiles.length ? explicitFiles : collectChangedFilesFromGit();
+  const normalizedFiles = changedFiles.length ? normalizeOptionalFiles(changedFiles) : [];
+  const shortstat = explicitFileList
+    ? {
+        ok: true,
+        skipped: true,
+        reason: "explicit file list supplied; skipped git diff --shortstat for low latency",
+        raw: "",
+        files: normalizedFiles.length,
+        insertions: 0,
+        deletions: 0,
+        changed_lines: 0
+      }
+    : gitShortstat();
+  const claimText = [summary, ...normalizeStringList(claims, 100)].join("\n");
+  const gatesPassed = (Array.isArray(gates) ? gates : []).filter(gatePasses);
+  const findings = [];
+  const scanLimit = clampNumber(maxFilesToScan, { min: 0, max: 100, fallback: 25 });
+  const scanByteLimit = clampNumber(maxFileScanBytes, { min: 0, max: 1_000_000, fallback: 100_000 });
+
+  function addFinding({ severity = "medium", code, message, files: findingFiles = [], contractId = "", evidence: findingEvidence = {} }) {
+    findings.push({
+      severity,
+      code,
+      message,
+      files: normalizeStringList(findingFiles, 50),
+      contract_id: contractId || null,
+      evidence: findingEvidence
+    });
+  }
+
+  if (!contracts.length) {
+    addFinding({
+      severity: "medium",
+      code: "contract.missing",
+      message: "No project contract was available; using no shared acceptance rules is unsafe for multi-agent work."
+    });
+  }
+
+  for (const contract of contracts) {
+    const requiredGates = normalizeStringList(contract.required_gates || [], 200);
+    const passedNames = new Set(gatesPassed.map((gate) => String(gate.gate || gate.id || gate.name || gate.command || "").toLowerCase()));
+    const missingRequired = requiredGates.filter((required) =>
+      ![...passedNames].some((passed) => passed.includes(required.toLowerCase()))
+    );
+    if (missingRequired.length && normalizedFiles.length) {
+      addFinding({
+        severity: "medium",
+        code: "contract.required_gates_missing",
+        message: `Required gates not proven: ${missingRequired.join(", ")}`,
+        contractId: contract.contract_id,
+        evidence: { missing_required_gates: missingRequired }
+      });
+    }
+
+    const forbiddenHits = textMatchesAny(claimText, contract.forbidden_claim_patterns || []);
+    if (forbiddenHits.length && !gatesPassed.length) {
+      addFinding({
+        severity: "high",
+        code: "claim.unproven_completion",
+        message: "Completion/release-ready language was used without passing gate evidence.",
+        contractId: contract.contract_id,
+        evidence: { patterns: forbiddenHits.slice(0, 10) }
+      });
+    }
+
+    const protectedHits = normalizedFiles.filter((file) =>
+      (contract.protected_paths || []).some((protectedPath) => protectedPathHit(file, protectedPath))
+    );
+    if (protectedHits.length && !hasReviewGate(gates)) {
+      addFinding({
+        severity: "medium",
+        code: "protected_paths.no_review_gate",
+        message: "Protected files changed without a passing review/test/quality gate.",
+        files: protectedHits.slice(0, 25),
+        contractId: contract.contract_id
+      });
+    }
+
+    const maxFiles = clampNumber(contract.max_files_without_review, { min: 1, max: 5000, fallback: 25 });
+    if (normalizedFiles.length > maxFiles && !hasReviewGate(gates)) {
+      addFinding({
+        severity: "high",
+        code: "blast_radius.too_many_files",
+        message: `Changed ${normalizedFiles.length} files without review/test gate evidence.`,
+        files: normalizedFiles.slice(0, 25),
+        contractId: contract.contract_id,
+        evidence: { file_count: normalizedFiles.length, max_files_without_review: maxFiles }
+      });
+    }
+
+    const maxLines = clampNumber(contract.max_changed_lines_without_review, { min: 1, max: 100000, fallback: 1200 });
+    if ((shortstat.changed_lines || 0) > maxLines && !hasReviewGate(gates)) {
+      addFinding({
+        severity: "high",
+        code: "blast_radius.too_many_lines",
+        message: `Changed ${shortstat.changed_lines} lines without review/test gate evidence.`,
+        contractId: contract.contract_id,
+        evidence: { shortstat, max_changed_lines_without_review: maxLines }
+      });
+    }
+
+    const riskPatterns = normalizeRiskPatterns(contract.risk_patterns || []);
+    if (scanFileContent !== false && scanLimit > 0 && scanByteLimit > 0) {
+      for (const file of normalizedFiles.slice(0, scanLimit)) {
+        const read = await readSmallWorkspaceFile(file, scanByteLimit);
+        if (read.skipped || !read.text) continue;
+        for (const pattern of riskPatterns) {
+          const regex = compileRegex(pattern.regex);
+          if (regex && regex.test(read.text)) {
+            addFinding({
+              severity: pattern.severity,
+              code: `pattern.${pattern.id}`,
+              message: pattern.message || `Risk pattern matched: ${pattern.id}`,
+              files: [file],
+              contractId: contract.contract_id,
+              evidence: { pattern_id: pattern.id }
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (claimText && /(complete|done|fixed|release[- ]ready|production[- ]ready)/i.test(claimText) && !Array.isArray(evidence)) {
+    addFinding({
+      severity: "medium",
+      code: "evidence.invalid",
+      message: "Claims were supplied, but evidence was not an array of proof records."
+    });
+  }
+
+  const severity = maxSeverity(findings);
+  const ok = findings.length === 0;
+  const reviewId = `review-${Date.now().toString(36)}-${shaId(`${owner}:${manager.workspaceRoot}:${Date.now()}`, 8)}`;
+  const threshold = autoTicketThreshold || contracts.find((contract) => contract.auto_ticket_threshold)?.auto_ticket_threshold || "high";
+  const ticketNeeded = createTicket !== false && threshold !== "never" && severityRank(severity) >= severityRank(threshold);
+  const review = {
+    review_schema_version: 1,
+    review_id: reviewId,
+    workspace_root: manager.workspaceRoot,
+    owner,
+    task_id: taskId || null,
+    status: ok ? "pass" : "needs_review",
+    severity,
+    summary,
+    files: normalizedFiles,
+    shortstat,
+    gates,
+    evidence: Array.isArray(evidence) ? evidence.slice(0, 50) : [],
+    contracts: contracts.map((contract) => contract.contract_id),
+    findings,
+    performance: {
+      duration_ms: Date.now() - startedMs,
+      explicit_file_list: explicitFileList,
+      file_count: normalizedFiles.length,
+      file_content_scan_enabled: scanFileContent !== false,
+      max_files_to_scan: scanLimit,
+      max_file_scan_bytes: scanByteLimit,
+      git_shortstat_skipped: Boolean(shortstat.skipped)
+    },
+    created_utc: utcNow()
+  };
+  await writeJsonAtomic(contractReviewPath(reviewId), review);
+  const evidenceEntry = await manager.appendEvidence({
+    owner,
+    taskId,
+    kind: findings.length ? "slop.review" : "contract.reviewed",
+    summary: findings.length ? `Anti-slop review needs attention: ${severity}` : "Project contract review passed",
+    data: { review_id: reviewId, status: review.status, severity, finding_count: findings.length }
+  });
+  await manager.emitManualEvent({
+    event_type: findings.length ? "slop.detected" : "contract.reviewed",
+    owner,
+    task_id: taskId || null,
+    files: normalizedFiles,
+    summary: findings.length ? `Anti-slop review found ${findings.length} issue(s)` : "Project contract review passed",
+    next_actor: "unassigned",
+    recommended_action: findings.length ? "fix_scope" : "acknowledge",
+    payload: { review_id: reviewId, status: review.status, severity, finding_count: findings.length }
+  });
+
+  let ticket = null;
+  if (ticketNeeded) {
+    ticket = await reportBugTicket({
+      reporter: owner,
+      ticketId: `slop-${reviewId}`,
+      title: `Anti-slop review ${severity}: ${summary || taskId || reviewId}`,
+      summary: `HermesProof anti-slop review found ${findings.length} issue(s).`,
+      severity: severity === "critical" ? "critical" : "high",
+      files: normalizedFiles,
+      reproduction: "Run hermes_anti_slop_review with the same task/files/gates.",
+      expected: "Claims, files, gates, and evidence satisfy the shared project contract.",
+      actual: findings.map((finding) => `${finding.severity}: ${finding.code} - ${finding.message}`).join("\n"),
+      evidence: [{ kind: "contract_review", review_id: reviewId, findings: findings.length }],
+      tags: ["anti-slop", "contract"],
+      assignee: ticketAssignee || "",
+      enqueue: enqueueTicket !== false,
+      priority: severity === "critical" ? 100 : 75,
+      taskId: `slop-${reviewId}`
+    });
+  }
+
+  return {
+    ok,
+    status: review.status,
+    workspace_root: manager.workspaceRoot,
+    review,
+    ticket,
+    evidence: evidenceEntry.evidence,
+    duration_ms: review.performance.duration_ms,
+    next_tools: ok
+      ? ["hermes_complete_work", "hermes_run_gate"]
+      : ["hermes_report_bug", "hermes_request_assistance", "hermes_lock_files", "hermes_run_gate"]
+  };
+}
+
+async function listContractReviews({ status = "all", severity = "", limit = 100 } = {}) {
+  await ensureDir(manager.paths.contractReviewsDir);
+  const names = await fs.readdir(manager.paths.contractReviewsDir).catch(() => []);
+  const reviews = [];
+  for (const name of names.filter((item) => item.endsWith(".json"))) {
+    const review = await readJson(path.join(manager.paths.contractReviewsDir, name), null);
+    if (!review) continue;
+    if (status !== "all" && review.status !== status) continue;
+    if (severity && review.severity !== severity) continue;
+    reviews.push(review);
+  }
+  reviews.sort((a, b) => String(b.created_utc || "").localeCompare(String(a.created_utc || "")));
+  const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 100 });
+  return { ok: true, workspace_root: manager.workspaceRoot, status, count: reviews.length, reviews: reviews.slice(0, bounded) };
 }
 
 async function requestAssistance({
@@ -2754,6 +3254,117 @@ registerTool(
     try {
       return toolResult({ ok: true, workspace_root: manager.workspaceRoot, mode: await readTestMode() });
     } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_upsert_project_contract",
+  {
+    title: "Upsert project contract",
+    description: "Create or update the shared workspace contract that tells all agents what proof, gates, protected paths, and forbidden claims apply before changes are called complete.",
+    inputSchema: {
+      owner: Owner,
+      contractId: z.string().min(1).max(96).default("project-truth-contract"),
+      title: z.string().default(""),
+      project: z.string().default(""),
+      scope: z.string().default(""),
+      requiredGates: z.array(z.string()).default([]),
+      requiredEvidence: z.array(z.string()).default([]),
+      protectedPaths: z.array(z.string()).default([]),
+      forbiddenClaimPatterns: z.array(z.string()).default([]),
+      riskPatterns: z.array(z.object({
+        id: z.string().default("custom-risk"),
+        severity: ContractSeverity,
+        regex: z.string().min(1),
+        message: z.string().default("")
+      })).default([]),
+      maxFilesWithoutReview: z.number().int().min(1).max(5000).default(25),
+      maxChangedLinesWithoutReview: z.number().int().min(1).max(100000).default(1200),
+      autoTicketThreshold: AutoTicketThreshold,
+      notes: z.string().default(""),
+      merge: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await upsertProjectContract(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_list_project_contracts",
+  {
+    title: "List project contracts",
+    description: "List saved project contracts plus the default truth contract if none has been saved yet.",
+    inputSchema: {
+      includeDefault: z.boolean().default(true),
+      limit: z.number().int().min(1).max(500).default(100)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await listProjectContracts(args || {})); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_read_project_contract",
+  {
+    title: "Read project contract",
+    description: "Read one shared workspace contract by id. The default contract is returned even before it is saved.",
+    inputSchema: {
+      contractId: z.string().min(1).max(96).default("project-truth-contract")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await readProjectContract(args || {})); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_anti_slop_review",
+  {
+    title: "Anti-slop review",
+    description: "Review pending changes, claims, gates, and evidence against shared project contracts. Emits a shared event and can auto-open a release-blocking ticket before low-proof or risky changes spread.",
+    inputSchema: {
+      owner: Owner,
+      taskId: OptionalTaskId,
+      summary: z.string().default(""),
+      claims: z.array(z.string()).default([]),
+      files: z.array(z.string()).default([]),
+      gates: z.array(z.record(z.any())).default([]),
+      evidence: z.array(z.record(z.any())).default([]),
+      contractIds: z.array(z.string()).default([]),
+      createTicket: z.boolean().default(true),
+      autoTicketThreshold: AutoTicketThreshold,
+      ticketAssignee: z.union([Owner, z.literal("")]).default(""),
+      enqueueTicket: z.boolean().default(true),
+      scanFileContent: z.boolean().default(true),
+      maxFilesToScan: z.number().int().min(0).max(100).default(25),
+      maxFileScanBytes: z.number().int().min(0).max(1_000_000).default(100000)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await antiSlopReview(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_list_contract_reviews",
+  {
+    title: "List contract reviews",
+    description: "List prior anti-slop and project-contract review records from the shared workspace state.",
+    inputSchema: {
+      status: z.enum(["all", "pass", "needs_review"]).default("all"),
+      severity: z.union([ContractSeverity, z.literal("")]).default(""),
+      limit: z.number().int().min(1).max(500).default(100)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await listContractReviews(args || {})); } catch (err) { return toolError(err); }
   }
 );
 

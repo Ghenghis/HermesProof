@@ -100,6 +100,14 @@ const AGENT_PROFILE_TOOLS = Object.freeze([
   "hermes_submit_bug_fix",
 ]);
 
+const CONTRACT_TOOLS = Object.freeze([
+  "hermes_upsert_project_contract",
+  "hermes_list_project_contracts",
+  "hermes_read_project_contract",
+  "hermes_anti_slop_review",
+  "hermes_list_contract_reviews",
+]);
+
 const BACKEND_GITLAB_TOOLS = Object.freeze([
   "hermes_backend_status",
   "hermes_gitlab_status",
@@ -855,6 +863,97 @@ test("agent profile stdio round-trip: register, filter, update capabilities, liv
     }));
     assert.equal(releaseMode.ok, true);
     assert.equal(releaseMode.mode.testing_enabled, false);
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project contract stdio round-trip: anti-slop review opens shared blocker ticket", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-contract-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of CONTRACT_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing contract tool: ${expected}`);
+    }
+
+    const saved = parseToolResult(await s.call("hermes_upsert_project_contract", {
+      owner: "contract-agent",
+      contractId: "aice-release-contract",
+      title: "AI-CE release truth contract",
+      project: "AI-CE",
+      scope: "CE Chat and HermesProof release coordination",
+      requiredGates: ["pytest", "proof_check"],
+      requiredEvidence: ["test output", "changed files", "remaining risks"],
+      protectedPaths: ["src/", "scripts/", ".gitlab-ci.yml"],
+      forbiddenClaimPatterns: ["release ready", "everything fixed"],
+      riskPatterns: [{
+        id: "unsafe-delete",
+        severity: "critical",
+        regex: "git\\s+reset\\s+--hard",
+        message: "Destructive git reset is not allowed in shared workspaces."
+      }],
+      autoTicketThreshold: "high",
+      merge: false,
+    }));
+    assert.equal(saved.ok, true, `contract upsert failed: ${JSON.stringify(saved)}`);
+    assert.equal(saved.contract.contract_id, "aice-release-contract");
+
+    const read = parseToolResult(await s.call("hermes_read_project_contract", {
+      contractId: "aice-release-contract",
+    }));
+    assert.equal(read.ok, true);
+    assert.equal(read.contract.title, "AI-CE release truth contract");
+
+    const contracts = parseToolResult(await s.call("hermes_list_project_contracts", {}));
+    assert.ok(contracts.contracts.some((contract) => contract.contract_id === "aice-release-contract"));
+
+    const reviewStart = Date.now();
+    const review = parseToolResult(await s.call("hermes_anti_slop_review", {
+      owner: "contract-agent",
+      taskId: "contract-proof",
+      summary: "release ready, everything fixed",
+      files: ["src/fake.js"],
+      gates: [],
+      contractIds: ["aice-release-contract"],
+      createTicket: true,
+      autoTicketThreshold: "high",
+      maxFilesToScan: 5,
+      maxFileScanBytes: 20000,
+    }));
+    const reviewElapsedMs = Date.now() - reviewStart;
+    assert.equal(review.ok, false, `unproven release claim should fail review: ${JSON.stringify(review)}`);
+    assert.equal(review.status, "needs_review");
+    assert.equal(review.review.severity, "high");
+    assert.equal(review.review.performance.git_shortstat_skipped, true);
+    assert.ok(reviewElapsedMs < 1500, `anti-slop review should stay fast; took ${reviewElapsedMs}ms`);
+    assert.ok(review.review.findings.some((finding) => finding.code === "claim.unproven_completion"));
+    assert.ok(review.ticket?.ticket?.release_blocker);
+
+    const reviews = parseToolResult(await s.call("hermes_list_contract_reviews", {
+      status: "needs_review",
+    }));
+    assert.equal(reviews.ok, true);
+    assert.equal(reviews.count, 1);
+    assert.equal(reviews.reviews[0].review_id, review.review.review_id);
+
+    const tickets = parseToolResult(await s.call("hermes_list_bug_tickets", {
+      status: "active",
+      releaseBlockersOnly: true,
+    }));
+    assert.equal(tickets.ok, true);
+    assert.ok(tickets.tickets.some((ticket) => ticket.ticket_id.startsWith("slop-review-")));
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includeEvents: true,
+      eventLimit: 100,
+    }));
+    const eventTypes = live.recent_outbox_events.map((event) => event.event_type);
+    assert.ok(eventTypes.includes("contract.updated"));
+    assert.ok(eventTypes.includes("slop.detected"));
+    assert.ok(eventTypes.includes("bug.reported"));
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

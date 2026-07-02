@@ -8,7 +8,7 @@ This audit separates implemented HermesProof capability from future connector wo
 
 | Area | Current status | Proof source |
 | --- | --- | --- |
-| MCP tool surface | 77 tools, exact `tools/list` membership enforced | `scripts/truth-gates.mjs` `server.stdio_handshake`; `scripts/v07-stdio-roundtrip-smoke-test.mjs` |
+| MCP tool surface | 82 tools, exact `tools/list` membership enforced | `scripts/truth-gates.mjs` `server.stdio_handshake`; `scripts/v07-stdio-roundtrip-smoke-test.mjs` |
 | Truth gates | 37 gates, with required/warn/skipped levels | `scripts/truth-gates.mjs`; `README.md`; `docs/ARCHITECTURE.md` |
 | Memory/database | File-backed state database under `.hermes3d_orchestrator/`; no external SQL/document/vector DB required | `src/core/fs-utils.mjs`; `README.md`; `docs/ARCHITECTURE.md` |
 | Agent profiles | Runtime profile register/get/list/update plus `join_project` | `src/server.mjs`; stdio round-trip test |
