@@ -38,16 +38,16 @@ Every edit flows through six gates, leaving an immutable trail behind.
 06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
 ```
 
-Every push to `main` re-proves the entire chain through 35 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
+Every push to `main` re-proves the entire chain through 37 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
 
 ---
 
 ## ✦ Truth gates
 
-The proof harness — `npm run truth-gates` — runs thirty-five independent verifications in sequence, capturing structured evidence at every step.
+The proof harness — `npm run truth-gates` — runs thirty-seven independent verifications in sequence, capturing structured evidence at every step.
 
 <div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-five gates sequentially" width="100%"/>
+<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-seven gates sequentially" width="100%"/>
 </div>
 
 | #   | Gate | What it proves |
@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs thirty-five independent ver
 | 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 55 MCP tools |
+| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 67 MCP tools |
 | 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -76,17 +76,19 @@ The proof harness — `npm run truth-gates` — runs thirty-five independent ver
 | 22  | `kilocode.provider.mapping.validate` | KiloCode provider mapping gate reports applicable status or explicit N/A |
 | 23  | `lmstudio.health` | LM Studio endpoint health probe runs as warn-on-offline |
 | 24  | `ollama.health` | Ollama endpoint health probe runs as warn-on-offline |
-| 25  | `secret.scan` | Repo secret scan runs via gitleaks or stdlib fallback |
-| 26  | `secrets.rotation_evidence_present` | Secret-rotation evidence is present when required |
-| 27  | `sbom.cyclonedx_generated` | CycloneDX SBOM generation succeeds |
-| 28  | `licenses.scan` | Production dependency licenses pass the SPDX allow/deny policy |
-| 29  | `dependency.fresh` | Direct deps freshness check runs with advisory windows |
-| 30  | `security.workflow_actions_sha_pinned` | GitHub Actions are pinned according to workflow hardening policy |
-| 31  | `accessibility.wcag_aa_pass` | Accessibility gate reaches WCAG AA policy status |
-| 32  | `perf.budgets_pass` | Performance budgets gate reaches policy status |
-| 33  | `docs.reflects_changes` | Docs reflection gate verifies user-facing changes are documented |
-| 34  | `release.checksums_present` | Release checksum artifacts are present when required |
-| 35  | `quality.coderabbit_reviewed` | CodeRabbit review gate records reviewed or skipped status |
+| 25  | `backend.api_config_presence` | Backend API env/CLI inventory runs without leaking secret values |
+| 26  | `gitlab.auth_probe` | GitLab auth probe reports authenticated or missing-token status without leaking secrets |
+| 27  | `secret.scan` | Repo secret scan runs via gitleaks or stdlib fallback |
+| 28  | `secrets.rotation_evidence_present` | Secret-rotation evidence is present when required |
+| 29  | `sbom.cyclonedx_generated` | CycloneDX SBOM generation succeeds |
+| 30  | `licenses.scan` | Production dependency licenses pass the SPDX allow/deny policy |
+| 31  | `dependency.fresh` | Direct deps freshness check runs with advisory windows |
+| 32  | `security.workflow_actions_sha_pinned` | GitHub Actions are pinned according to workflow hardening policy |
+| 33  | `accessibility.wcag_aa_pass` | Accessibility gate reaches WCAG AA policy status |
+| 34  | `perf.budgets_pass` | Performance budgets gate reaches policy status |
+| 35  | `docs.reflects_changes` | Docs reflection gate verifies user-facing changes are documented |
+| 36  | `release.checksums_present` | Release checksum artifacts are present when required |
+| 37  | `quality.coderabbit_reviewed` | CodeRabbit review gate records reviewed or skipped status |
 
 Outputs:
 
@@ -108,7 +110,7 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **55 MCP tools** for coordination, workspace switching, agent presence, inbox messaging, skills routing, unlock requests, live status, event long-polling, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
+The server exposes **67 MCP tools** for coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
@@ -122,8 +124,15 @@ QUEUE           enqueue_task        list_pending_tasks  pick_task
                 recover_stale_tasks
 WORKSPACE       get_workspace       set_workspace
 REALTIME        live_status         wait_for_events
+BACKEND         backend_status
+GITLAB          gitlab_status       gitlab_ensure_project
+                gitlab_list_merge_requests
+                gitlab_create_merge_request
+PROFILES        register_agent_profile get_agent_profile list_agent_profiles
+                update_agent_capabilities join_project
 PRESENCE        update_presence     list_presence       find_agents
-INBOX           send_message        get_inbox           ack_message
+ASSISTANCE      request_assistance
+INBOX           send_message        get_inbox           wait_for_inbox      ack_message
 COMPLETION      wait_for_unlock     complete_work
 DIAGNOSTICS     get_state           recover_stale_locks doctor              read_policy
                 list_agents
@@ -139,6 +148,8 @@ Each tool ships with MCP `2025-11-25` annotations (`readOnlyHint`, `destructiveH
 
 Evidence is hash-chained: every entry binds to the previous via `prev_hash` + canonical-JSON `entry_hash` (sha256), so any after-the-fact rewrite is detected by `hermes_verify_evidence`. State lives in `<workspace>/.hermes3d_orchestrator/`:
 
+HermesProof's durable memory is this file-backed state database. It does not require an external SQL, document, or vector database; the local state directory is the source of truth, while runtime memory is only temporary process cache.
+
 The v0.4 trigger bridge is deliberately passive. HermesProof writes durable event JSON files and optional review packets that other processes may observe; it does **not** call an LLM API, open a chat, or directly wake Claude, Codex, Windsurf, or any other session.
 
 ```text
@@ -151,6 +162,7 @@ The v0.4 trigger bridge is deliberately passive. HermesProof writes durable even
 │   ├── blocked/        malformed or scope-blocked queue tasks
 │   └── done/           completed queue tasks
 ├── handoffs/           pending + decided handoff requests
+├── agent_profiles/     structured per-owner host/capability profiles
 ├── presence/           one live status record per agent owner
 ├── inbox/              durable per-owner agent messages
 ├── evidence/
@@ -259,7 +271,7 @@ npm install
 npm run wizard
 
 # 2. Verify the package (no workspace needed yet)
-npm run truth-gates                                            # 35/35 gates pass
+npm run truth-gates                                            # 37/37 gates pass
 npm test                                                       # Node smoke tests pass
 
 # 3. Pick the workspace HermesProof will govern. Examples:
@@ -401,7 +413,7 @@ For multi-repo work, the MCP config can keep one default `MCP_LOCK_WORKSPACE`, t
 
 When an agent needs a locked file, use a handoff instead of editing around the lock:
 
-1. Agents call `hermes_update_presence` with status, skills, task, files, and interrupt preference.
+1. Agents call `hermes_join_project` at session start, then keep `hermes_update_presence` fresh with status, skills, task, files, and interrupt preference.
 2. Requester calls `hermes_request_unlock` with the files and reason.
 3. HermesProof discovers active owners, creates handoff requests, and sends inbox messages.
 4. Current owner watches `hermes_live_status`, `hermes_wait_for_events`, or `hermes_get_inbox`.
@@ -411,7 +423,7 @@ When an agent needs a locked file, use a handoff instead of editing around the l
 
 Expired locks remain a separate recovery path: `hermes_request_unlock` reports `stale_available` and points to `hermes_recover_stale_locks` after TTL expiry; recover with a note explaining the takeover.
 
-When a task needs a different skill, call `hermes_find_agents` with `requiredSkills` and `taskType`, then send the chosen agent a `hermes_send_message` inbox item.
+When a task needs a different skill, call `hermes_request_assistance` with `requiredSkills` and `taskType`. HermesProof ranks active agents, sends typed inbox requests, emits `assistance.requested`, and lets recipients respond through `hermes_wait_for_inbox`, `hermes_ack_message`, `hermes_send_message`, or a lock handoff only when file ownership must move.
 
 ---
 
@@ -424,6 +436,7 @@ When a task needs a different skill, call `hermes_find_agents` with `requiredSki
 - **[`docs/SECURITY_POLICY.md`](./docs/SECURITY_POLICY.md)** — what the server will and will not do, threat model, allowlist
 - **[`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md)** — composing with filesystem MCP, Codex bridges, claude-flow
 - **[`docs/EXTERNAL_AGENT_CONNECTORS.md`](./docs/EXTERNAL_AGENT_CONNECTORS.md)** — wiring external agents such as Cheat Engine Chat + MiniMax M3
+- **[`docs/RUNTIME_BACKEND_BRIDGE_GAP_AUDIT.md`](./docs/RUNTIME_BACKEND_BRIDGE_GAP_AUDIT.md)** — proof-backed status of backend APIs, GitLab, realtime agent interaction, and remaining connector gaps
 - **[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)** — repair scripts, debugging recipes, release checklist
 - **[`docs/SETUP_CLAUDE_DESKTOP.md`](./docs/SETUP_CLAUDE_DESKTOP.md)** · **[`docs/SETUP_CLAUDE_CODE.md`](./docs/SETUP_CLAUDE_CODE.md)** · **[`docs/SETUP_CODEX.md`](./docs/SETUP_CODEX.md)** · **[`docs/SETUP_WINDSURF.md`](./docs/SETUP_WINDSURF.md)**
 - **[`docs/SETUP_GENERIC_PROJECT.md`](./docs/SETUP_GENERIC_PROJECT.md)** — install into any repo (not just Hermes3D)

@@ -1,12 +1,12 @@
 # HermesProof — Maintenance & Best Practices
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-five gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-seven gates sequentially" width="100%"/>
 </div>
 
-This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees. The current server surface exposes 55 MCP tools.
+This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees. The current server surface exposes 67 MCP tools.
 
-The single best diagnostic is `npm run truth-gates` — it surfaces thirty-five independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
+The single best diagnostic is `npm run truth-gates` — it surfaces thirty-seven independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
 
 ## Code-quality conventions
 

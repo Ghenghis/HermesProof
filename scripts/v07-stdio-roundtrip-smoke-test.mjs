@@ -75,16 +75,34 @@ const AGENT_WORKFLOW_TOOLS = Object.freeze([
   "hermes_update_presence",
   "hermes_list_presence",
   "hermes_find_agents",
+  "hermes_request_assistance",
   "hermes_send_message",
   "hermes_get_inbox",
+  "hermes_wait_for_inbox",
   "hermes_ack_message",
   "hermes_wait_for_unlock",
   "hermes_complete_work",
 ]);
 
-async function startServer(workspaceRoot) {
+const AGENT_PROFILE_TOOLS = Object.freeze([
+  "hermes_register_agent_profile",
+  "hermes_get_agent_profile",
+  "hermes_list_agent_profiles",
+  "hermes_update_agent_capabilities",
+  "hermes_join_project",
+]);
+
+const BACKEND_GITLAB_TOOLS = Object.freeze([
+  "hermes_backend_status",
+  "hermes_gitlab_status",
+  "hermes_gitlab_ensure_project",
+  "hermes_gitlab_list_merge_requests",
+  "hermes_gitlab_create_merge_request",
+]);
+
+async function startServer(workspaceRoot, envOverrides = {}) {
   const proc = spawn(process.execPath, [SERVER], {
-    env: { ...process.env, MCP_LOCK_WORKSPACE: workspaceRoot },
+    env: { ...process.env, ...envOverrides, MCP_LOCK_WORKSPACE: workspaceRoot },
     stdio: ["pipe", "pipe", "pipe"],
   });
 
@@ -438,6 +456,30 @@ test("agent workflow stdio round-trip: presence, skills, inbox, wait, complete r
     assert.equal(candidates.ok, true, `find agents failed: ${JSON.stringify(candidates)}`);
     assert.equal(candidates.candidates[0]?.owner, "rt-agent-b");
 
+    const assistance = parseToolResult(await s.call("hermes_request_assistance", {
+      requester: "rt-agent-a",
+      requiredSkills: ["review", "docs"],
+      taskType: "review",
+      subject: "Need release-prep review help",
+      body: "Please review the release prep before handoff.",
+      taskId: "rt-agent-flow",
+      files: ["src/agent-flow.txt"],
+      priority: "high",
+      includeBusy: false,
+      limit: 3,
+    }));
+    assert.equal(assistance.ok, true, `assistance request failed: ${JSON.stringify(assistance)}`);
+    assert.deepEqual(assistance.recipients, ["rt-agent-b"]);
+
+    const assistanceInbox = parseToolResult(await s.call("hermes_wait_for_inbox", {
+      owner: "rt-agent-b",
+      type: "assistance_request",
+      timeoutMs: 500,
+    }));
+    assert.equal(assistanceInbox.ok, true);
+    assert.equal(assistanceInbox.status, "ready");
+    assert.equal(assistanceInbox.messages[0].type, "assistance_request");
+
     const sent = parseToolResult(await s.call("hermes_send_message", {
       sender: "rt-agent-a",
       recipients: ["rt-agent-b"],
@@ -450,6 +492,15 @@ test("agent workflow stdio round-trip: presence, skills, inbox, wait, complete r
     }));
     assert.equal(sent.ok, true, `send failed: ${JSON.stringify(sent)}`);
     const messageId = sent.messages[0].id;
+
+    const waitedInbox = parseToolResult(await s.call("hermes_wait_for_inbox", {
+      owner: "rt-agent-b",
+      type: "ping",
+      timeoutMs: 500,
+    }));
+    assert.equal(waitedInbox.ok, true);
+    assert.equal(waitedInbox.status, "ready");
+    assert.equal(waitedInbox.messages[0].id, messageId);
 
     const inbox = parseToolResult(await s.call("hermes_get_inbox", {
       owner: "rt-agent-b",
@@ -555,6 +606,184 @@ test("agent workflow stdio round-trip: presence, skills, inbox, wait, complete r
     assert.equal(reviewerLive?.status, "done");
     assert.ok(reviewerLive.skills.includes("review"));
     assert.ok(live.recent_outbox_events.some((event) => event.event_type === "work.completed"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("agent profile stdio round-trip: register, filter, update capabilities, live status", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-agent-profile-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of AGENT_PROFILE_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing agent profile tool: ${expected}`);
+    }
+
+    const registered = parseToolResult(await s.call("hermes_register_agent_profile", {
+      owner: "minimax-m3-cechat-01",
+      displayName: "MiniMax M3 in Cheat Engine Chat",
+      host: "cheat-engine-chat",
+      model: "minimax-m3",
+      mode: "release-operator",
+      role: "builder",
+      skills: ["ce-chat", "minimax-m3", "code", "docs", "testing", "release", "gitlab"],
+      taskTypes: ["build", "repair", "test", "docs", "release"],
+      hostSupplies: ["filesystem-read-write", "shell", "git"],
+      hermesproofSupplies: ["locks", "gates", "evidence", "inbox"],
+      workspaceRoots: [tmp],
+      releaseGates: ["npm test", "node scripts/truth-gates.mjs --ci"],
+      gitRemotes: ["github:Ghenghis/HermesProof"],
+      notes: "Ready for coordinated high-trust host work.",
+      metadata: { prompt: "MINIMAX_M3_CHEAT_ENGINE_CHAT_PROMPT.md" },
+    }));
+    assert.equal(registered.ok, true, `register failed: ${JSON.stringify(registered)}`);
+    assert.equal(registered.status, "registered");
+    assert.equal(registered.profile.mode, "release-operator");
+    assert.equal(registered.profile.default_workspace_root, tmp);
+    assert.ok(registered.presence.skills.includes("gitlab"));
+
+    const fetched = parseToolResult(await s.call("hermes_get_agent_profile", {
+      owner: "minimax-m3-cechat-01",
+      includePresence: true,
+    }));
+    assert.equal(fetched.ok, true, `get profile failed: ${JSON.stringify(fetched)}`);
+    assert.equal(fetched.profile.host, "cheat-engine-chat");
+    assert.equal(fetched.presence.owner, "minimax-m3-cechat-01");
+
+    const filtered = parseToolResult(await s.call("hermes_list_agent_profiles", {
+      requiredSkills: ["gitlab", "release"],
+      taskType: "release",
+      host: "cheat-engine-chat",
+      mode: "release-operator",
+      includePresence: true,
+    }));
+    assert.equal(filtered.ok, true);
+    assert.equal(filtered.count, 1);
+    assert.equal(filtered.profiles[0].owner, "minimax-m3-cechat-01");
+
+    const updated = parseToolResult(await s.call("hermes_update_agent_capabilities", {
+      owner: "minimax-m3-cechat-01",
+      skills: ["python", "aice"],
+      taskTypes: ["review"],
+      hostSupplies: ["browser-automation"],
+      releaseGates: ["python -m pytest"],
+      gitRemotes: ["gitlab:Ghenghis/HermesProof"],
+      notes: "Added Python/AICE review capability.",
+      merge: true,
+      updatePresence: true,
+    }));
+    assert.equal(updated.ok, true, `update capabilities failed: ${JSON.stringify(updated)}`);
+    assert.ok(updated.profile.skills.includes("python"));
+    assert.ok(updated.profile.skills.includes("gitlab"));
+    assert.ok(updated.profile.task_types.includes("review"));
+    assert.ok(updated.profile.git_remotes.includes("gitlab:Ghenghis/HermesProof"));
+    assert.ok(updated.presence.skills.includes("aice"));
+
+    const routed = parseToolResult(await s.call("hermes_find_agents", {
+      requiredSkills: ["python", "aice"],
+      taskType: "review",
+      includeBusy: true,
+    }));
+    assert.equal(routed.ok, true);
+    assert.equal(routed.candidates[0]?.owner, "minimax-m3-cechat-01");
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includeProfiles: true,
+      includePresence: true,
+      includeEvents: true,
+      eventLimit: 50,
+    }));
+    assert.ok(live.agent_profiles.some((profile) => profile.owner === "minimax-m3-cechat-01"));
+    assert.ok(live.recent_outbox_events.some((event) => event.event_type === "agent.profile.updated"));
+
+    const missing = parseToolResult(await s.call("hermes_get_agent_profile", {
+      owner: "missing-profile-agent",
+    }));
+    assert.equal(missing.ok, false);
+    assert.equal(missing.status, "missing");
+
+    const joined = parseToolResult(await s.call("hermes_join_project", {
+      owner: "codex-join-agent",
+      displayName: "Codex Join Agent",
+      host: "codex",
+      model: "gpt-5",
+      mode: "coordinated-dev",
+      role: "builder",
+      status: "idle",
+      skills: ["code", "review", "gitlab"],
+      taskTypes: ["build", "review"],
+      hostSupplies: ["filesystem-read-write", "shell"],
+      hermesproofSupplies: ["locks", "gates", "inbox"],
+      workspaceRoots: [tmp],
+      notes: "Joining after project work has already started.",
+      includeInbox: true,
+      includeEvents: true,
+    }));
+    assert.equal(joined.ok, true, `join project failed: ${JSON.stringify(joined)}`);
+    assert.equal(joined.status, "joined");
+    assert.equal(joined.profile.owner, "codex-join-agent");
+    assert.equal(joined.presence.status, "idle");
+    assert.equal(joined.inbox.count, 0);
+    assert.equal(joined.backend_status.secret_values_returned, false);
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("backend and GitLab stdio round-trip: status is redacted and missing-token paths are safe", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-backend-gitlab-"));
+  const s = await startServer(tmp, {
+    GITLAB_TOKEN: "",
+    GLAB_TOKEN: "",
+    GH_TOKEN: "",
+    GITHUB_TOKEN: "",
+  });
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of BACKEND_GITLAB_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing backend/GitLab tool: ${expected}`);
+    }
+
+    const backend = parseToolResult(await s.call("hermes_backend_status", {}));
+    assert.equal(backend.ok, true, `backend status failed: ${JSON.stringify(backend)}`);
+    assert.equal(backend.secret_values_returned, false);
+    assert.ok(!JSON.stringify(backend).includes("PRIVATE-TOKEN"));
+
+    const status = parseToolResult(await s.call("hermes_gitlab_status", { probe: false }));
+    assert.equal(status.ok, true);
+    assert.equal(status.status, "missing_token");
+    assert.equal(status.configured, false);
+
+    const ensured = parseToolResult(await s.call("hermes_gitlab_ensure_project", {
+      owner: "gitlab-proof-agent",
+      namespacePath: "Ghenghis",
+      projectPath: "HermesProof-test",
+      visibility: "private",
+    }));
+    assert.equal(ensured.ok, false);
+    assert.equal(ensured.status, "missing_token");
+    assert.equal(ensured.backend_status.secret_values_returned, false);
+
+    const listed = parseToolResult(await s.call("hermes_gitlab_list_merge_requests", {
+      projectFullPath: "Ghenghis/HermesProof",
+    }));
+    assert.equal(listed.ok, false);
+    assert.equal(listed.status, "missing_token");
+
+    const mr = parseToolResult(await s.call("hermes_gitlab_create_merge_request", {
+      owner: "gitlab-proof-agent",
+      projectFullPath: "Ghenghis/HermesProof",
+      sourceBranch: "codex/test",
+      targetBranch: "main",
+      title: "Proof MR",
+    }));
+    assert.equal(mr.ok, false);
+    assert.equal(mr.status, "missing_token");
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

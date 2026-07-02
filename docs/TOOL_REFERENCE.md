@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 55 MCP tools across coordination, workspace switching, agent presence, inbox messaging, skills routing, unlock requests, live status, event long-polling, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 67 MCP tools across coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -17,8 +17,12 @@ The server exposes 55 MCP tools across coordination, workspace switching, agent 
 | Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`                                        |
 | Workspace       | `hermes_get_workspace`, `hermes_set_workspace`                                                                                              |
 | Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
+| Backend         | `hermes_backend_status`                                                                                                                     |
+| GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`           |
+| Profiles        | `hermes_register_agent_profile`, `hermes_get_agent_profile`, `hermes_list_agent_profiles`, `hermes_update_agent_capabilities`, `hermes_join_project` |
 | Presence        | `hermes_update_presence`, `hermes_list_presence`, `hermes_find_agents`                                                                      |
-| Inbox           | `hermes_send_message`, `hermes_get_inbox`, `hermes_ack_message`                                                                             |
+| Assistance      | `hermes_request_assistance`                                                                                                                 |
+| Inbox           | `hermes_send_message`, `hermes_get_inbox`, `hermes_wait_for_inbox`, `hermes_ack_message`                                                    |
 | Completion      | `hermes_wait_for_unlock`, `hermes_complete_work`                                                                                            |
 | Diagnostics     | `hermes_get_state`, `hermes_doctor`, `hermes_read_policy`                                                                                   |
 | Anonymous       | `hermes_list_agents`, `hermes_anonymous_claim`, `hermes_anonymous_release`, `hermes_anonymous_state`, `hermes_record_outcome`, `hermes_record_task` |
@@ -51,6 +55,164 @@ Switches the active workspace root for later HermesProof tool calls. The target 
   "workspaceRoot": "G:\\Github\\AI-CE",
   "reason": "Coordinate Codex and KiloCode on AICE",
   "allowActiveLocks": false
+}
+```
+
+## hermes_backend_status
+
+Returns a redacted backend/API readiness snapshot. Secret values and private env-file paths are never returned; only env var names, booleans, and source labels are shown.
+
+```json
+{ "includeCli": true }
+```
+
+## hermes_gitlab_status
+
+Checks GitLab configuration and optional API authentication with `GITLAB_TOKEN` or `GLAB_TOKEN`. Use `probe:false` for a local redacted config check without a network call.
+
+```json
+{
+  "probe": true,
+  "includeIdentity": false
+}
+```
+
+## hermes_gitlab_ensure_project
+
+Finds or creates a GitLab project, records evidence, emits `gitlab.project.ready`, and can optionally add or update a local git remote in the active workspace.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "namespacePath": "Ghenghis",
+  "projectPath": "AI-CE",
+  "visibility": "private",
+  "description": "AICE workspace coordination repo",
+  "addRemote": true,
+  "remoteName": "gitlab",
+  "remoteProtocol": "ssh",
+  "updateExistingRemote": false
+}
+```
+
+## hermes_gitlab_list_merge_requests
+
+Lists GitLab merge requests for a project using env-provided credentials. Returns merge-request metadata only.
+
+```json
+{
+  "projectFullPath": "Ghenghis/AI-CE",
+  "state": "opened",
+  "sourceBranch": "codex/hermesproof-workspace-realtime-unlocks",
+  "limit": 20
+}
+```
+
+## hermes_gitlab_create_merge_request
+
+Creates a GitLab merge request, or returns the existing open MR for the same source/target branch. Records evidence and emits `gitlab.merge_request.ready`.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "projectFullPath": "Ghenghis/AI-CE",
+  "sourceBranch": "codex/hermesproof-workspace-realtime-unlocks",
+  "targetBranch": "main",
+  "title": "HermesProof realtime coordination improvements",
+  "description": "Proof: npm test and truth gates.",
+  "draft": true,
+  "removeSourceBranch": false,
+  "labels": ["hermesproof", "agent-coordination"]
+}
+```
+
+## hermes_register_agent_profile
+
+Persists a structured per-owner capability profile and optionally syncs it into live presence for routing.
+
+```json
+{
+  "owner": "minimax-m3-cechat-01",
+  "displayName": "MiniMax M3 in Cheat Engine Chat",
+  "host": "cheat-engine-chat",
+  "model": "minimax-m3",
+  "mode": "release-operator",
+  "role": "builder",
+  "skills": ["code", "docs", "testing", "release", "gitlab"],
+  "taskTypes": ["build", "repair", "review", "release"],
+  "hostSupplies": ["filesystem-read-write", "shell", "git"],
+  "hermesproofSupplies": ["locks", "gates", "evidence", "inbox"],
+  "workspaceRoots": ["G:\\Github\\AI-CE"],
+  "releaseGates": ["npm test", "node scripts/truth-gates.mjs --ci"],
+  "gitRemotes": ["gitlab:Ghenghis/AI-CE"],
+  "notes": "High-trust user-owned host agent.",
+  "updatePresence": true
+}
+```
+
+## hermes_get_agent_profile
+
+Reads one agent profile, optionally including the current presence record.
+
+```json
+{
+  "owner": "minimax-m3-cechat-01",
+  "includePresence": true
+}
+```
+
+## hermes_list_agent_profiles
+
+Lists profiles with optional filtering by skill, task type, host, mode, and presence.
+
+```json
+{
+  "requiredSkills": ["gitlab", "release"],
+  "taskType": "release",
+  "host": "cheat-engine-chat",
+  "mode": "release-operator",
+  "includePresence": true,
+  "limit": 10
+}
+```
+
+## hermes_update_agent_capabilities
+
+Merges or replaces capability tags on an existing profile and can sync the changed skills/task types back into presence.
+
+```json
+{
+  "owner": "minimax-m3-cechat-01",
+  "skills": ["python", "aice"],
+  "taskTypes": ["review"],
+  "hostSupplies": ["browser-automation"],
+  "releaseGates": ["python -m pytest"],
+  "gitRemotes": ["gitlab:Ghenghis/HermesProof"],
+  "notes": "Added Python and AICE review capability.",
+  "merge": true,
+  "updatePresence": true
+}
+```
+
+## hermes_join_project
+
+Registers or refreshes an agent profile, publishes live presence, and returns the durable inbox, profile list, recent outbox events, and backend status. This is the preferred first call for agents that connect after work has already started.
+
+```json
+{
+  "owner": "kilocode-fix-01",
+  "displayName": "KiloCode repair agent",
+  "host": "kilocode",
+  "model": "minimax-m3",
+  "mode": "coordinated-dev",
+  "role": "builder",
+  "status": "idle",
+  "skills": ["code", "docs", "testing", "gitlab"],
+  "taskTypes": ["repair", "review", "release"],
+  "hostSupplies": ["filesystem-read-write", "shell", "git"],
+  "hermesproofSupplies": ["locks", "gates", "evidence", "inbox"],
+  "workspaceRoots": ["G:\\Github\\AI-CE"],
+  "notes": "Ready to pick up handoffs."
 }
 ```
 
@@ -93,6 +255,25 @@ Ranks live agents by advertised skills, task affinity, interrupt preference, and
 }
 ```
 
+## hermes_request_assistance
+
+Routes a help request to the active agent pool by required skills and task type, writes durable inbox requests to the best candidates, and emits `assistance.requested`. Recipients can acknowledge, reply, review, or request a lock handoff if they need file ownership.
+
+```json
+{
+  "requester": "codex-impl-01",
+  "requiredSkills": ["review", "python"],
+  "taskType": "review",
+  "subject": "Need help reviewing the backend bridge",
+  "body": "Please check the GitLab MR path and truth-gate output.",
+  "taskId": "release-prep",
+  "files": ["src/server.mjs", "src/core/gitlab-client.mjs"],
+  "priority": "high",
+  "includeBusy": false,
+  "limit": 3
+}
+```
+
 ## hermes_send_message
 
 Writes durable inbox messages to one or more agents and emits `message.sent`.
@@ -118,6 +299,20 @@ Reads durable inbox messages for one owner.
 {
   "owner": "kilocode-reviewer",
   "includeAcked": false,
+  "limit": 25
+}
+```
+
+## hermes_wait_for_inbox
+
+Long-polls one agent's durable inbox until a matching unread message exists or the timeout expires. Use this for realtime-ish agent interaction without polling global events in a tight loop.
+
+```json
+{
+  "owner": "kilocode-reviewer",
+  "type": "assistance_request",
+  "timeoutMs": 25000,
+  "pollMs": 500,
   "limit": 25
 }
 ```

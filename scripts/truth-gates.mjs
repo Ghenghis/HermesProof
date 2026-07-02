@@ -24,8 +24,11 @@ import path from "node:path";
 import url from "node:url";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
+import { config as loadDotenv } from "dotenv";
 import { HermesLockManager } from "../src/core/lock-manager.mjs";
 import { statePaths } from "../src/core/fs-utils.mjs";
+import { resolveEnvFileCandidate } from "../src/core/env-file.mjs";
+import { createGitLabClient } from "../src/core/gitlab-client.mjs";
 import { ensureEventDirs } from "./generate-review-packet.mjs";
 import { checkSecretRotationEvidence } from "./secret-rotation-evidence.mjs";
 import { runMcpScanStaticGate } from "./mcp-scan-static-gate.mjs";
@@ -38,7 +41,9 @@ import {
 } from "./provider-registry-validate.mjs";
 import {
   runLmstudioHealth,
-  runOllamaHealth
+  runOllamaHealth,
+  LMSTUDIO_DEFAULT,
+  OLLAMA_DEFAULT
 } from "./local-providers-health.mjs";
 import {
   runLicensesScanGate,
@@ -56,6 +61,20 @@ import { runCoderabbitReviewGate, parseRemoteUrl } from "./coderabbit-review.mjs
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
+const envFileCandidate = resolveEnvFileCandidate({
+  cwd: repoRoot,
+  onMissing() {}
+});
+const loadedEnvFileInfo = envFileCandidate
+  ? (() => {
+      const loaded = loadDotenv({ path: envFileCandidate.path });
+      return {
+        loaded: !loaded.error,
+        source: envFileCandidate.source,
+        status: loaded.error ? "load_failed" : "loaded"
+      };
+    })()
+  : { loaded: false, source: null, status: "not_loaded" };
 
 function parseArgs(argv) {
   const out = { skip: new Set() };
@@ -126,6 +145,16 @@ function shouldSkip(id) {
     return true;
   }
   return false;
+}
+
+function commandExists(name) {
+  const cmd = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(cmd, [name], { encoding: "utf8", shell: false });
+  return result.status === 0;
+}
+
+function presentEnvNames(names) {
+  return names.filter((name) => Boolean(process.env[name]));
 }
 
 async function timed(fn) {
@@ -297,6 +326,7 @@ const expectedTools = [
   "hermes_anonymous_state",
   "hermes_append_evidence",
   "hermes_approve_handoff",
+  "hermes_backend_status",
   "hermes_claim_task",
   "hermes_create_blocked_handoff",
   "hermes_dispatch_recommend",
@@ -305,12 +335,19 @@ const expectedTools = [
   "hermes_emit_event",
   "hermes_complete_work",
   "hermes_find_agents",
+  "hermes_gitlab_create_merge_request",
+  "hermes_gitlab_ensure_project",
+  "hermes_gitlab_list_merge_requests",
+  "hermes_gitlab_status",
+  "hermes_get_agent_profile",
   "hermes_get_inbox",
   "hermes_get_state",
   "hermes_get_workspace",
   "hermes_heartbeat",
+  "hermes_join_project",
   "hermes_list_agents",
   "hermes_list_events",
+  "hermes_list_agent_profiles",
   "hermes_list_gates",
   "hermes_list_locks",
   "hermes_list_pending_tasks",
@@ -326,16 +363,20 @@ const expectedTools = [
   "hermes_recover_stale_tasks",
   "hermes_release_files",
   "hermes_release_task",
+  "hermes_request_assistance",
   "hermes_request_handoff",
   "hermes_request_unlock",
+  "hermes_register_agent_profile",
   "hermes_run_gate",
   "hermes_set_workspace",
   "hermes_send_message",
+  "hermes_update_agent_capabilities",
   "hermes_update_presence",
   "hermes_user_check_authorization",
   "hermes_user_grant_session",
   "hermes_user_revoke_session",
   "hermes_wait_for_events",
+  "hermes_wait_for_inbox",
   "hermes_wait_for_unlock",
   "hermes_verify_evidence"
 ];
@@ -1091,6 +1132,98 @@ if (!shouldSkip("ollama.health")) {
     record("ollama.health", "warn", false, {}, error.message, durationMs);
   } else {
     record("ollama.health", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: backend.api_config_presence — WARN inventory for AI and remote backend
+// API credentials/endpoints. Records env var NAMES only; never records values.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("backend.api_config_presence")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const cloudAi = [
+      "DEEPSEEK_API_KEY",
+      "MINIMAX_API_KEY",
+      "SILICONFLOW_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "GEMINI_API_KEY",
+      "COHERE_API_KEY",
+      "MISTRAL_API_KEY"
+    ];
+    const remoteGit = ["GITLAB_TOKEN", "GLAB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+    const localEndpoint = ["LMSTUDIO_BASE_URL", "OLLAMA_BASE_URL", "HIPFIRE_BASE_URL"];
+    const present = {
+      cloud_ai: presentEnvNames(cloudAi),
+      remote_git: presentEnvNames(remoteGit),
+      local_endpoint: presentEnvNames(localEndpoint)
+    };
+    const cli = {
+      gh: commandExists("gh"),
+      glab: commandExists("glab")
+    };
+    const configuredCount = present.cloud_ai.length + present.remote_git.length + present.local_endpoint.length;
+    const hasUsefulBackend = configuredCount > 0 || cli.gh || cli.glab;
+    return {
+      ok: hasUsefulBackend,
+      evidence: {
+        env_file: loadedEnvFileInfo,
+        present_env_names: present,
+        missing_recommended_env_names: {
+          cloud_ai_fast_path: ["DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "SILICONFLOW_API_KEY"].filter((name) => !process.env[name]),
+          gitlab: ["GITLAB_TOKEN", "GLAB_TOKEN"].filter((name) => !process.env[name])
+        },
+        cli_present: cli,
+        local_defaults: {
+          lmstudio: LMSTUDIO_DEFAULT,
+          ollama: OLLAMA_DEFAULT
+        },
+        note: "Only env var names and booleans are recorded; secret values are never read into evidence."
+      },
+      details: hasUsefulBackend
+        ? `backend API inventory: envs=${configuredCount}, gh=${cli.gh}, glab=${cli.glab}`
+        : "no backend API env vars or GitHub/GitLab CLI detected"
+    };
+  });
+  if (error) {
+    record("backend.api_config_presence", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("backend.api_config_presence", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: gitlab.auth_probe — WARN auth probe for GitLab project/MR integration.
+// Uses token from env if configured. Records token source and API status only;
+// never records token values or identity by default.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("gitlab.auth_probe")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const client = createGitLabClient();
+    const status = await client.status({ probe: true, includeIdentity: false });
+    return {
+      ok: status.status === "authenticated",
+      evidence: {
+        env_file: loadedEnvFileInfo,
+        base_url: status.base_url,
+        configured: status.configured,
+        token_source: status.token_source,
+        authenticated: status.authenticated,
+        identity_returned: false,
+        http_status: status.http_status || null
+      },
+      details: status.status === "authenticated"
+        ? `GitLab authenticated via ${status.token_source}`
+        : status.status === "missing_token"
+          ? "GitLab token not configured (set GITLAB_TOKEN or GLAB_TOKEN)"
+          : `GitLab auth probe failed: ${status.error || status.status}`
+    };
+  });
+  if (error) {
+    record("gitlab.auth_probe", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("gitlab.auth_probe", "warn", result.ok, result.evidence, result.details, durationMs);
   }
 }
 

@@ -28,9 +28,11 @@ export const EVENT_TYPES = new Set([
   "task.released",
   "task.blocked",
   "task.recovered",
+  "agent.profile.updated",
   "agent.presence",
   "message.sent",
   "message.acked",
+  "assistance.requested",
   "unlock.requested",
   "work.completed",
   "handoff.created",
@@ -42,6 +44,8 @@ export const EVENT_TYPES = new Set([
   "evidence.appended",
   "gate.failed",
   "gate.passed",
+  "gitlab.project.ready",
+  "gitlab.merge_request.ready",
   "pr.opened"
 ]);
 

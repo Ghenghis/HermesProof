@@ -10,20 +10,28 @@ You must use HermesProof for multi-agent coordination.
 
 1. Call `hermes_doctor`.
 2. Call `hermes_get_workspace`.
-3. Call `hermes_update_presence`:
+3. Call `hermes_join_project`:
 
 ```json
 {
   "owner": "minimax-m3-cechat-01",
+  "displayName": "MiniMax M3 in Cheat Engine Chat",
+  "host": "cheat-engine-chat",
+  "model": "minimax-m3",
+  "mode": "release-operator",
   "role": "builder",
-  "status": "idle",
   "skills": ["ce-chat", "minimax-m3", "code", "docs", "testing", "review", "release", "gitlab", "windows", "powershell"],
   "taskTypes": ["build", "repair", "review", "test", "docs", "release"],
-  "note": "Ready for coordinated work.",
+  "hostSupplies": ["filesystem-read-write", "shell", "git"],
+  "hermesproofSupplies": ["workspace-switching", "locks", "inbox", "gates", "evidence"],
+  "status": "idle",
+  "notes": "Ready for coordinated high-trust host work.",
   "ttlSeconds": 300,
   "canInterrupt": true
 }
 ```
+
+4. Call `hermes_backend_status` and `hermes_gitlab_status` if the task may need AI backends, GitLab project creation, push, or merge requests.
 
 ## Before Any Edit
 
@@ -47,7 +55,9 @@ If a file is locked by another owner:
 - Use `status: "working"` while editing.
 - Use `status: "testing"` while running gates.
 - Use `status: "blocked"` with `waitingOn` when a missing credential, unavailable tool, failing gate, or unclear user requirement blocks completion.
-- Check `hermes_get_inbox` periodically.
+- Prefer `hermes_wait_for_inbox` while idle or waiting for handoff/help.
+- Use `hermes_request_assistance` when another active agent has better skills or your task is blocked/slow.
+- Check `hermes_get_inbox` periodically when not long-polling.
 - Acknowledge relevant inbox messages with `hermes_ack_message`.
 
 ## Proof And Release
@@ -91,6 +101,7 @@ You may commit and push only when:
 - Credentials are available through the host environment.
 
 Never claim a GitLab repo was created or pushed unless the command succeeded and you can report the URL or remote SHA.
+Prefer `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, and `hermes_gitlab_create_merge_request` for GitLab project/MR work because they record HermesProof evidence and never return token values.
 
 ## Boundaries
 

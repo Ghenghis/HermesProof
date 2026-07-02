@@ -14,13 +14,19 @@ HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
 | Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
-| Server | 55 MCP tools across coordination, workspace switching, agent presence, inbox messaging, skills routing, unlock requests, live status, event long-polling, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Server | 67 MCP tools across coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
 | Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
 | Queue manager | passive task queue, priority pickup, stale-task recovery | `src/core/queue-manager.mjs` |
 | Gate runner | allowlisted command execution | [`src/core/gate-runner.mjs`](../src/core/gate-runner.mjs) |
 | Path safety | env-var resolution, escape rejection | [`src/core/fs-utils.mjs`](../src/core/fs-utils.mjs) |
-| Persistence | task queue directories, event outbox directories, presence records, per-owner inboxes, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
+| Persistence | task queue directories, event outbox directories, agent profiles, presence records, per-owner inboxes, NDJSON evidence ledger, per-lock metadata | `<workspace>/.hermes3d_orchestrator/` |
+
+## 1.1 Memory and database model
+
+HermesProof uses a file-backed state database inside each workspace. Durable memory lives under `.hermes3d_orchestrator/`: locks, tasks, handoffs, agent profiles, presence, inbox messages, events, and the hash-chained evidence ledger. The Node process uses only temporary in-memory caches and live objects; restarting the MCP server reloads durable state from disk.
+
+There is no required external SQL, document, or vector database. That is intentional: any repo can carry its own coordination state, and truth gates can audit it with normal filesystem tools. A future adapter can mirror state to SQLite, Postgres, or vector memory if a workspace genuinely needs cross-machine query or semantic recall, but the local file database remains the source of truth.
 
 ## 2. End-to-end pipeline
 
@@ -104,17 +110,17 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 ## 5. Truth-gate harness
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-five gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-seven gates sequentially" width="100%"/>
 </div>
 
-`scripts/truth-gates.mjs` is the attestation runner. Thirty-five independent gates, each producing structured evidence:
+`scripts/truth-gates.mjs` is the attestation runner. Thirty-seven independent gates, each producing structured evidence:
 
 | # | Gate | Implementation |
 | - | --- | --- |
 | 01 | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02 | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03 | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 55 MCP tools |
+| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 67 MCP tools |
 | 05 | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06 | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07 | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -135,22 +141,24 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 | 22 | `kilocode.provider.mapping.validate` | KiloCode provider mapping gate reports applicable status or explicit N/A |
 | 23 | `lmstudio.health` | LM Studio endpoint health probe runs as warn-on-offline |
 | 24 | `ollama.health` | Ollama endpoint health probe runs as warn-on-offline |
-| 25 | `secret.scan` | Repo secret scan runs via gitleaks or stdlib fallback |
-| 26 | `secrets.rotation_evidence_present` | Secret-rotation evidence is present when required |
-| 27 | `sbom.cyclonedx_generated` | CycloneDX SBOM generation succeeds |
-| 28 | `licenses.scan` | Production dependency licenses pass the SPDX allow/deny policy |
-| 29 | `dependency.fresh` | Direct deps freshness check runs with advisory windows |
-| 30 | `security.workflow_actions_sha_pinned` | GitHub Actions are pinned according to workflow hardening policy |
-| 31 | `accessibility.wcag_aa_pass` | Accessibility gate reaches WCAG AA policy status |
-| 32 | `perf.budgets_pass` | Performance budgets gate reaches policy status |
-| 33 | `docs.reflects_changes` | Docs reflection gate verifies user-facing changes are documented |
-| 34 | `release.checksums_present` | Release checksum artifacts are present when required |
-| 35 | `quality.coderabbit_reviewed` | CodeRabbit review gate records reviewed or skipped status |
+| 25 | `backend.api_config_presence` | Backend API env/CLI inventory runs without leaking secret values |
+| 26 | `gitlab.auth_probe` | GitLab auth probe reports authenticated or missing-token status without leaking secrets |
+| 27 | `secret.scan` | Repo secret scan runs via gitleaks or stdlib fallback |
+| 28 | `secrets.rotation_evidence_present` | Secret-rotation evidence is present when required |
+| 29 | `sbom.cyclonedx_generated` | CycloneDX SBOM generation succeeds |
+| 30 | `licenses.scan` | Production dependency licenses pass the SPDX allow/deny policy |
+| 31 | `dependency.fresh` | Direct deps freshness check runs with advisory windows |
+| 32 | `security.workflow_actions_sha_pinned` | GitHub Actions are pinned according to workflow hardening policy |
+| 33 | `accessibility.wcag_aa_pass` | Accessibility gate reaches WCAG AA policy status |
+| 34 | `perf.budgets_pass` | Performance budgets gate reaches policy status |
+| 35 | `docs.reflects_changes` | Docs reflection gate verifies user-facing changes are documented |
+| 36 | `release.checksums_present` | Release checksum artifacts are present when required |
+| 37 | `quality.coderabbit_reviewed` | CodeRabbit review gate records reviewed or skipped status |
 
 CLI:
 
 ```text
-node scripts/truth-gates.mjs               # run all 35 against your local Hermes3D
+node scripts/truth-gates.mjs               # run all 37 against your local Hermes3D
 node scripts/truth-gates.mjs --ci          # skip the 4 local-machine gates
 node scripts/truth-gates.mjs --skip foo,bar
 ```
@@ -217,7 +225,7 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (55 MCP tools)
+│   ├── server.mjs                 # MCP entrypoint (67 MCP tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
 │       ├── event-manager.mjs      # event_schema_version=1 outbox bridge
@@ -225,7 +233,7 @@ HermesProof/
 │       ├── gate-runner.mjs        # DEFAULT_GATES allowlist + spawn
 │       └── fs-utils.mjs           # path safety, NDJSON helpers
 ├── scripts/
-│   ├── truth-gates.mjs            # 35-gate harness
+│   ├── truth-gates.mjs            # 37-gate harness
 │   ├── watch-events.mjs           # passive watcher: console, review packet, or webhook
 │   ├── generate-review-packet.mjs # deterministic Markdown review context
 │   ├── trigger-doctor.mjs         # trigger bridge end-to-end diagnostic

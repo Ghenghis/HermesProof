@@ -77,13 +77,16 @@ The lock protocol emits passive trigger-bridge events for coordination state cha
 Events are emitted for:
 
 ```text
+task.enqueued
 task.claimed
 task.released
 task.blocked
 task.recovered
+agent.profile.updated
 agent.presence
 message.sent
 message.acked
+assistance.requested
 unlock.requested
 work.completed
 handoff.created
@@ -95,6 +98,8 @@ lock.recovered
 evidence.appended
 gate.failed
 gate.passed
+gitlab.project.ready
+gitlab.merge_request.ready
 pr.opened
 ```
 

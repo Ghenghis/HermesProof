@@ -4,8 +4,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { config as loadDotenv } from "dotenv";
-import { resolveEnvFile } from "./core/env-file.mjs";
+import { resolveEnvFileCandidate } from "./core/env-file.mjs";
 import { HermesLockManager } from "./core/lock-manager.mjs";
 import { GateRunner } from "./core/gate-runner.mjs";
 import { SkillRotation } from "./core/skill-rotation.mjs";
@@ -14,6 +15,7 @@ import { CapabilityDispatch } from "./core/capability-dispatch.mjs";
 import { A2AStub } from "./core/a2a-stub.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
+import { createGitLabClient } from "./core/gitlab-client.mjs";
 import { loadRegistryProviders } from "./core/registry-providers.mjs";
 import {
   ensureDir,
@@ -23,22 +25,29 @@ import {
   writeJsonAtomic
 } from "./core/fs-utils.mjs";
 
-// Env-file resolution precedence (HermesProof v0.6):
+let loadedEnvFileInfo = { loaded: false, source: null, status: "not_loaded" };
+
+// Env-file resolution precedence (HermesProof v0.6+):
 //   1. HERMES3D_PROFILE=vps + HERMES3D_VPS_ENV_FILE  (deploy mode)
 //   2. HERMES3D_ENV_FILE                              (general dev override)
-//   3. ./.env in CWD                                  (legacy fallback)
+//   3. platform operator default (G:\private\.env on Windows)
+//   4. ./.env in CWD                                  (legacy fallback)
 // HermesProof is stdio JSON-RPC and does not parse argv; profile selection is
-// driven entirely by env vars. Resolved paths are intentionally not logged.
+// driven by env vars plus the operator-default secret store. Resolved paths are
+// intentionally not logged or returned by tools.
 function maybeLoadDotenv() {
-  const envFile = resolveEnvFile({
+  const candidate = resolveEnvFileCandidate({
     onMissing(source) {
       console.error(`[hermesproof] ${source} is set but its file was not found; trying the next env-file candidate.`);
     }
   });
-  if (envFile) {
-    const loaded = loadDotenv({ path: envFile });
+  if (candidate) {
+    const loaded = loadDotenv({ path: candidate.path });
     if (loaded.error) {
+      loadedEnvFileInfo = { loaded: false, source: candidate.source, status: "load_failed" };
       console.error("[hermesproof] selected env file could not be loaded; continuing with current environment.");
+    } else {
+      loadedEnvFileInfo = { loaded: true, source: candidate.source, status: "loaded" };
     }
   }
 }
@@ -238,9 +247,11 @@ const EventType = z.enum([
   "task.released",
   "task.blocked",
   "task.recovered",
+  "agent.profile.updated",
   "agent.presence",
   "message.sent",
   "message.acked",
+  "assistance.requested",
   "unlock.requested",
   "work.completed",
   "handoff.created",
@@ -252,15 +263,57 @@ const EventType = z.enum([
   "evidence.appended",
   "gate.failed",
   "gate.passed",
+  "gitlab.project.ready",
+  "gitlab.merge_request.ready",
   "pr.opened"
 ]);
 const NextActor = z.enum(["claude", "codex", "human", "unassigned"]).default("unassigned");
 const RecommendedAction = z.enum(["review_pr", "fix_scope", "merge", "review_handoff", "acknowledge", "none"]).default("none");
 const PresenceStatus = z.enum(["working", "idle", "blocked", "waiting", "reviewing", "testing", "done"]).default("working");
-const MessageType = z.enum(["note", "unlock_request", "handoff", "blocker", "completion", "ping"]).default("note");
+const MessageType = z.enum(["note", "unlock_request", "handoff", "assistance_request", "blocker", "completion", "ping"]).default("note");
 const MessagePriority = z.enum(["low", "normal", "high", "urgent"]).default("normal");
 const MessageAckStatus = z.enum(["acknowledged", "done", "dismissed"]).default("acknowledged");
 const CompletionStatus = z.enum(["completed", "blocked", "partial"]).default("completed");
+const AgentMode = z.enum(["observe", "coordinated-dev", "release-operator", "emergency-recovery"]).default("coordinated-dev");
+const OptionalAgentMode = z.union([AgentMode, z.literal("")]).default("");
+const GitLabVisibility = z.enum(["private", "internal", "public"]).default("private");
+const GitLabNamespacePath = z
+  .string()
+  .max(255)
+  .regex(/^$|^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/, "namespace path must be slash-separated GitLab path segments")
+  .default("");
+const GitLabProjectPath = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_.-]+$/, "project path must be one GitLab path segment");
+const GitLabProjectFullPath = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/, "project full path must be slash-separated GitLab path segments");
+const GitRemoteProtocol = z.enum(["ssh", "https"]).default("ssh");
+const CLOUD_AI_ENV_NAMES = Object.freeze([
+  "DEEPSEEK_API_KEY",
+  "MINIMAX_API_KEY",
+  "SILICONFLOW_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "GEMINI_API_KEY",
+  "COHERE_API_KEY",
+  "MISTRAL_API_KEY"
+]);
+const LOCAL_ENDPOINT_ENV_NAMES = Object.freeze(["LMSTUDIO_BASE_URL", "OLLAMA_BASE_URL", "HIPFIRE_BASE_URL"]);
+const REMOTE_GIT_ENV_NAMES = Object.freeze(["GITLAB_TOKEN", "GLAB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]);
+const MODEL_SELECTOR_ENV_NAMES = Object.freeze([
+  "DEEPSEEK_MODEL",
+  "MINIMAX_MODEL",
+  "SILICONFLOW_MODEL",
+  "LMSTUDIO_MODEL",
+  "OLLAMA_MODEL",
+  "HIPFIRE_MODEL"
+]);
 const LegacyPathId = z
   .string()
   .min(2)
@@ -311,6 +364,10 @@ function presencePath(owner) {
   return path.join(manager.paths.presenceDir, `${owner}.json`);
 }
 
+function agentProfilePath(owner) {
+  return path.join(manager.paths.agentProfilesDir, `${owner}.json`);
+}
+
 function inboxDir(owner) {
   return path.join(manager.paths.inboxDir, owner);
 }
@@ -327,6 +384,370 @@ function normalizeTags(values = []) {
     .map((value) => value.replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 64))
     .filter(Boolean)
   )].sort();
+}
+
+function normalizeStringList(values = [], maxItems = 100) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => value.slice(0, 256))
+  )].slice(0, maxItems);
+}
+
+function normalizeWorkspaceRoots(values = []) {
+  if (!Array.isArray(values)) return [];
+  const roots = [];
+  for (const value of values) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) continue;
+    roots.push(path.resolve(trimmed));
+  }
+  return [...new Set(roots)].slice(0, 100);
+}
+
+function uniqueSorted(values = []) {
+  return [...new Set(values.filter(Boolean))].sort();
+}
+
+function presentEnvNames(names = []) {
+  return names.filter((name) => Boolean(process.env[name]));
+}
+
+function commandExists(name) {
+  const cmd = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(cmd, [name], {
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true
+  });
+  return result.status === 0;
+}
+
+function backendStatusSnapshot({ includeCli = true } = {}) {
+  const present = {
+    cloud_ai: presentEnvNames(CLOUD_AI_ENV_NAMES),
+    local_endpoint: presentEnvNames(LOCAL_ENDPOINT_ENV_NAMES),
+    remote_git: presentEnvNames(REMOTE_GIT_ENV_NAMES),
+    model_selector: presentEnvNames(MODEL_SELECTOR_ENV_NAMES)
+  };
+  const cli = includeCli
+    ? { gh: commandExists("gh"), glab: commandExists("glab"), git: commandExists("git") }
+    : null;
+  const gitlabEnvConfigured = present.remote_git.includes("GITLAB_TOKEN") || present.remote_git.includes("GLAB_TOKEN");
+  const githubEnvConfigured = present.remote_git.includes("GH_TOKEN") || present.remote_git.includes("GITHUB_TOKEN");
+  const backendEnvCount =
+    present.cloud_ai.length +
+    present.local_endpoint.length +
+    present.remote_git.length +
+    present.model_selector.length;
+  const readiness = {
+    cloud_ai_available: present.cloud_ai.length > 0,
+    local_ai_endpoint_configured: present.local_endpoint.length > 0,
+    gitlab_fast_path_available: gitlabEnvConfigured || Boolean(cli?.glab),
+    github_fast_path_available: githubEnvConfigured || Boolean(cli?.gh),
+    model_overrides_configured: present.model_selector.length > 0,
+    any_backend_configured: backendEnvCount > 0 || Boolean(cli?.gh) || Boolean(cli?.glab)
+  };
+  return {
+    ok: true,
+    workspace_root: manager?.workspaceRoot || runtime?.workspaceRoot || null,
+    secret_values_returned: false,
+    env_file: {
+      loaded: loadedEnvFileInfo.loaded,
+      source: loadedEnvFileInfo.source,
+      status: loadedEnvFileInfo.status
+    },
+    present_env_names: present,
+    missing_recommended_env_names: {
+      cloud_ai_fast_path: ["DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "SILICONFLOW_API_KEY"].filter((name) => !process.env[name]),
+      gitlab: ["GITLAB_TOKEN", "GLAB_TOKEN"].filter((name) => !process.env[name])
+    },
+    cli_present: cli,
+    readiness,
+    note: "Only env var names, booleans, and source labels are returned. Secret values and private file paths are never returned."
+  };
+}
+
+function gitLabFullPath({ projectFullPath = "", namespacePath = "", projectPath = "" } = {}) {
+  const direct = String(projectFullPath || "").replace(/^\/+|\/+$/g, "");
+  if (direct) return direct;
+  const namespace = String(namespacePath || "").replace(/^\/+|\/+$/g, "");
+  const project = String(projectPath || "").replace(/^\/+|\/+$/g, "");
+  return namespace ? `${namespace}/${project}` : project;
+}
+
+function redactRemoteUrl(value = "") {
+  return String(value || "")
+    .replace(/(https?:\/\/)([^/@\s]+@)/gi, "$1<redacted>@")
+    .replace(/([?&](?:token|access_token|private_token)=)[^&\s]+/gi, "$1<redacted>");
+}
+
+function runGit(args) {
+  const result = spawnSync("git", args, {
+    cwd: manager.workspaceRoot,
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true
+  });
+  return {
+    ok: result.status === 0,
+    exit_code: result.status,
+    stdout: result.stdout || "",
+    stderr: result.stderr || ""
+  };
+}
+
+function projectRemoteUrl(project, protocol = "ssh") {
+  if (!project) return "";
+  return protocol === "https"
+    ? project.http_url_to_repo || project.web_url || ""
+    : project.ssh_url_to_repo || project.http_url_to_repo || project.web_url || "";
+}
+
+function configureGitRemote({
+  project,
+  remoteName = "gitlab",
+  protocol = "ssh",
+  updateExistingRemote = false
+} = {}) {
+  const desiredUrl = projectRemoteUrl(project, protocol);
+  if (!desiredUrl) {
+    return { ok: false, status: "missing_project_remote_url", remote_name: remoteName };
+  }
+  const inside = runGit(["rev-parse", "--is-inside-work-tree"]);
+  if (!inside.ok) {
+    return {
+      ok: false,
+      status: "not_git_workspace",
+      remote_name: remoteName,
+      stderr_tail: inside.stderr.slice(-300)
+    };
+  }
+  const existing = runGit(["remote", "get-url", remoteName]);
+  if (existing.ok) {
+    const existingUrl = existing.stdout.trim();
+    if (existingUrl === desiredUrl) {
+      return {
+        ok: true,
+        status: "already_configured",
+        remote_name: remoteName,
+        remote_url: redactRemoteUrl(existingUrl)
+      };
+    }
+    if (!updateExistingRemote) {
+      return {
+        ok: false,
+        status: "remote_exists_mismatch",
+        remote_name: remoteName,
+        existing_url: redactRemoteUrl(existingUrl),
+        desired_url: redactRemoteUrl(desiredUrl),
+        message: "Pass updateExistingRemote=true to replace this remote URL."
+      };
+    }
+    const set = runGit(["remote", "set-url", remoteName, desiredUrl]);
+    return {
+      ok: set.ok,
+      status: set.ok ? "updated" : "update_failed",
+      remote_name: remoteName,
+      remote_url: redactRemoteUrl(desiredUrl),
+      stderr_tail: set.stderr.slice(-300)
+    };
+  }
+  const add = runGit(["remote", "add", remoteName, desiredUrl]);
+  return {
+    ok: add.ok,
+    status: add.ok ? "added" : "add_failed",
+    remote_name: remoteName,
+    remote_url: redactRemoteUrl(desiredUrl),
+    stderr_tail: add.stderr.slice(-300)
+  };
+}
+
+async function readAgentProfile(owner) {
+  return await readJson(agentProfilePath(owner), null);
+}
+
+async function registerAgentProfile({
+  owner,
+  displayName = "",
+  host = "",
+  model = "",
+  mode = "coordinated-dev",
+  role = "agent",
+  skills = [],
+  taskTypes = [],
+  hostSupplies = [],
+  hermesproofSupplies = [],
+  workspaceRoots = [],
+  defaultWorkspaceRoot = "",
+  mcpServer = {},
+  releaseGates = [],
+  gitRemotes = [],
+  notes = "",
+  metadata = {},
+  updatePresence = true
+} = {}) {
+  await ensureDir(manager.paths.agentProfilesDir);
+  const previous = await readAgentProfile(owner);
+  const now = utcNow();
+  const profile = {
+    agent_profile_schema_version: 1,
+    owner,
+    display_name: displayName || previous?.display_name || owner,
+    host: host || previous?.host || "unknown",
+    model: model || previous?.model || "unknown",
+    mode,
+    role: role || previous?.role || "agent",
+    skills: normalizeTags(skills.length ? skills : previous?.skills || []),
+    task_types: normalizeTags(taskTypes.length ? taskTypes : previous?.task_types || []),
+    host_supplies: normalizeTags(hostSupplies.length ? hostSupplies : previous?.host_supplies || []),
+    hermesproof_supplies: normalizeTags(hermesproofSupplies.length ? hermesproofSupplies : previous?.hermesproof_supplies || []),
+    workspace_roots: normalizeWorkspaceRoots(workspaceRoots.length ? workspaceRoots : previous?.workspace_roots || []),
+    default_workspace_root: defaultWorkspaceRoot ? path.resolve(defaultWorkspaceRoot) : previous?.default_workspace_root || manager.workspaceRoot,
+    mcp_server: Object.keys(mcpServer || {}).length ? mcpServer : previous?.mcp_server || {},
+    release_gates: normalizeStringList(releaseGates.length ? releaseGates : previous?.release_gates || []),
+    git_remotes: normalizeStringList(gitRemotes.length ? gitRemotes : previous?.git_remotes || []),
+    notes: notes || previous?.notes || "",
+    metadata: { ...(previous?.metadata || {}), ...(metadata || {}) },
+    created_utc: previous?.created_utc || now,
+    updated_utc: now
+  };
+  await writeJsonAtomic(agentProfilePath(owner), profile);
+  await manager.emitManualEvent({
+    event_type: "agent.profile.updated",
+    owner,
+    task_id: null,
+    files: [],
+    summary: `Agent profile registered: ${owner}`,
+    next_actor: "unassigned",
+    recommended_action: "acknowledge",
+    payload: {
+      host: profile.host,
+      model: profile.model,
+      mode: profile.mode,
+      skills: profile.skills,
+      task_types: profile.task_types
+    }
+  });
+  let presence = null;
+  if (updatePresence) {
+    const status = previous ? "idle" : "idle";
+    const result = await updatePresenceRecord({
+      owner,
+      role: profile.role,
+      status,
+      skills: profile.skills,
+      taskTypes: profile.task_types,
+      note: profile.notes || `Profile registered for ${profile.display_name}`,
+      ttlSeconds: 300,
+      canInterrupt: true
+    });
+    presence = result.presence;
+  }
+  return { ok: true, status: previous ? "updated" : "registered", workspace_root: manager.workspaceRoot, profile, presence };
+}
+
+async function listAgentProfiles({
+  requiredSkills = [],
+  taskType = "",
+  host = "",
+  mode = "",
+  includePresence = true,
+  limit = 100
+} = {}) {
+  await ensureDir(manager.paths.agentProfilesDir);
+  const names = await fs.readdir(manager.paths.agentProfilesDir).catch(() => []);
+  const required = normalizeTags(requiredSkills);
+  const taskTag = normalizeTags(taskType ? [taskType] : [])[0] || "";
+  const presenceMap = new Map();
+  if (includePresence) {
+    const presence = await listPresenceRecords({ includeStale: true });
+    for (const record of presence.presence) presenceMap.set(record.owner, record);
+  }
+  const profiles = [];
+  for (const name of names.filter((item) => item.endsWith(".json"))) {
+    const profile = await readJson(path.join(manager.paths.agentProfilesDir, name), null);
+    if (!profile) continue;
+    if (host && profile.host !== host) continue;
+    if (mode && profile.mode !== mode) continue;
+    const skills = normalizeTags(profile.skills || []);
+    const taskTypes = normalizeTags(profile.task_types || []);
+    if (required.some((skill) => !skills.includes(skill))) continue;
+    if (taskTag && taskTypes.length && !taskTypes.includes(taskTag)) continue;
+    profiles.push({
+      ...profile,
+      presence: includePresence ? presenceMap.get(profile.owner) || null : undefined
+    });
+  }
+  profiles.sort((a, b) => a.owner.localeCompare(b.owner));
+  const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 100 });
+  return { ok: true, workspace_root: manager.workspaceRoot, count: profiles.length, profiles: profiles.slice(0, bounded) };
+}
+
+async function updateAgentCapabilities({
+  owner,
+  skills = [],
+  taskTypes = [],
+  hostSupplies = [],
+  hermesproofSupplies = [],
+  releaseGates = [],
+  gitRemotes = [],
+  mode = "",
+  notes = "",
+  merge = true,
+  updatePresence = true
+} = {}) {
+  const previous = await readAgentProfile(owner);
+  if (!previous) return { ok: false, status: "missing", message: `agent profile not found for ${owner}` };
+  const profile = {
+    ...previous,
+    mode: mode || previous.mode,
+    skills: merge ? uniqueSorted([...normalizeTags(previous.skills || []), ...normalizeTags(skills)]) : normalizeTags(skills),
+    task_types: merge ? uniqueSorted([...normalizeTags(previous.task_types || []), ...normalizeTags(taskTypes)]) : normalizeTags(taskTypes),
+    host_supplies: merge ? uniqueSorted([...normalizeTags(previous.host_supplies || []), ...normalizeTags(hostSupplies)]) : normalizeTags(hostSupplies),
+    hermesproof_supplies: merge ? uniqueSorted([...normalizeTags(previous.hermesproof_supplies || []), ...normalizeTags(hermesproofSupplies)]) : normalizeTags(hermesproofSupplies),
+    release_gates: merge ? normalizeStringList([...(previous.release_gates || []), ...releaseGates]) : normalizeStringList(releaseGates),
+    git_remotes: merge ? normalizeStringList([...(previous.git_remotes || []), ...gitRemotes]) : normalizeStringList(gitRemotes),
+    notes: notes || previous.notes || "",
+    updated_utc: utcNow()
+  };
+  await writeJsonAtomic(agentProfilePath(owner), profile);
+  await manager.emitManualEvent({
+    event_type: "agent.profile.updated",
+    owner,
+    task_id: null,
+    files: [],
+    summary: `Agent capabilities updated: ${owner}`,
+    next_actor: "unassigned",
+    recommended_action: "acknowledge",
+    payload: {
+      mode: profile.mode,
+      skills: profile.skills,
+      task_types: profile.task_types,
+      host_supplies: profile.host_supplies
+    }
+  });
+  let presence = null;
+  if (updatePresence) {
+    const previousPresence = await readJson(presencePath(owner), null);
+    const result = await updatePresenceRecord({
+      owner,
+      role: profile.role || previousPresence?.role || "agent",
+      status: previousPresence?.status || "idle",
+      taskId: previousPresence?.task_id || "",
+      files: previousPresence?.files || [],
+      skills: profile.skills,
+      taskTypes: profile.task_types,
+      note: notes || previousPresence?.note || profile.notes || "",
+      ttlSeconds: previousPresence?.ttl_seconds || 300,
+      canInterrupt: previousPresence?.can_interrupt !== false,
+      waitingOn: previousPresence?.waiting_on || "",
+      etaUtc: previousPresence?.eta_utc || ""
+    });
+    presence = result.presence;
+  }
+  return { ok: true, status: "updated", workspace_root: manager.workspaceRoot, profile, presence };
 }
 
 async function updatePresenceRecord({
@@ -458,6 +879,135 @@ async function findAgentCandidates({
   };
 }
 
+async function requestAssistance({
+  requester,
+  requiredSkills = [],
+  taskType = "",
+  subject = "",
+  body = "",
+  taskId = "",
+  files = [],
+  priority = "normal",
+  limit = 5,
+  includeBusy = false,
+  targetOwners = [],
+  allowSelf = false
+} = {}) {
+  const normalizedFiles = Array.isArray(files) && files.length ? manager.normalizeFiles(files) : [];
+  const required = normalizeTags(requiredSkills);
+  const taskTag = normalizeTags(taskType ? [taskType] : [])[0] || "";
+  const boundedLimit = clampNumber(limit, { min: 1, max: 25, fallback: 5 });
+  let candidates = [];
+
+  const directTargets = [...new Set(Array.isArray(targetOwners) ? targetOwners : [])]
+    .filter((owner) => allowSelf || owner !== requester)
+    .slice(0, boundedLimit);
+  if (directTargets.length) {
+    const presence = await listPresenceRecords({ includeStale: false });
+    const presenceByOwner = new Map(presence.presence.map((record) => [record.owner, record]));
+    candidates = directTargets
+      .map((owner) => presenceByOwner.get(owner))
+      .filter(Boolean)
+      .map((record) => ({
+        owner: record.owner,
+        role: record.role,
+        status: record.status,
+        skills: normalizeTags(record.skills || []),
+        task_types: normalizeTags(record.task_types || []),
+        can_interrupt: record.can_interrupt,
+        score: 100,
+        note: record.note || "",
+        direct_target: true
+      }));
+  } else {
+    const found = await findAgentCandidates({
+      requiredSkills: required,
+      taskType: taskTag,
+      includeBusy,
+      limit: boundedLimit + 1
+    });
+    candidates = (found.candidates || [])
+      .filter((candidate) => allowSelf || candidate.owner !== requester)
+      .slice(0, boundedLimit);
+  }
+
+  if (!candidates.length) {
+    await manager.emitManualEvent({
+      event_type: "assistance.requested",
+      owner: requester,
+      task_id: taskId || null,
+      files: normalizedFiles,
+      summary: subject || `Assistance requested by ${requester}`,
+      next_actor: "unassigned",
+      recommended_action: "acknowledge",
+      payload: {
+        status: "no_candidates",
+        required_skills: required,
+        task_type: taskTag || null,
+        include_busy: includeBusy,
+        target_owners: directTargets
+      }
+    });
+    return {
+      ok: false,
+      status: "no_candidates",
+      workspace_root: manager.workspaceRoot,
+      required_skills: required,
+      task_type: taskTag || null,
+      candidates: [],
+      messages: [],
+      next_tools: ["hermes_live_status", "hermes_list_presence", "hermes_find_agents"]
+    };
+  }
+
+  const recipients = candidates.map((candidate) => candidate.owner);
+  const sent = await sendInboxMessage({
+    sender: requester,
+    recipients,
+    type: "assistance_request",
+    priority,
+    subject: subject || `Assistance requested by ${requester}`,
+    body,
+    taskId,
+    files: normalizedFiles,
+    requiresAck: true,
+    metadata: {
+      required_skills: required,
+      task_type: taskTag || null,
+      requester,
+      candidate_count: candidates.length
+    }
+  });
+  await manager.emitManualEvent({
+    event_type: "assistance.requested",
+    owner: requester,
+    task_id: taskId || null,
+    files: normalizedFiles,
+    summary: subject || `Assistance requested by ${requester}`,
+    next_actor: "unassigned",
+    recommended_action: "acknowledge",
+    payload: {
+      status: "requested",
+      recipients,
+      required_skills: required,
+      task_type: taskTag || null,
+      message_ids: sent.messages.map((message) => message.id)
+    }
+  });
+  return {
+    ok: true,
+    status: "requested",
+    workspace_root: manager.workspaceRoot,
+    requester,
+    recipients,
+    required_skills: required,
+    task_type: taskTag || null,
+    candidates,
+    messages: sent.messages,
+    next_tools: ["hermes_wait_for_inbox", "hermes_ack_message", "hermes_send_message", "hermes_request_unlock"]
+  };
+}
+
 async function sendInboxMessage({
   sender,
   recipients,
@@ -530,6 +1080,34 @@ async function readInbox({ owner, includeAcked = false, type = "", limit = 50 } 
   messages.sort((a, b) => String(b.created_utc).localeCompare(String(a.created_utc)));
   const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 50 });
   return { ok: true, owner, count: messages.length, messages: messages.slice(0, bounded) };
+}
+
+async function waitForInbox({
+  owner,
+  type = "",
+  includeAcked = false,
+  timeoutMs = 25_000,
+  pollMs = 500,
+  limit = 50
+} = {}) {
+  const start = Date.now();
+  const boundedTimeout = clampNumber(timeoutMs, { min: 0, max: 120_000, fallback: 25_000 });
+  const deadline = start + boundedTimeout;
+  const sleepMs = clampNumber(pollMs, { min: 100, max: 5_000, fallback: 500 });
+  let inbox = await readInbox({ owner, includeAcked, type, limit });
+  while (inbox.count === 0 && Date.now() < deadline) {
+    await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
+    inbox = await readInbox({ owner, includeAcked, type, limit });
+  }
+  return {
+    ok: true,
+    status: inbox.count > 0 ? "ready" : "timeout",
+    owner,
+    waited_ms: Math.max(0, Date.now() - start),
+    type: type || null,
+    count: inbox.count,
+    messages: inbox.messages
+  };
 }
 
 async function ackInboxMessage({ owner, messageId, status = "acknowledged", note = "" } = {}) {
@@ -697,17 +1275,19 @@ registerTool(
       includeEvents: z.boolean().default(true),
       includeAgents: z.boolean().default(true),
       includePresence: z.boolean().default(true),
+      includeProfiles: z.boolean().default(false),
       eventLimit: z.number().int().min(1).max(50).default(20)
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try {
-      const [state, events, agentState, presence] = await Promise.all([
+      const [state, events, agentState, presence, profiles] = await Promise.all([
         manager.getStateSummary(),
         args?.includeEvents === false ? null : manager.listEvents({ status: "outbox", limit: args?.eventLimit || 20 }),
         args?.includeAgents === false ? null : anon.getState(),
-        args?.includePresence === false ? null : listPresenceRecords({ includeStale: true })
+        args?.includePresence === false ? null : listPresenceRecords({ includeStale: true }),
+        args?.includeProfiles === true ? listAgentProfiles({ includePresence: false, limit: 100 }) : null
       ]);
       const staleLocks = state.locks.filter((lock) => lock.is_stale);
       return toolResult({
@@ -724,7 +1304,382 @@ registerTool(
         recent_outbox_events: events?.events || [],
         anonymous_agents: agentState || null,
         presence: presence?.presence || [],
+        agent_profiles: profiles?.profiles || [],
         workspace: workspaceSnapshot()
+      });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_backend_status",
+  {
+    title: "Backend status",
+    description: "Read a redacted backend/API readiness snapshot for AI providers, local endpoints, GitHub/GitLab CLIs, and the loaded env-file source.",
+    inputSchema: {
+      includeCli: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(backendStatusSnapshot({ includeCli: args?.includeCli !== false })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_gitlab_status",
+  {
+    title: "GitLab status",
+    description: "Check GitLab configuration and optional API authentication without returning token values or private env-file paths.",
+    inputSchema: {
+      probe: z.boolean().default(true),
+      includeIdentity: z.boolean().default(false)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const client = createGitLabClient();
+      return toolResult(await client.status({
+        probe: args?.probe !== false,
+        includeIdentity: args?.includeIdentity === true
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_gitlab_ensure_project",
+  {
+    title: "GitLab ensure project",
+    description: "Idempotently find or create a GitLab project using env-provided credentials, then optionally add/update a local git remote.",
+    inputSchema: {
+      owner: Owner,
+      namespacePath: GitLabNamespacePath,
+      projectPath: GitLabProjectPath,
+      name: z.string().default(""),
+      visibility: GitLabVisibility,
+      description: z.string().default(""),
+      initializeWithReadme: z.boolean().default(false),
+      addRemote: z.boolean().default(false),
+      remoteName: z.string().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/).default("gitlab"),
+      remoteProtocol: GitRemoteProtocol,
+      updateExistingRemote: z.boolean().default(false),
+      taskId: OptionalTaskId
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const client = createGitLabClient();
+      if (!client.config.ok) {
+        return toolResult({
+          ok: false,
+          status: "missing_token",
+          message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment.",
+          backend_status: backendStatusSnapshot({ includeCli: true })
+        });
+      }
+      const result = await client.ensureProject({
+        namespacePath: args.namespacePath,
+        projectPath: args.projectPath,
+        name: args.name,
+        visibility: args.visibility,
+        description: args.description,
+        initializeWithReadme: args.initializeWithReadme
+      });
+      if (!result.ok) return toolResult(result);
+      const remote = args.addRemote
+        ? configureGitRemote({
+            project: result.project,
+            remoteName: args.remoteName,
+            protocol: args.remoteProtocol,
+            updateExistingRemote: args.updateExistingRemote
+          })
+        : null;
+      const evidence = await manager.appendEvidence({
+        owner: args.owner,
+        taskId: args.taskId || "",
+        kind: "gitlab_project",
+        summary: `GitLab project ${result.status}: ${result.project.path_with_namespace}`,
+        data: {
+          status: result.status,
+          created: result.created,
+          project: result.project,
+          remote
+        }
+      });
+      await manager.emitManualEvent({
+        event_type: "gitlab.project.ready",
+        owner: args.owner,
+        task_id: args.taskId || null,
+        files: [],
+        summary: `GitLab project ${result.status}: ${result.project.path_with_namespace}`,
+        next_actor: "unassigned",
+        recommended_action: "acknowledge",
+        payload: {
+          project: result.project,
+          created: result.created,
+          remote
+        }
+      });
+      return toolResult({ ...result, remote, evidence: evidence.evidence });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_gitlab_list_merge_requests",
+  {
+    title: "GitLab list merge requests",
+    description: "List GitLab merge requests for a project using env-provided credentials; returns MR metadata only, never tokens.",
+    inputSchema: {
+      projectFullPath: GitLabProjectFullPath,
+      state: z.enum(["opened", "closed", "merged", "locked", "all"]).default("opened"),
+      sourceBranch: z.string().default(""),
+      targetBranch: z.string().default(""),
+      search: z.string().default(""),
+      limit: z.number().int().min(1).max(100).default(20)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const client = createGitLabClient();
+      if (!client.config.ok) {
+        return toolResult({ ok: false, status: "missing_token", message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment." });
+      }
+      return toolResult(await client.listMergeRequests(args));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_gitlab_create_merge_request",
+  {
+    title: "GitLab create merge request",
+    description: "Idempotently create a GitLab merge request for a source branch, or return the existing open MR for the same source/target pair.",
+    inputSchema: {
+      owner: Owner,
+      projectFullPath: GitLabProjectFullPath,
+      sourceBranch: z.string().min(1).max(255),
+      targetBranch: z.string().min(1).max(255).default("main"),
+      title: z.string().min(1).max(255),
+      description: z.string().default(""),
+      draft: z.boolean().default(false),
+      removeSourceBranch: z.boolean().default(false),
+      labels: z.array(z.string()).default([]),
+      taskId: OptionalTaskId
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const client = createGitLabClient();
+      if (!client.config.ok) {
+        return toolResult({ ok: false, status: "missing_token", message: "Set GITLAB_TOKEN or GLAB_TOKEN in the launching environment." });
+      }
+      const result = await client.createMergeRequest(args);
+      const evidence = await manager.appendEvidence({
+        owner: args.owner,
+        taskId: args.taskId || "",
+        kind: "gitlab_merge_request",
+        summary: `GitLab merge request ${result.status}: ${result.merge_request.web_url}`,
+        data: {
+          status: result.status,
+          created: result.created,
+          project_full_path: result.project_full_path,
+          merge_request: result.merge_request
+        }
+      });
+      await manager.emitManualEvent({
+        event_type: "gitlab.merge_request.ready",
+        owner: args.owner,
+        task_id: args.taskId || null,
+        files: [],
+        summary: `GitLab merge request ${result.status}: ${result.merge_request.web_url}`,
+        next_actor: "unassigned",
+        recommended_action: "review_pr",
+        payload: {
+          project_full_path: result.project_full_path,
+          merge_request: result.merge_request,
+          created: result.created
+        }
+      });
+      return toolResult({ ...result, evidence: evidence.evidence });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_register_agent_profile",
+  {
+    title: "Register agent profile",
+    description: "Persist a structured agent capability profile and optionally sync it into live presence for routing.",
+    inputSchema: {
+      owner: Owner,
+      displayName: z.string().default(""),
+      host: z.string().default(""),
+      model: z.string().default(""),
+      mode: AgentMode,
+      role: z.string().default("agent"),
+      skills: z.array(z.string()).default([]),
+      taskTypes: z.array(z.string()).default([]),
+      hostSupplies: z.array(z.string()).default([]),
+      hermesproofSupplies: z.array(z.string()).default([]),
+      workspaceRoots: z.array(z.string()).default([]),
+      defaultWorkspaceRoot: z.string().default(""),
+      mcpServer: z.record(z.any()).default({}),
+      releaseGates: z.array(z.string()).default([]),
+      gitRemotes: z.array(z.string()).default([]),
+      notes: z.string().default(""),
+      metadata: z.record(z.any()).default({}),
+      updatePresence: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await registerAgentProfile(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_get_agent_profile",
+  {
+    title: "Get agent profile",
+    description: "Read one structured agent capability profile, optionally including the current presence record.",
+    inputSchema: {
+      owner: Owner,
+      includePresence: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const profile = await readAgentProfile(args.owner);
+      if (!profile) return toolResult({ ok: false, status: "missing", owner: args.owner });
+      const presence = args?.includePresence === false ? null : await readJson(presencePath(args.owner), null);
+      return toolResult({ ok: true, workspace_root: manager.workspaceRoot, profile, presence });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_list_agent_profiles",
+  {
+    title: "List agent profiles",
+    description: "List structured agent profiles, with optional filtering by skills, task type, host, mode, and live presence.",
+    inputSchema: {
+      requiredSkills: z.array(z.string()).default([]),
+      taskType: z.string().default(""),
+      host: z.string().default(""),
+      mode: OptionalAgentMode,
+      includePresence: z.boolean().default(true),
+      limit: z.number().int().min(1).max(500).default(100)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await listAgentProfiles(args || {})); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_update_agent_capabilities",
+  {
+    title: "Update agent capabilities",
+    description: "Merge or replace profile capability tags, host supplies, release gates, remotes, and mode for an existing agent profile.",
+    inputSchema: {
+      owner: Owner,
+      skills: z.array(z.string()).default([]),
+      taskTypes: z.array(z.string()).default([]),
+      hostSupplies: z.array(z.string()).default([]),
+      hermesproofSupplies: z.array(z.string()).default([]),
+      releaseGates: z.array(z.string()).default([]),
+      gitRemotes: z.array(z.string()).default([]),
+      mode: OptionalAgentMode,
+      notes: z.string().default(""),
+      merge: z.boolean().default(true),
+      updatePresence: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await updateAgentCapabilities(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_join_project",
+  {
+    title: "Join project",
+    description: "Register or refresh an agent profile, publish live presence, and return the durable inbox plus current coordination/backend snapshot for agents joining now or later.",
+    inputSchema: {
+      owner: Owner,
+      displayName: z.string().default(""),
+      host: z.string().default(""),
+      model: z.string().default(""),
+      mode: AgentMode,
+      role: z.string().default("agent"),
+      status: PresenceStatus,
+      skills: z.array(z.string()).default([]),
+      taskTypes: z.array(z.string()).default([]),
+      hostSupplies: z.array(z.string()).default([]),
+      hermesproofSupplies: z.array(z.string()).default([]),
+      workspaceRoots: z.array(z.string()).default([]),
+      notes: z.string().default(""),
+      taskId: OptionalTaskId,
+      files: z.array(z.string()).default([]),
+      ttlSeconds: z.number().int().min(30).max(86_400).default(300),
+      canInterrupt: z.boolean().default(true),
+      includeInbox: z.boolean().default(true),
+      includeEvents: z.boolean().default(true)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const registered = await registerAgentProfile({
+        ...args,
+        displayName: args.displayName,
+        taskTypes: args.taskTypes,
+        updatePresence: false
+      });
+      const presence = await updatePresenceRecord({
+        owner: args.owner,
+        role: args.role,
+        status: args.status,
+        taskId: args.taskId || "",
+        files: args.files || [],
+        skills: args.skills || [],
+        taskTypes: args.taskTypes || [],
+        note: args.notes || `Joined ${manager.workspaceRoot}`,
+        ttlSeconds: args.ttlSeconds,
+        canInterrupt: args.canInterrupt
+      });
+      const [state, inbox, events, profiles] = await Promise.all([
+        manager.getStateSummary(),
+        args.includeInbox === false ? null : readInbox({ owner: args.owner, includeAcked: false, limit: 50 }),
+        args.includeEvents === false ? null : manager.listEvents({ status: "outbox", limit: 25 }),
+        listAgentProfiles({ includePresence: true, limit: 100 })
+      ]);
+      return toolResult({
+        ok: true,
+        status: registered.status === "registered" ? "joined" : "refreshed",
+        workspace_root: manager.workspaceRoot,
+        profile: registered.profile,
+        presence: presence.presence,
+        inbox,
+        agent_profiles: profiles.profiles,
+        live_summary: {
+          active_lock_count: state.locks.length,
+          queue_counts: queueCounts(state.queue),
+          handoff_count: state.handoffs.length,
+          task_count: state.tasks.length,
+          recent_outbox_events: events?.events || []
+        },
+        backend_status: backendStatusSnapshot({ includeCli: true }),
+        next_tools: ["hermes_wait_for_inbox", "hermes_request_assistance", "hermes_live_status", "hermes_pick_task", "hermes_get_inbox"]
       });
     } catch (err) { return toolError(err); }
   }
@@ -812,6 +1767,47 @@ registerTool(
 );
 
 registerTool(
+  "hermes_request_assistance",
+  {
+    title: "Request agent assistance",
+    description: "Ask the active agent pool for help by skills/task type, send durable inbox requests to the best candidates, and emit an assistance.requested event.",
+    inputSchema: {
+      requester: Owner,
+      requiredSkills: z.array(z.string()).default([]),
+      taskType: z.string().default(""),
+      subject: z.string().min(1).max(200),
+      body: z.string().default(""),
+      taskId: OptionalTaskId,
+      files: z.array(z.string()).default([]),
+      priority: MessagePriority,
+      limit: z.number().int().min(1).max(25).default(5),
+      includeBusy: z.boolean().default(false),
+      targetOwners: z.array(Owner).default([]),
+      allowSelf: z.boolean().default(false)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(await requestAssistance({
+        requester: args.requester,
+        requiredSkills: args.requiredSkills || [],
+        taskType: args.taskType || "",
+        subject: args.subject,
+        body: args.body || "",
+        taskId: args.taskId || "",
+        files: args.files || [],
+        priority: args.priority || "normal",
+        limit: args.limit || 5,
+        includeBusy: args.includeBusy === true,
+        targetOwners: args.targetOwners || [],
+        allowSelf: args.allowSelf === true
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_send_message",
   {
     title: "Send agent message",
@@ -870,6 +1866,26 @@ registerTool(
         limit: args.limit || 50
       }));
     } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_wait_for_inbox",
+  {
+    title: "Wait for inbox",
+    description: "Long-poll one agent's durable inbox until a matching unread message exists or the timeout expires.",
+    inputSchema: {
+      owner: Owner,
+      type: z.union([MessageType, z.literal("")]).default(""),
+      includeAcked: z.boolean().default(false),
+      timeoutMs: z.number().int().min(0).max(120_000).default(25_000),
+      pollMs: z.number().int().min(100).max(5_000).default(500),
+      limit: z.number().int().min(1).max(500).default(50)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await waitForInbox(args)); } catch (err) { return toolError(err); }
   }
 );
 

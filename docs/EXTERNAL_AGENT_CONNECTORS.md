@@ -130,7 +130,7 @@ The user can grant the host broad OS access, but the agent should still route wo
 
 ## GitLab and GitHub
 
-HermesProof can prove the workflow around Git, but it does not store GitLab credentials.
+HermesProof can prove the workflow around Git, but it does not store GitLab credentials or return token values.
 
 For GitLab push/create-repo work, the host must provide one of:
 
@@ -140,12 +140,15 @@ For GitLab push/create-repo work, the host must provide one of:
 
 Recommended release flow:
 
-1. `hermes_update_presence` with `status: "testing"`.
-2. Run project gates through the host or `hermes_run_gate` when the command is allowlisted.
-3. Append evidence or use `hermes_complete_work` with gate summaries.
-4. Commit from the host shell.
-5. Push to GitHub or GitLab using user-owned credentials.
-6. Record the commit SHA and remote URL in HermesProof evidence.
+1. `hermes_backend_status` and `hermes_gitlab_status` to prove backend/GitLab readiness without leaking secrets.
+2. `hermes_update_presence` with `status: "testing"`.
+3. Run project gates through the host or `hermes_run_gate` when the command is allowlisted.
+4. Append evidence or use `hermes_complete_work` with gate summaries.
+5. Commit from the host shell.
+6. Use `hermes_gitlab_ensure_project` when a GitLab project or remote must exist.
+7. Push to GitHub or GitLab using user-owned credentials.
+8. Use `hermes_gitlab_create_merge_request` for GitLab MR handoff/review.
+9. Record the commit SHA and remote URL in HermesProof evidence.
 
 If credentials are missing, the truthful result is "blocked by GitLab auth", not "complete".
 
@@ -177,7 +180,7 @@ ignore-locks
 secret-admin
 ```
 
-Use `hermes_find_agents` to route work to the best available agent:
+Use `hermes_find_agents` to inspect candidates, or `hermes_request_assistance` to message the best available agents directly:
 
 ```json
 {
@@ -187,6 +190,21 @@ Use `hermes_find_agents` to route work to the best available agent:
     "taskType": "release",
     "includeBusy": false,
     "limit": 5
+  }
+}
+```
+
+```json
+{
+  "tool": "hermes_request_assistance",
+  "arguments": {
+    "requester": "codex-impl-01",
+    "requiredSkills": ["review", "gitlab"],
+    "taskType": "review",
+    "subject": "Need GitLab MR review",
+    "body": "Please review the proof and MR before release.",
+    "priority": "high",
+    "limit": 3
   }
 }
 ```
@@ -211,19 +229,30 @@ For any new agent host:
 2. Launch the host from an environment that has the needed workspace and git credentials.
 3. Give the agent a stable owner id.
 4. Give the agent the standing prompt in `prompts/MINIMAX_M3_CHEAT_ENGINE_CHAT_PROMPT.md` or an equivalent project prompt.
-5. At session start, call `hermes_doctor`, `hermes_get_workspace`, and `hermes_update_presence`.
+5. At session start, call `hermes_doctor`, `hermes_get_workspace`, and `hermes_join_project`.
 6. Before edits, claim and lock.
-7. If blocked, request unlock and wait.
-8. Run gates and record proof.
-9. Finish with `hermes_complete_work`.
+7. If blocked or overloaded, use `hermes_request_assistance` or `hermes_request_unlock`.
+8. Wait on `hermes_wait_for_inbox` and `hermes_wait_for_events` while other agents work.
+9. Run gates and record proof.
+10. Finish with `hermes_complete_work`.
+
+## Runtime profile tools
+
+HermesProof now ships first-class profile state:
+
+- `hermes_register_agent_profile` persists the structured profile for an owner.
+- `hermes_get_agent_profile` reads one profile and optional presence.
+- `hermes_list_agent_profiles` filters profiles by skills, task type, host, and mode.
+- `hermes_update_agent_capabilities` updates skills, task types, host supplies, release gates, and remotes.
+- `hermes_join_project` registers/refreshes the profile, updates presence, returns inbox, live summary, profiles, and backend status for agents joining late.
+
+Profiles are stored under `.hermes3d_orchestrator/agent_profiles/`. This is HermesProof's file-backed state database, not an external SQL or vector database.
 
 ## Future connector improvements
 
 These are good next milestones for HermesProof:
 
-- `hermes_register_agent_profile`: persist a structured capability profile per agent owner.
-- `hermes_get_agent_profile`: let agents inspect another agent's advertised host access and preferred workflow.
 - Connector wizard targets for "generic external agent" and "Cheat Engine Chat".
 - An inbox watcher adapter that prints `unlock_request` and `completion` messages to a host-specific notification channel.
-- A Git remote proof gate that reports GitHub/GitLab auth availability without leaking tokens.
+- A GitHub parity layer matching the GitLab project/MR helper tools.
 - A release-session lease that requires explicit USER authorization before tags, main-branch pushes, or release publication.

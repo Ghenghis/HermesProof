@@ -9,7 +9,7 @@ import { ensureEventDirs } from "./generate-review-packet.mjs";
 import { markEventHandled } from "./watch-events.mjs";
 import { pruneHandledEvents } from "./prune-events.mjs";
 import { runTriggerDoctor } from "./trigger-doctor.mjs";
-import { resolveEnvFile } from "../src/core/env-file.mjs";
+import { resolveEnvFile, resolveEnvFileCandidate } from "../src/core/env-file.mjs";
 import { writeJsonAtomic } from "../src/core/fs-utils.mjs";
 
 async function makeTempWorkspace() {
@@ -254,6 +254,7 @@ test("env file resolver falls through missing vps override to existing general o
       HERMES3D_VPS_ENV_FILE: missingVpsEnv,
       HERMES3D_ENV_FILE: generalEnv
     },
+    existsSync: (candidate) => candidate === generalEnv,
     onMissing(source) {
       missing.push(source);
     }
@@ -274,6 +275,9 @@ test("env file resolver falls through missing explicit override to cwd .env", as
     env: {
       HERMES3D_ENV_FILE: path.join(workspaceRoot, "missing-general.env")
     },
+    platform: "posix",
+    homedir: () => workspaceRoot,
+    existsSync: (candidate) => candidate === localEnv,
     onMissing(source) {
       missing.push(source);
     }
@@ -281,6 +285,26 @@ test("env file resolver falls through missing explicit override to cwd .env", as
 
   assert.equal(resolved, localEnv);
   assert.deepEqual(missing, ["HERMES3D_ENV_FILE"]);
+});
+
+test("env file resolver prefers external operator default before cwd .env", async () => {
+  const workspaceRoot = await makeTempWorkspace();
+  const localEnv = path.join(workspaceRoot, ".env");
+  const operatorEnv = path.join(workspaceRoot, ".config", "hermes", "env");
+  await fs.mkdir(path.dirname(operatorEnv), { recursive: true });
+  await fs.writeFile(localEnv, "TOKEN=local\n", "utf8");
+  await fs.writeFile(operatorEnv, "TOKEN=operator\n", "utf8");
+
+  const resolved = resolveEnvFileCandidate({
+    cwd: workspaceRoot,
+    env: {},
+    platform: "posix",
+    homedir: () => workspaceRoot,
+    existsSync: (candidate) => candidate === operatorEnv || candidate === localEnv
+  });
+
+  assert.equal(resolved.source, "default.posix");
+  assert.equal(resolved.path, operatorEnv);
 });
 
 test("MCP_LOCK_STATE_DIR with a slash is rejected", async () => {
