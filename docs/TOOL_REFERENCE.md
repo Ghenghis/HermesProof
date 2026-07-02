@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 67 MCP tools across coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 68 MCP tools across coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -21,7 +21,7 @@ The server exposes 67 MCP tools across coordination, workspace switching, agent 
 | GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`           |
 | Profiles        | `hermes_register_agent_profile`, `hermes_get_agent_profile`, `hermes_list_agent_profiles`, `hermes_update_agent_capabilities`, `hermes_join_project` |
 | Presence        | `hermes_update_presence`, `hermes_list_presence`, `hermes_find_agents`                                                                      |
-| Assistance      | `hermes_request_assistance`                                                                                                                 |
+| Assistance      | `hermes_request_assistance`, `hermes_wait_for_assistance`                                                                                   |
 | Inbox           | `hermes_send_message`, `hermes_get_inbox`, `hermes_wait_for_inbox`, `hermes_ack_message`                                                    |
 | Completion      | `hermes_wait_for_unlock`, `hermes_complete_work`                                                                                            |
 | Diagnostics     | `hermes_get_state`, `hermes_doctor`, `hermes_read_policy`                                                                                   |
@@ -244,7 +244,7 @@ Lists live and stale agent presence records for the active workspace.
 
 ## hermes_find_agents
 
-Ranks live agents by advertised skills, task affinity, interrupt preference, and current lock load.
+Ranks live agents by advertised skills, task affinity, interrupt preference, current lock load, and learned dispatch history.
 
 ```json
 {
@@ -257,7 +257,7 @@ Ranks live agents by advertised skills, task affinity, interrupt preference, and
 
 ## hermes_request_assistance
 
-Routes a help request to the active agent pool by required skills and task type, writes durable inbox requests to the best candidates, and emits `assistance.requested`. Recipients can acknowledge, reply, review, or request a lock handoff if they need file ownership.
+Routes a help request to the active agent pool by required skills and task type, writes durable inbox requests to the best candidates, and emits `assistance.requested`. Candidate ranking blends live presence, interrupt preference, active lock load, and learned dispatch/reputation history. Recipients can acknowledge, reply, review, or request a lock handoff if they need file ownership.
 
 ```json
 {
@@ -269,8 +269,23 @@ Routes a help request to the active agent pool by required skills and task type,
   "taskId": "release-prep",
   "files": ["src/server.mjs", "src/core/gitlab-client.mjs"],
   "priority": "high",
+  "responseDeadlineSeconds": 300,
   "includeBusy": false,
   "limit": 3
+}
+```
+
+## hermes_wait_for_assistance
+
+Long-polls the acknowledgement state for an assistance request until one candidate accepts, all candidates decline, the response deadline expires, or the wait timeout elapses.
+
+```json
+{
+  "requester": "codex-impl-01",
+  "messageIds": ["msg_..."],
+  "responseDeadlineUtc": "2026-07-02T13:45:00.000Z",
+  "timeoutMs": 25000,
+  "pollMs": 500
 }
 ```
 
@@ -326,7 +341,8 @@ Marks one inbox message acknowledged, done, or dismissed and emits `message.acke
   "owner": "kilocode-reviewer",
   "messageId": "msg_...",
   "status": "acknowledged",
-  "note": "I can review it now."
+  "note": "I can review it now.",
+  "notifySender": true
 }
 ```
 

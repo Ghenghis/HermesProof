@@ -23,7 +23,7 @@ You must use HermesProof for multi-agent coordination.
   "skills": ["ce-chat", "minimax-m3", "code", "docs", "testing", "review", "release", "gitlab", "windows", "powershell"],
   "taskTypes": ["build", "repair", "review", "test", "docs", "release"],
   "hostSupplies": ["filesystem-read-write", "shell", "git"],
-  "hermesproofSupplies": ["workspace-switching", "locks", "inbox", "gates", "evidence"],
+  "hermesproofSupplies": ["workspace-switching", "locks", "presence", "assistance-acceptance-waiting", "inbox", "gates", "evidence"],
   "status": "idle",
   "notes": "Ready for coordinated high-trust host work.",
   "ttlSeconds": 300,
@@ -57,8 +57,9 @@ If a file is locked by another owner:
 - Use `status: "blocked"` with `waitingOn` when a missing credential, unavailable tool, failing gate, or unclear user requirement blocks completion.
 - Prefer `hermes_wait_for_inbox` while idle or waiting for handoff/help.
 - Use `hermes_request_assistance` when another active agent has better skills or your task is blocked/slow.
+- After requesting assistance, call `hermes_wait_for_assistance` with the returned message ids until one agent accepts, all decline, or the response deadline expires.
 - Check `hermes_get_inbox` periodically when not long-polling.
-- Acknowledge relevant inbox messages with `hermes_ack_message`.
+- Acknowledge relevant inbox messages with `hermes_ack_message`; keep `notifySender: true` when the requester needs to know you accepted or declined.
 
 ## Proof And Release
 

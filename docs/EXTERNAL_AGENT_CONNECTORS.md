@@ -204,10 +204,13 @@ Use `hermes_find_agents` to inspect candidates, or `hermes_request_assistance` t
     "subject": "Need GitLab MR review",
     "body": "Please review the proof and MR before release.",
     "priority": "high",
+    "responseDeadlineSeconds": 300,
     "limit": 3
   }
 }
 ```
+
+The requester should then call `hermes_wait_for_assistance` with the returned message ids. Recipients accept, decline, or finish through `hermes_ack_message`; the default `notifySender: true` gives the requester a durable acknowledgement without requiring separate chat glue.
 
 ## What should not be hidden
 
@@ -232,7 +235,7 @@ For any new agent host:
 5. At session start, call `hermes_doctor`, `hermes_get_workspace`, and `hermes_join_project`.
 6. Before edits, claim and lock.
 7. If blocked or overloaded, use `hermes_request_assistance` or `hermes_request_unlock`.
-8. Wait on `hermes_wait_for_inbox` and `hermes_wait_for_events` while other agents work.
+8. Wait on `hermes_wait_for_assistance`, `hermes_wait_for_inbox`, and `hermes_wait_for_events` while other agents work.
 9. Run gates and record proof.
 10. Finish with `hermes_complete_work`.
 

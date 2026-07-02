@@ -444,7 +444,9 @@ function backendStatusSnapshot({ includeCli = true } = {}) {
   const readiness = {
     cloud_ai_available: present.cloud_ai.length > 0,
     local_ai_endpoint_configured: present.local_endpoint.length > 0,
-    gitlab_fast_path_available: gitlabEnvConfigured || Boolean(cli?.glab),
+    gitlab_api_token_configured: gitlabEnvConfigured,
+    gitlab_cli_available: Boolean(cli?.glab),
+    gitlab_fast_path_available: gitlabEnvConfigured,
     github_fast_path_available: githubEnvConfigured || Boolean(cli?.gh),
     model_overrides_configured: present.model_selector.length > 0,
     any_backend_configured: backendEnvCount > 0 || Boolean(cli?.gh) || Boolean(cli?.glab)
@@ -867,16 +869,44 @@ async function findAgentCandidates({
       note: record.note || ""
     });
   }
-  candidates.sort((a, b) => b.score - a.score || a.owner.localeCompare(b.owner));
+  const scoredCandidates = await applyDispatchScores(candidates, taskTag);
+  scoredCandidates.sort((a, b) => b.score - a.score || a.owner.localeCompare(b.owner));
   const bounded = clampNumber(limit, { min: 1, max: 50, fallback: 10 });
   return {
     ok: true,
     workspace_root: manager.workspaceRoot,
     required_skills: required,
     task_type: taskTag || null,
-    count: candidates.length,
-    candidates: candidates.slice(0, bounded)
+    count: scoredCandidates.length,
+    candidates: scoredCandidates.slice(0, bounded)
   };
+}
+
+async function applyDispatchScores(candidates, taskTag) {
+  if (!candidates.length) return candidates;
+  if (!taskTag) {
+    return candidates.map((candidate) => ({
+      ...candidate,
+      base_score: candidate.base_score ?? candidate.score,
+      dispatch_score: null,
+      routing_reason: candidate.routing_reason || "presence/lock-load only; no task type"
+    }));
+  }
+  const ranked = await dispatch.rankActors(taskTag, candidates.map((candidate) => candidate.owner));
+  const rankMap = new Map(ranked.map((entry) => [entry.actor_id, entry.dispatch_score]));
+  return candidates.map((candidate) => {
+    const dispatchScore = rankMap.get(candidate.owner) ?? null;
+    const baseScore = candidate.base_score ?? candidate.score;
+    return {
+      ...candidate,
+      base_score: baseScore,
+      score: dispatchScore === null ? baseScore : Number((baseScore + dispatchScore * 20).toFixed(4)),
+      dispatch_score: dispatchScore,
+      routing_reason: dispatchScore === null
+        ? "presence/lock-load only; no dispatch history"
+        : `presence/lock-load plus learned dispatch score ${dispatchScore}`
+    };
+  });
 }
 
 async function requestAssistance({
@@ -891,34 +921,56 @@ async function requestAssistance({
   limit = 5,
   includeBusy = false,
   targetOwners = [],
-  allowSelf = false
+  allowSelf = false,
+  responseDeadlineSeconds = 300
 } = {}) {
   const normalizedFiles = Array.isArray(files) && files.length ? manager.normalizeFiles(files) : [];
   const required = normalizeTags(requiredSkills);
   const taskTag = normalizeTags(taskType ? [taskType] : [])[0] || "";
   const boundedLimit = clampNumber(limit, { min: 1, max: 25, fallback: 5 });
+  const responseDeadline = secondsFromNow(clampNumber(responseDeadlineSeconds, { min: 30, max: 86_400, fallback: 300 }));
   let candidates = [];
+  let missingTargets = [];
 
   const directTargets = [...new Set(Array.isArray(targetOwners) ? targetOwners : [])]
     .filter((owner) => allowSelf || owner !== requester)
     .slice(0, boundedLimit);
   if (directTargets.length) {
-    const presence = await listPresenceRecords({ includeStale: false });
+    const [presence, locks] = await Promise.all([
+      listPresenceRecords({ includeStale: false }),
+      manager.listLocks()
+    ]);
     const presenceByOwner = new Map(presence.presence.map((record) => [record.owner, record]));
+    const lockCounts = new Map();
+    for (const lock of locks.locks) {
+      lockCounts.set(lock.owner, (lockCounts.get(lock.owner) || 0) + 1);
+    }
+    missingTargets = directTargets.filter((owner) => !presenceByOwner.has(owner));
     candidates = directTargets
       .map((owner) => presenceByOwner.get(owner))
       .filter(Boolean)
-      .map((record) => ({
-        owner: record.owner,
-        role: record.role,
-        status: record.status,
-        skills: normalizeTags(record.skills || []),
-        task_types: normalizeTags(record.task_types || []),
-        can_interrupt: record.can_interrupt,
-        score: 100,
-        note: record.note || "",
-        direct_target: true
-      }));
+      .map((record) => {
+        const activeLockCount = lockCounts.get(record.owner) || 0;
+        const baseScore =
+          100 +
+          (record.status === "idle" ? 20 : 0) +
+          (record.status === "waiting" ? 10 : 0) +
+          (record.can_interrupt ? 5 : -20) -
+          activeLockCount * 3;
+        return {
+          owner: record.owner,
+          role: record.role,
+          status: record.status,
+          skills: normalizeTags(record.skills || []),
+          task_types: normalizeTags(record.task_types || []),
+          can_interrupt: record.can_interrupt,
+          active_lock_count: activeLockCount,
+          base_score: baseScore,
+          score: baseScore,
+          note: record.note || "",
+          direct_target: true
+        };
+      });
   } else {
     const found = await findAgentCandidates({
       requiredSkills: required,
@@ -930,6 +982,8 @@ async function requestAssistance({
       .filter((candidate) => allowSelf || candidate.owner !== requester)
       .slice(0, boundedLimit);
   }
+  candidates = await applyDispatchScores(candidates, taskTag);
+  candidates.sort((a, b) => b.score - a.score || a.owner.localeCompare(b.owner));
 
   if (!candidates.length) {
     await manager.emitManualEvent({
@@ -945,7 +999,8 @@ async function requestAssistance({
         required_skills: required,
         task_type: taskTag || null,
         include_busy: includeBusy,
-        target_owners: directTargets
+        target_owners: directTargets,
+        missing_target_owners: missingTargets
       }
     });
     return {
@@ -955,8 +1010,9 @@ async function requestAssistance({
       required_skills: required,
       task_type: taskTag || null,
       candidates: [],
+      missing_target_owners: missingTargets,
       messages: [],
-      next_tools: ["hermes_live_status", "hermes_list_presence", "hermes_find_agents"]
+      next_tools: ["hermes_live_status", "hermes_list_presence", "hermes_find_agents", "hermes_request_assistance"]
     };
   }
 
@@ -975,7 +1031,8 @@ async function requestAssistance({
       required_skills: required,
       task_type: taskTag || null,
       requester,
-      candidate_count: candidates.length
+      candidate_count: candidates.length,
+      response_deadline_utc: responseDeadline
     }
   });
   await manager.emitManualEvent({
@@ -1002,9 +1059,11 @@ async function requestAssistance({
     recipients,
     required_skills: required,
     task_type: taskTag || null,
+    response_deadline_utc: responseDeadline,
+    missing_target_owners: missingTargets,
     candidates,
     messages: sent.messages,
-    next_tools: ["hermes_wait_for_inbox", "hermes_ack_message", "hermes_send_message", "hermes_request_unlock"]
+    next_tools: ["hermes_wait_for_assistance", "hermes_wait_for_inbox", "hermes_ack_message", "hermes_send_message", "hermes_request_unlock"]
   };
 }
 
@@ -1110,10 +1169,138 @@ async function waitForInbox({
   };
 }
 
-async function ackInboxMessage({ owner, messageId, status = "acknowledged", note = "" } = {}) {
+async function findInboxMessagesByIds(messageIds = []) {
+  await ensureDir(manager.paths.inboxDir);
+  const wanted = new Set(normalizeStringList(messageIds, 100).filter((id) => /^[A-Za-z0-9._-]+$/.test(id) && !id.includes("..")));
+  if (!wanted.size) return [];
+  const owners = await fs.readdir(manager.paths.inboxDir).catch(() => []);
+  const found = [];
+  for (const owner of owners) {
+    const stat = await fs.stat(inboxDir(owner)).catch(() => null);
+    if (!stat?.isDirectory?.()) continue;
+    for (const messageId of wanted) {
+      const message = await readJson(inboxMessagePath(owner, messageId), null);
+      if (message) found.push(message);
+    }
+  }
+  found.sort((a, b) => String(a.created_utc).localeCompare(String(b.created_utc)) || a.id.localeCompare(b.id));
+  return found;
+}
+
+async function assistanceStatus({
+  requester,
+  messageIds = [],
+  responseDeadlineUtc = "",
+  timeoutSeconds = 300
+} = {}) {
+  const requestedIds = normalizeStringList(messageIds, 100);
+  const messages = (await findInboxMessagesByIds(requestedIds))
+    .filter((message) => message.type === "assistance_request")
+    .filter((message) => message.sender === requester || message?.metadata?.requester === requester);
+  const deadline = responseDeadlineUtc || messages.find((message) => message?.metadata?.response_deadline_utc)?.metadata?.response_deadline_utc || "";
+  const fallbackDeadlineMs = messages.length
+    ? new Date(messages[0].created_utc).getTime() + clampNumber(timeoutSeconds, { min: 30, max: 86_400, fallback: 300 }) * 1000
+    : Date.now();
+  const parsedDeadlineMs = deadline ? new Date(deadline).getTime() : NaN;
+  const deadlineMs = Number.isFinite(parsedDeadlineMs) ? parsedDeadlineMs : fallbackDeadlineMs;
+  const accepted = messages.filter((message) => ["acknowledged", "done"].includes(message.ack_status));
+  const declined = messages.filter((message) => message.ack_status === "dismissed");
+  const pending = messages.filter((message) => !message.acked_utc);
+  const missing = requestedIds.filter((id) => !messages.some((message) => message.id === id));
+  const allFound = requestedIds.length > 0 && missing.length === 0 && messages.length === requestedIds.length;
+  const expired = Number.isFinite(deadlineMs) && Date.now() >= deadlineMs;
+  const status = accepted.length
+    ? "accepted"
+    : allFound && declined.length === messages.length
+      ? "declined"
+      : expired
+        ? "timeout"
+        : "pending";
+  const firstResponse = accepted[0] || declined[0] || null;
+  return {
+    ok: true,
+    status,
+    workspace_root: manager.workspaceRoot,
+    requester,
+    response_deadline_utc: Number.isFinite(deadlineMs) ? new Date(deadlineMs).toISOString() : null,
+    accepted: accepted.map((message) => ({
+      owner: message.recipient,
+      message_id: message.id,
+      ack_status: message.ack_status,
+      ack_note: message.ack_note,
+      acked_utc: message.acked_utc
+    })),
+    declined: declined.map((message) => ({
+      owner: message.recipient,
+      message_id: message.id,
+      ack_note: message.ack_note,
+      acked_utc: message.acked_utc
+    })),
+    pending: pending.map((message) => ({
+      owner: message.recipient,
+      message_id: message.id,
+      priority: message.priority,
+      created_utc: message.created_utc
+    })),
+    missing_message_ids: missing,
+    first_response: firstResponse
+      ? {
+          owner: firstResponse.recipient,
+          message_id: firstResponse.id,
+          status: firstResponse.ack_status,
+          note: firstResponse.ack_note,
+          acked_utc: firstResponse.acked_utc
+        }
+      : null,
+    next_tools: status === "accepted"
+      ? ["hermes_send_message", "hermes_request_unlock", "hermes_complete_work"]
+      : status === "timeout" || status === "declined"
+        ? ["hermes_request_assistance", "hermes_find_agents", "hermes_list_presence"]
+        : ["hermes_wait_for_assistance", "hermes_wait_for_events", "hermes_live_status"]
+  };
+}
+
+async function waitForAssistance({
+  requester,
+  messageIds = [],
+  responseDeadlineUtc = "",
+  timeoutSeconds = 300,
+  timeoutMs = 25_000,
+  pollMs = 500
+} = {}) {
+  const start = Date.now();
+  const waitMs = clampNumber(timeoutMs, { min: 0, max: 120_000, fallback: 25_000 });
+  const sleepMs = clampNumber(pollMs, { min: 100, max: 5_000, fallback: 500 });
+  const deadline = start + waitMs;
+  let state = await assistanceStatus({ requester, messageIds, responseDeadlineUtc, timeoutSeconds });
+  while (state.status === "pending" && Date.now() < deadline) {
+    await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
+    state = await assistanceStatus({ requester, messageIds, responseDeadlineUtc, timeoutSeconds });
+  }
+  return { ...state, waited_ms: Math.max(0, Date.now() - start) };
+}
+
+async function ackInboxMessage({
+  owner,
+  messageId,
+  status = "acknowledged",
+  note = "",
+  notifySender = true,
+  replyBody = ""
+} = {}) {
   const file = inboxMessagePath(owner, messageId);
   const message = await readJson(file, null);
   if (!message) return { ok: false, status: "missing", message_id: messageId };
+  const alreadySameAck = Boolean(message.acked_utc) && message.ack_status === status && (message.ack_note || "") === (note || "");
+  if (alreadySameAck) {
+    return {
+      ok: true,
+      status,
+      message,
+      sender_notification: null,
+      notification_skipped: "already_acknowledged"
+    };
+  }
   message.status = status;
   message.acked_utc = utcNow();
   message.ack_status = status;
@@ -1129,7 +1316,29 @@ async function ackInboxMessage({ owner, messageId, status = "acknowledged", note
     recommended_action: "acknowledge",
     payload: { message_id: message.id, sender: message.sender, status, note }
   });
-  return { ok: true, status, message };
+  let sender_notification = null;
+  if (notifySender !== false && message.sender && message.sender !== owner) {
+    const sent = await sendInboxMessage({
+      sender: owner,
+      recipients: [message.sender],
+      type: "note",
+      priority: status === "dismissed" ? "normal" : message.priority || "normal",
+      subject: `Ack from ${owner}: ${message.subject || message.id}`,
+      body: replyBody || note || `Message ${status}.`,
+      taskId: message.task_id || "",
+      files: message.files || [],
+      requiresAck: false,
+      metadata: {
+        ack_for_message_id: message.id,
+        ack_status: status,
+        ack_note: note,
+        original_type: message.type,
+        original_recipient: owner
+      }
+    });
+    sender_notification = sent.messages[0] || null;
+  }
+  return { ok: true, status, message, sender_notification };
 }
 
 async function getUnlockState({ requester, files }) {
@@ -1745,7 +1954,7 @@ registerTool(
   "hermes_find_agents",
   {
     title: "Find agents by skills",
-    description: "Rank live agents by advertised skills, task affinity, interrupt preference, and current lock load.",
+    description: "Rank live agents by advertised skills, task affinity, interrupt preference, current lock load, and learned dispatch history.",
     inputSchema: {
       requiredSkills: z.array(z.string()).default([]),
       taskType: z.string().default(""),
@@ -1783,7 +1992,8 @@ registerTool(
       limit: z.number().int().min(1).max(25).default(5),
       includeBusy: z.boolean().default(false),
       targetOwners: z.array(Owner).default([]),
-      allowSelf: z.boolean().default(false)
+      allowSelf: z.boolean().default(false),
+      responseDeadlineSeconds: z.number().int().min(30).max(86_400).default(300)
     },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
   },
@@ -1801,7 +2011,37 @@ registerTool(
         limit: args.limit || 5,
         includeBusy: args.includeBusy === true,
         targetOwners: args.targetOwners || [],
-        allowSelf: args.allowSelf === true
+        allowSelf: args.allowSelf === true,
+        responseDeadlineSeconds: args.responseDeadlineSeconds || 300
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_wait_for_assistance",
+  {
+    title: "Wait for assistance",
+    description: "Long-poll assistance request acknowledgements until an agent accepts, all candidates decline, the response deadline expires, or the wait timeout elapses.",
+    inputSchema: {
+      requester: Owner,
+      messageIds: z.array(LegacyPathId).min(1),
+      responseDeadlineUtc: z.string().default(""),
+      timeoutSeconds: z.number().int().min(30).max(86_400).default(300),
+      timeoutMs: z.number().int().min(0).max(120_000).default(25_000),
+      pollMs: z.number().int().min(100).max(5_000).default(500)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await waitForAssistance({
+        requester: args.requester,
+        messageIds: args.messageIds || [],
+        responseDeadlineUtc: args.responseDeadlineUtc || "",
+        timeoutSeconds: args.timeoutSeconds || 300,
+        timeoutMs: args.timeoutMs || 25_000,
+        pollMs: args.pollMs || 500
       }));
     } catch (err) { return toolError(err); }
   }
@@ -1898,7 +2138,9 @@ registerTool(
       owner: Owner,
       messageId: LegacyPathId,
       status: MessageAckStatus,
-      note: z.string().default("")
+      note: z.string().default(""),
+      notifySender: z.boolean().default(true),
+      replyBody: z.string().default("")
     },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
@@ -1908,7 +2150,9 @@ registerTool(
         owner: args.owner,
         messageId: args.messageId,
         status: args.status,
-        note: args.note || ""
+        note: args.note || "",
+        notifySender: args.notifySender !== false,
+        replyBody: args.replyBody || ""
       }));
     } catch (err) { return toolError(err); }
   }

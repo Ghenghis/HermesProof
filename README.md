@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs thirty-seven independent ve
 | 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 67 MCP tools |
+| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 68 MCP tools |
 | 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -110,7 +110,7 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **67 MCP tools** for coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
+The server exposes **68 MCP tools** for coordination, workspace switching, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
@@ -131,7 +131,7 @@ GITLAB          gitlab_status       gitlab_ensure_project
 PROFILES        register_agent_profile get_agent_profile list_agent_profiles
                 update_agent_capabilities join_project
 PRESENCE        update_presence     list_presence       find_agents
-ASSISTANCE      request_assistance
+ASSISTANCE      request_assistance  wait_for_assistance
 INBOX           send_message        get_inbox           wait_for_inbox      ack_message
 COMPLETION      wait_for_unlock     complete_work
 DIAGNOSTICS     get_state           recover_stale_locks doctor              read_policy
@@ -423,7 +423,7 @@ When an agent needs a locked file, use a handoff instead of editing around the l
 
 Expired locks remain a separate recovery path: `hermes_request_unlock` reports `stale_available` and points to `hermes_recover_stale_locks` after TTL expiry; recover with a note explaining the takeover.
 
-When a task needs a different skill, call `hermes_request_assistance` with `requiredSkills` and `taskType`. HermesProof ranks active agents, sends typed inbox requests, emits `assistance.requested`, and lets recipients respond through `hermes_wait_for_inbox`, `hermes_ack_message`, `hermes_send_message`, or a lock handoff only when file ownership must move.
+When a task needs a different skill, call `hermes_request_assistance` with `requiredSkills` and `taskType`. HermesProof ranks active agents with live presence, lock load, and learned dispatch history, sends typed inbox requests, emits `assistance.requested`, and lets the requester call `hermes_wait_for_assistance` until someone accepts, declines, or the response deadline expires. Recipients respond through `hermes_wait_for_inbox`, `hermes_ack_message`, `hermes_send_message`, or a lock handoff only when file ownership must move.
 
 ---
 

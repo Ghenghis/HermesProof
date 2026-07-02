@@ -76,6 +76,7 @@ const AGENT_WORKFLOW_TOOLS = Object.freeze([
   "hermes_list_presence",
   "hermes_find_agents",
   "hermes_request_assistance",
+  "hermes_wait_for_assistance",
   "hermes_send_message",
   "hermes_get_inbox",
   "hermes_wait_for_inbox",
@@ -479,6 +480,38 @@ test("agent workflow stdio round-trip: presence, skills, inbox, wait, complete r
     assert.equal(assistanceInbox.ok, true);
     assert.equal(assistanceInbox.status, "ready");
     assert.equal(assistanceInbox.messages[0].type, "assistance_request");
+    const assistanceMessageId = assistanceInbox.messages[0].id;
+
+    const assistanceAck = parseToolResult(await s.call("hermes_ack_message", {
+      owner: "rt-agent-b",
+      messageId: assistanceMessageId,
+      status: "acknowledged",
+      note: "I can help review it.",
+      notifySender: true,
+    }));
+    assert.equal(assistanceAck.ok, true, `assistance ack failed: ${JSON.stringify(assistanceAck)}`);
+    assert.equal(assistanceAck.sender_notification.recipient, "rt-agent-a");
+
+    const duplicateAssistanceAck = parseToolResult(await s.call("hermes_ack_message", {
+      owner: "rt-agent-b",
+      messageId: assistanceMessageId,
+      status: "acknowledged",
+      note: "I can help review it.",
+      notifySender: true,
+    }));
+    assert.equal(duplicateAssistanceAck.ok, true);
+    assert.equal(duplicateAssistanceAck.notification_skipped, "already_acknowledged");
+    assert.equal(duplicateAssistanceAck.sender_notification, null);
+
+    const assistanceAccepted = parseToolResult(await s.call("hermes_wait_for_assistance", {
+      requester: "rt-agent-a",
+      messageIds: assistance.messages.map((message) => message.id),
+      responseDeadlineUtc: assistance.response_deadline_utc,
+      timeoutMs: 500,
+    }));
+    assert.equal(assistanceAccepted.ok, true);
+    assert.equal(assistanceAccepted.status, "accepted");
+    assert.equal(assistanceAccepted.first_response.owner, "rt-agent-b");
 
     const sent = parseToolResult(await s.call("hermes_send_message", {
       sender: "rt-agent-a",

@@ -375,6 +375,7 @@ const expectedTools = [
   "hermes_user_check_authorization",
   "hermes_user_grant_session",
   "hermes_user_revoke_session",
+  "hermes_wait_for_assistance",
   "hermes_wait_for_events",
   "hermes_wait_for_inbox",
   "hermes_wait_for_unlock",

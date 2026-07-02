@@ -8,11 +8,11 @@ This audit separates implemented HermesProof capability from future connector wo
 
 | Area | Current status | Proof source |
 | --- | --- | --- |
-| MCP tool surface | 67 tools, exact `tools/list` membership enforced | `scripts/truth-gates.mjs` `server.stdio_handshake`; `scripts/v07-stdio-roundtrip-smoke-test.mjs` |
+| MCP tool surface | 68 tools, exact `tools/list` membership enforced | `scripts/truth-gates.mjs` `server.stdio_handshake`; `scripts/v07-stdio-roundtrip-smoke-test.mjs` |
 | Truth gates | 37 gates, with required/warn/skipped levels | `scripts/truth-gates.mjs`; `README.md`; `docs/ARCHITECTURE.md` |
 | Memory/database | File-backed state database under `.hermes3d_orchestrator/`; no external SQL/document/vector DB required | `src/core/fs-utils.mjs`; `README.md`; `docs/ARCHITECTURE.md` |
 | Agent profiles | Runtime profile register/get/list/update plus `join_project` | `src/server.mjs`; stdio round-trip test |
-| Realtime agent interaction | Presence, skill routing, durable inbox, inbox long-polling, assistance requests, unlock handoffs, live events | `hermes_update_presence`, `hermes_request_assistance`, `hermes_wait_for_inbox`, `hermes_request_unlock`, `hermes_wait_for_events` |
+| Realtime agent interaction | Presence, learned skill routing, durable inbox, inbox long-polling, assistance requests, assistance acceptance waiting, unlock handoffs, live events | `hermes_update_presence`, `hermes_request_assistance`, `hermes_wait_for_assistance`, `hermes_wait_for_inbox`, `hermes_request_unlock`, `hermes_wait_for_events` |
 | GitLab | Redacted status, project ensure, MR list/create, GitLab auth probe gate | `src/core/gitlab-client.mjs`; `src/server.mjs`; `gitlab.auth_probe` |
 | Backend API visibility | Env/CLI inventory records names and booleans only, never values | `backend.api_config_presence`; `hermes_backend_status` |
 | MiniMax / Cheat Engine Chat connector | Prompt and profile example; no host UI/API adapter | `prompts/MINIMAX_M3_CHEAT_ENGINE_CHAT_PROMPT.md`; `examples/minimax_m3_cheat_engine_chat.agent-profile.example.json` |
@@ -45,6 +45,6 @@ This audit separates implemented HermesProof capability from future connector wo
 
 ## Completion judgement
 
-HermesProof is now strong for same-workspace multi-agent coordination: agents can join late, see active peers, request help by skill, wait on inbox messages, transfer locked files, and create GitLab project/MR evidence without leaking credentials.
+HermesProof is now strong for same-workspace multi-agent coordination: agents can join late, see active peers, request help by skill, wait for accept/decline/timeout, transfer locked files, and create GitLab project/MR evidence without leaking credentials.
 
 It is not a universal host automation layer yet. The remaining work is mostly connector-specific, not core lock/proof correctness.
