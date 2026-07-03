@@ -318,6 +318,7 @@ const expectedTools = [
   "hermes_a2a_update_task",
   "hermes_ack_message",
   "hermes_agent_health",
+  "hermes_agent_watchdog",
   "hermes_agentic_tick",
   "hermes_agent_request_user_session",
   "hermes_agent_resolve_blocked",

@@ -14,7 +14,7 @@ HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
 | Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
-| Server | 91 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Server | 92 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
 | Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
 | Queue manager | passive task queue, priority pickup, stale-task recovery | `src/core/queue-manager.mjs` |
@@ -99,6 +99,17 @@ tick tool is the bounded agentic step: it can keep MiniMax as live controller,
 ask DeepSeek/SiliconFlow/LM Studio for the next role, enqueue correction work,
 and stop after repeated no-progress cycles instead of pretending autonomy.
 
+`hermes_agent_watchdog` is the fail-safe layer. It watches presence TTLs, idle
+duration, claimed-task heartbeat age, owned locks, and recovery checkpoints. If
+an agent falls asleep or freezes, the watchdog can poke its inbox, emit a
+watchdog event, recover truly stale ownership after TTL, and enqueue a resume
+task for another agent with the last known task, locks, notes, and evidence id.
+
+HermesProof does not update model weights at runtime. Its learning layer is
+proof-backed memory: claim audits, game/project profiles, checkpoints,
+provider-performance outcomes, and evidence-ledger traces. Fine-tuning or LoRA
+training should use exported high-quality traces later, after the data is clean.
+
 ## 3. Lock lifecycle
 
 <div align="center">
@@ -151,7 +162,7 @@ The coordination contract: *no agent edits a file unless it owns the lock or hol
 | 01 | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02 | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03 | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 91 MCP tools |
+| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 92 MCP tools |
 | 05 | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06 | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07 | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -257,7 +268,7 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (91 MCP tools)
+│   ├── server.mjs                 # MCP entrypoint (92 MCP tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
 │       ├── event-manager.mjs      # event_schema_version=1 outbox bridge

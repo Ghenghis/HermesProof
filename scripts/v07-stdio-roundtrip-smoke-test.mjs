@@ -113,6 +113,7 @@ const CLAIM_AUDIT_TOOLS = Object.freeze([
   "hermes_audit_claims",
   "hermes_list_claim_audits",
   "hermes_agentic_tick",
+  "hermes_agent_watchdog",
 ]);
 
 const BACKEND_GITLAB_TOOLS = Object.freeze([
@@ -1076,6 +1077,66 @@ test("agentic tick stdio round-trip: bad claims enqueue correction work", async 
     const eventTypes = live.recent_outbox_events.map((event) => event.event_type);
     assert.ok(eventTypes.includes("agentic.tick"));
     assert.ok(eventTypes.includes("claim.audit.failed"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("agent watchdog stdio round-trip: stale idle agents are poked with recovery checkpoint", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-watchdog-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    assert.ok(names.has("hermes_agent_watchdog"), "tools/list missing hermes_agent_watchdog");
+
+    const joined = parseToolResult(await s.call("hermes_update_presence", {
+      owner: "sleepy-agent",
+      role: "controller",
+      status: "idle",
+      taskId: "pacman-loop",
+      note: "waiting too long",
+      ttlSeconds: 30,
+    }));
+    assert.equal(joined.ok, true);
+    const presenceFile = path.join(tmp, ".hermes3d_orchestrator", "presence", "sleepy-agent.json");
+    const stalePresence = JSON.parse(await fs.readFile(presenceFile, "utf8"));
+    stalePresence.updated_utc = new Date(Date.now() - 120_000).toISOString();
+    stalePresence.expires_utc = new Date(Date.now() - 90_000).toISOString();
+    await fs.writeFile(presenceFile, JSON.stringify(stalePresence, null, 2));
+
+    const watchdog = parseToolResult(await s.call("hermes_agent_watchdog", {
+      owner: "watchdog-agent",
+      targetOwners: ["sleepy-agent"],
+      idleSeconds: 30,
+      staleSeconds: 30,
+      taskHeartbeatSeconds: 30,
+      poke: true,
+      recover: false,
+      enqueueRecovery: true,
+      note: "wake up and heartbeat or hand off",
+    }));
+    assert.equal(watchdog.ok, true);
+    assert.equal(watchdog.status, "attention_needed");
+    assert.equal(watchdog.findings.length, 1);
+    assert.equal(watchdog.findings[0].owner, "sleepy-agent");
+    assert.ok(watchdog.findings[0].checkpoint.task_id === "pacman-loop");
+    assert.ok(watchdog.messages?.messages?.some((message) => message.recipient === "sleepy-agent"));
+    assert.ok(watchdog.queued?.some((task) => task.task_id.startsWith("watchdog-sleepy-agent-")));
+
+    const inbox = parseToolResult(await s.call("hermes_get_inbox", {
+      owner: "sleepy-agent",
+      includeAcked: false,
+    }));
+    assert.ok(inbox.messages.some((message) => message.type === "ping"));
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includeEvents: true,
+      eventLimit: 100,
+    }));
+    const eventTypes = live.recent_outbox_events.map((event) => event.event_type);
+    assert.ok(eventTypes.includes("agent.watchdog.poke"));
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

@@ -283,6 +283,8 @@ const EventType = z.enum([
   "claim.audit.passed",
   "claim.audit.failed",
   "agentic.tick",
+  "agent.watchdog.poke",
+  "agent.watchdog.recovery",
   "bug.reported",
   "bug.updated",
   "bug.fix_submitted",
@@ -2585,6 +2587,248 @@ function nextAgenticActions({ audit, mode, rankedProviders, activeAgents, keepGo
   return actions;
 }
 
+function ageMs(iso) {
+  const ts = typeof iso === "string" ? new Date(iso).getTime() : NaN;
+  return Number.isFinite(ts) ? Math.max(0, Date.now() - ts) : null;
+}
+
+function msToSeconds(ms) {
+  return ms === null ? null : Math.round(ms / 1000);
+}
+
+function latestEvidenceIdForOwner(owner, state) {
+  const locks = (state?.locks || []).filter((lock) => lock.owner === owner);
+  for (const lock of locks) {
+    const history = Array.isArray(lock.history) ? lock.history.slice().reverse() : [];
+    const hit = history.find((entry) => entry.evidence_id || entry.evidenceId);
+    if (hit) return hit.evidence_id || hit.evidenceId;
+  }
+  return null;
+}
+
+function checkpointForAgent({ record, state }) {
+  const owner = record.owner;
+  const locks = (state.locks || []).filter((lock) => lock.owner === owner);
+  const queueClaimed = (state.queue?.claimed || []).filter((task) => task.claimed_by === owner);
+  const legacyTasks = (state.tasks || []).filter((task) => task.owner === owner && task.status !== "released");
+  return {
+    owner,
+    status: record.status,
+    role: record.role,
+    task_id: record.task_id || queueClaimed[0]?.task_id || legacyTasks[0]?.id || null,
+    last_presence_utc: record.updated_utc || null,
+    expires_utc: record.expires_utc || null,
+    waiting_on: record.waiting_on || null,
+    note: record.note || "",
+    locks: locks.map((lock) => ({ file: lock.file, task_id: lock.task_id || null, expires_utc: lock.expires_utc || null, is_stale: lock.is_stale })),
+    queue_claimed: queueClaimed.map((task) => ({
+      task_id: task.task_id,
+      title: task.title || "",
+      heartbeat_utc: task.heartbeat_utc || null,
+      claimed_utc: task.claimed_utc || null,
+      ttl_minutes: task.ttl_minutes || null,
+      files_hint: task.files_hint || []
+    })),
+    legacy_tasks: legacyTasks.map((task) => ({ id: task.id, title: task.title || "", heartbeat_utc: task.heartbeat_utc || null, files: task.files || [] })),
+    last_evidence_id: latestEvidenceIdForOwner(owner, state)
+  };
+}
+
+async function agentWatchdog({
+  owner,
+  targetOwners = [],
+  idleSeconds = 300,
+  staleSeconds = 180,
+  taskHeartbeatSeconds = 300,
+  poke = true,
+  recover = false,
+  enqueueRecovery = false,
+  includeBusy = true,
+  note = ""
+} = {}) {
+  const idleMs = clampNumber(idleSeconds, { min: 30, max: 86_400, fallback: 300 }) * 1000;
+  const staleMs = clampNumber(staleSeconds, { min: 30, max: 86_400, fallback: 180 }) * 1000;
+  const taskHeartbeatMs = clampNumber(taskHeartbeatSeconds, { min: 30, max: 86_400, fallback: 300 }) * 1000;
+  const targetSet = new Set(normalizeStringList(targetOwners, 100));
+  const [presence, state] = await Promise.all([
+    listPresenceRecords({ includeStale: true }),
+    manager.getStateSummary()
+  ]);
+  const agents = presence.presence
+    .filter((record) => !targetSet.size || targetSet.has(record.owner))
+    .filter((record) => includeBusy || ["idle", "waiting", "blocked"].includes(record.status));
+  const claimedTasks = state.queue?.claimed || [];
+  const taskByOwner = new Map();
+  for (const task of claimedTasks) {
+    if (!task.claimed_by) continue;
+    const group = taskByOwner.get(task.claimed_by) || [];
+    group.push(task);
+    taskByOwner.set(task.claimed_by, group);
+  }
+  const findings = [];
+  const nowIso = utcNow();
+  for (const record of agents) {
+    const updatedAge = ageMs(record.updated_utc);
+    const expiresAge = isPastIso(record.expires_utc) ? ageMs(record.expires_utc) : 0;
+    const ownedTasks = taskByOwner.get(record.owner) || [];
+    const heartbeatOld = ownedTasks.some((task) => {
+      const heartbeatAge = ageMs(task.heartbeat_utc || task.claimed_utc);
+      return heartbeatAge !== null && heartbeatAge > taskHeartbeatMs;
+    });
+    const stale = record.is_stale || expiresAge > 0 || (updatedAge !== null && updatedAge > staleMs && record.status !== "done");
+    const idleTooLong = ["idle", "waiting", "blocked"].includes(record.status) && updatedAge !== null && updatedAge > idleMs;
+    if (!stale && !idleTooLong && !heartbeatOld) continue;
+    const status = stale ? "stale" : heartbeatOld ? "heartbeat_old" : "idle_too_long";
+    const checkpoint = checkpointForAgent({ record, state });
+    findings.push({
+      owner: record.owner,
+      status,
+      severity: stale || heartbeatOld ? "high" : "medium",
+      presence_age_seconds: msToSeconds(updatedAge),
+      expired_seconds: expiresAge > 0 ? msToSeconds(expiresAge) : 0,
+      task_heartbeat_old: heartbeatOld,
+      checkpoint,
+      recommended_actions: [
+        ...(stale ? ["hermes_recover_stale_locks", "hermes_recover_stale_tasks"] : []),
+        ...(heartbeatOld ? ["hermes_send_message", "hermes_request_assistance", "hermes_recover_stale_tasks"] : []),
+        ...(idleTooLong ? ["hermes_send_message", "hermes_agentic_tick"] : []),
+        "hermes_list_claim_audits",
+        "hermes_get_inbox"
+      ]
+    });
+  }
+
+  const recipients = findings.map((finding) => finding.owner);
+  let messages = null;
+  if (poke !== false && recipients.length) {
+    messages = await sendInboxMessage({
+      sender: owner,
+      recipients,
+      type: "ping",
+      priority: findings.some((finding) => finding.severity === "high") ? "high" : "normal",
+      subject: "HermesProof watchdog poke",
+      body: note || "Watchdog detected stale/idle/old-heartbeat state. Please heartbeat, update presence, release/hand off locks, or resume from your checkpoint.",
+      taskId: "",
+      files: [],
+      requiresAck: true,
+      metadata: {
+        kind: "agent_watchdog",
+        checked_utc: nowIso,
+        findings: findings.map((finding) => ({
+          owner: finding.owner,
+          status: finding.status,
+          task_id: finding.checkpoint.task_id,
+          last_evidence_id: finding.checkpoint.last_evidence_id
+        }))
+      }
+    });
+    await manager.emitManualEvent({
+      event_type: "agent.watchdog.poke",
+      owner,
+      task_id: null,
+      files: [],
+      summary: `Watchdog poked ${recipients.length} agent(s)`,
+      next_actor: "unassigned",
+      recommended_action: "acknowledge",
+      payload: { recipients, finding_count: findings.length, message_ids: messages.messages.map((message) => message.id) }
+    });
+  }
+
+  let recovery = null;
+  if (recover !== false && findings.length) {
+    const staleLockFiles = [];
+    for (const finding of findings) {
+      for (const lock of finding.checkpoint.locks) {
+        if (lock.is_stale) staleLockFiles.push(lock.file);
+      }
+    }
+    const staleTaskIds = findings
+      .flatMap((finding) => finding.checkpoint.queue_claimed || [])
+      .filter((task) => {
+        const heartbeatAge = ageMs(task.heartbeat_utc || task.claimed_utc);
+        return heartbeatAge !== null && heartbeatAge > taskHeartbeatMs;
+      })
+      .map((task) => task.task_id);
+    const recoveredLocks = staleLockFiles.length
+      ? await manager.recoverStaleLocks({ owner, files: staleLockFiles, note: note || "agent watchdog stale recovery" }).catch((err) => ({ ok: false, message: err.message }))
+      : null;
+    const recoveredTasks = staleTaskIds.length
+      ? await manager.recoverStaleTasks({ owner, files: staleTaskIds, note: note || "agent watchdog stale recovery" }).catch((err) => ({ ok: false, message: err.message }))
+      : null;
+    recovery = { stale_lock_files: staleLockFiles, stale_task_ids: staleTaskIds, recovered_locks: recoveredLocks, recovered_tasks: recoveredTasks };
+    await manager.emitManualEvent({
+      event_type: "agent.watchdog.recovery",
+      owner,
+      task_id: null,
+      files: staleLockFiles,
+      summary: `Watchdog recovery checked ${findings.length} finding(s)`,
+      next_actor: "unassigned",
+      recommended_action: "acknowledge",
+      payload: {
+        stale_lock_count: staleLockFiles.length,
+        stale_task_count: staleTaskIds.length,
+        recovered_locks_status: recoveredLocks?.status || null,
+        recovered_tasks_status: recoveredTasks?.status || null
+      }
+    });
+  }
+
+  let queued = null;
+  if (enqueueRecovery !== false && findings.length) {
+    queued = [];
+    for (const finding of findings.slice(0, 25)) {
+      const taskId = `watchdog-${finding.owner}-${Date.now().toString(36)}`.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 96);
+      const result = await manager.enqueueTask({
+        taskId,
+        title: `Recover or resume agent ${finding.owner}`,
+        summary: `Watchdog finding ${finding.status}. Resume from checkpoint or recover stale ownership.`,
+        files_hint: finding.checkpoint.locks.map((lock) => lock.file).slice(0, 50),
+        priority: finding.severity === "high" ? 90 : 60,
+        target_owner_pattern: ".*",
+        ttl_minutes: 120,
+        data: {
+          kind: "agent_watchdog_recovery",
+          finding,
+          checked_utc: nowIso
+        },
+        enqueued_by: owner
+      });
+      queued.push(result.task);
+    }
+  }
+
+  await manager.appendEvidence({
+    owner,
+    kind: "agent.watchdog",
+    summary: findings.length ? `Watchdog found ${findings.length} agent issue(s)` : "Watchdog found no stale/idle agent issues",
+    data: {
+      finding_count: findings.length,
+      targets: targetSet.size ? [...targetSet] : null,
+      poked: Boolean(messages),
+      recovered: Boolean(recovery),
+      queued: queued?.length || 0
+    }
+  });
+  return {
+    ok: true,
+    status: findings.length ? "attention_needed" : "clear",
+    workspace_root: manager.workspaceRoot,
+    checked_utc: nowIso,
+    thresholds: {
+      idle_seconds: Math.round(idleMs / 1000),
+      stale_seconds: Math.round(staleMs / 1000),
+      task_heartbeat_seconds: Math.round(taskHeartbeatMs / 1000)
+    },
+    findings,
+    messages,
+    recovery,
+    queued,
+    next_tools: findings.length
+      ? ["hermes_send_message", "hermes_recover_stale_locks", "hermes_recover_stale_tasks", "hermes_pick_task", "hermes_agentic_tick"]
+      : ["hermes_update_presence", "hermes_heartbeat"]
+  };
+}
+
 async function agenticTick({
   owner,
   taskId = "",
@@ -4350,6 +4594,30 @@ registerTool(
   },
   async (args) => {
     try { return toolResult(await agenticTick(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_agent_watchdog",
+  {
+    title: "Agent watchdog",
+    description: "Detect agents that are stale, idle too long, or holding old-heartbeat tasks; optionally poke them, recover stale locks/tasks, and enqueue resume work from a checkpoint.",
+    inputSchema: {
+      owner: Owner,
+      targetOwners: z.array(Owner).default([]),
+      idleSeconds: z.number().int().min(30).max(86_400).default(300),
+      staleSeconds: z.number().int().min(30).max(86_400).default(180),
+      taskHeartbeatSeconds: z.number().int().min(30).max(86_400).default(300),
+      poke: z.boolean().default(true),
+      recover: z.boolean().default(false),
+      enqueueRecovery: z.boolean().default(false),
+      includeBusy: z.boolean().default(true),
+      note: z.string().default("")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await agentWatchdog(args)); } catch (err) { return toolError(err); }
   }
 );
 

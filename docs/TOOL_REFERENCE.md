@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 91 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 92 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -19,6 +19,7 @@ The server exposes 91 MCP tools across coordination, workspace switching, projec
 | Test / Tickets  | `hermes_get_test_mode`, `hermes_set_test_mode`, `hermes_report_bug`, `hermes_list_bug_tickets`, `hermes_update_bug_ticket`, `hermes_submit_bug_fix` |
 | Contracts       | `hermes_upsert_project_contract`, `hermes_list_project_contracts`, `hermes_read_project_contract`, `hermes_anti_slop_review`, `hermes_list_contract_reviews` |
 | Claim Audit     | `hermes_decompose_claims`, `hermes_audit_claims`, `hermes_list_claim_audits`, `hermes_agentic_tick`                                 |
+| Watchdog        | `hermes_agent_watchdog`                                                                                                                |
 | Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
 | Backend         | `hermes_backend_status`                                                                                                                     |
 | GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`, `hermes_gitlab_ultimate_status`, `hermes_gitlab_bootstrap_ultimate` |
@@ -284,6 +285,26 @@ when needed, notifies helpers, and emits an `agentic.tick` event.
   "primaryProvider": "minimax",
   "keepGoing": true,
   "progressSignals": ["bridge reachable", "candidate count decreased"]
+}
+```
+
+## hermes_agent_watchdog
+
+Checks whether connected agents are stale, idle too long, or holding claimed
+tasks with old heartbeats. It returns a recovery checkpoint with task ids,
+owned locks, queued work, last presence, and last evidence pointer. In active
+mode it can poke agents through durable inbox messages, emit watchdog events,
+recover stale locks/tasks, and enqueue resume work for another agent.
+
+```json
+{
+  "owner": "watchdog-agent",
+  "targetOwners": ["minimax-controller"],
+  "idleSeconds": 300,
+  "taskHeartbeatSeconds": 300,
+  "poke": true,
+  "recover": false,
+  "enqueueRecovery": true
 }
 ```
 

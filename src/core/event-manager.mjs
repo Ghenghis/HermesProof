@@ -54,6 +54,8 @@ export const EVENT_TYPES = new Set([
   "claim.audit.passed",
   "claim.audit.failed",
   "agentic.tick",
+  "agent.watchdog.poke",
+  "agent.watchdog.recovery",
   "bug.reported",
   "bug.updated",
   "bug.fix_submitted",
