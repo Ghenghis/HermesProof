@@ -318,6 +318,7 @@ const expectedTools = [
   "hermes_a2a_update_task",
   "hermes_ack_message",
   "hermes_agent_health",
+  "hermes_agentic_tick",
   "hermes_agent_request_user_session",
   "hermes_agent_resolve_blocked",
   "hermes_agent_revoke_session",
@@ -327,9 +328,11 @@ const expectedTools = [
   "hermes_anti_slop_review",
   "hermes_append_evidence",
   "hermes_approve_handoff",
+  "hermes_audit_claims",
   "hermes_backend_status",
   "hermes_claim_task",
   "hermes_create_blocked_handoff",
+  "hermes_decompose_claims",
   "hermes_dispatch_recommend",
   "hermes_doctor",
   "hermes_enqueue_task",
@@ -354,6 +357,7 @@ const expectedTools = [
   "hermes_list_events",
   "hermes_list_agent_profiles",
   "hermes_list_bug_tickets",
+  "hermes_list_claim_audits",
   "hermes_list_contract_reviews",
   "hermes_list_gates",
   "hermes_list_locks",
@@ -364,6 +368,9 @@ const expectedTools = [
   "hermes_lock_files",
   "hermes_mark_event_handled",
   "hermes_pick_task",
+  "hermes_provider_rank",
+  "hermes_provider_record_outcome",
+  "hermes_provider_stats",
   "hermes_read_policy",
   "hermes_read_project_contract",
   "hermes_record_outcome",
@@ -393,7 +400,9 @@ const expectedTools = [
   "hermes_wait_for_events",
   "hermes_wait_for_inbox",
   "hermes_wait_for_unlock",
-  "hermes_verify_evidence"
+  "hermes_verify_evidence",
+  "hermes_winmerge_compare",
+  "hermes_winmerge_status"
 ];
 
 // ----------------------------------------------------------------------------

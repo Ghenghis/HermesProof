@@ -108,6 +108,13 @@ const CONTRACT_TOOLS = Object.freeze([
   "hermes_list_contract_reviews",
 ]);
 
+const CLAIM_AUDIT_TOOLS = Object.freeze([
+  "hermes_decompose_claims",
+  "hermes_audit_claims",
+  "hermes_list_claim_audits",
+  "hermes_agentic_tick",
+]);
+
 const BACKEND_GITLAB_TOOLS = Object.freeze([
   "hermes_backend_status",
   "hermes_gitlab_status",
@@ -116,6 +123,17 @@ const BACKEND_GITLAB_TOOLS = Object.freeze([
   "hermes_gitlab_create_merge_request",
   "hermes_gitlab_ultimate_status",
   "hermes_gitlab_bootstrap_ultimate",
+]);
+
+const PROVIDER_TOOLS = Object.freeze([
+  "hermes_provider_record_outcome",
+  "hermes_provider_stats",
+  "hermes_provider_rank",
+]);
+
+const WINMERGE_TOOLS = Object.freeze([
+  "hermes_winmerge_status",
+  "hermes_winmerge_compare",
 ]);
 
 async function startServer(workspaceRoot, envOverrides = {}) {
@@ -960,6 +978,110 @@ test("project contract stdio round-trip: anti-slop review opens shared blocker t
   }
 });
 
+test("claim audit stdio round-trip: unsupported agent claims produce correction packet", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-claim-audit-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of CLAIM_AUDIT_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing claim-audit tool: ${expected}`);
+    }
+
+    const decomposed = parseToolResult(await s.call("hermes_decompose_claims", {
+      text: "Everything is fixed and release ready. npm test: 316 passed, 0 failed.",
+    }));
+    assert.equal(decomposed.ok, true);
+    assert.ok(decomposed.claims.length >= 2);
+    assert.ok(decomposed.claims.some((claim) => claim.type === "completion"));
+
+    const started = Date.now();
+    const audited = parseToolResult(await s.call("hermes_audit_claims", {
+      owner: "claim-agent",
+      taskId: "claim-proof",
+      text: "Everything is fixed and release ready. npm test: 316 passed, 0 failed.",
+      latencyMode: "instant",
+      createTicket: false,
+      notifyAgents: false,
+      generatorProvider: "minimax",
+      generatorModel: "m3",
+      auditorProvider: "deepseek",
+      auditorModel: "v4",
+    }));
+    const elapsed = Date.now() - started;
+    assert.equal(audited.ok, false, `unsupported claim should fail audit: ${JSON.stringify(audited)}`);
+    assert.equal(audited.status, "needs_correction");
+    assert.ok(audited.audit.findings.some((finding) => finding.code === "claim.unproven_completion"));
+    assert.ok(audited.audit.grounding_requests.length >= 1);
+    assert.ok(audited.audit.correction_packet.claims_to_fix.length >= 1);
+    assert.ok(audited.provider_records.some((record) => record.provider_id === "minimax"));
+    assert.ok(elapsed < 1500, `claim audit should stay fast; took ${elapsed}ms`);
+
+    const audits = parseToolResult(await s.call("hermes_list_claim_audits", {
+      status: "needs_correction",
+    }));
+    assert.equal(audits.ok, true);
+    assert.equal(audits.count, 1);
+    assert.equal(audits.audits[0].audit_id, audited.audit.audit_id);
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includeEvents: true,
+      eventLimit: 100,
+    }));
+    const eventTypes = live.recent_outbox_events.map((event) => event.event_type);
+    assert.ok(eventTypes.includes("claim.audit.failed"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("agentic tick stdio round-trip: bad claims enqueue correction work", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-agentic-tick-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    assert.ok(names.has("hermes_agentic_tick"), "tools/list missing hermes_agentic_tick");
+
+    const tick = parseToolResult(await s.call("hermes_agentic_tick", {
+      owner: "minimax-controller",
+      taskId: "pacman-loop",
+      mode: "autopilot",
+      objective: "Find PAC-MAN timer and speed addresses",
+      latestOutput: "Timer freeze is complete and release ready. All tests passed.",
+      providerCandidates: ["minimax", "deepseek", "siliconflow", "lm-studio"],
+      primaryProvider: "minimax",
+      keepGoing: true,
+      enqueueNext: true,
+      notifyAgents: false,
+      createTicket: false,
+      progressSignals: ["bridge reachable", "candidate count decreased"],
+    }));
+    assert.equal(tick.ok, false, `unsupported claim should require action: ${JSON.stringify(tick)}`);
+    assert.equal(tick.loop.status, "needs_action");
+    assert.equal(tick.loop.mode, "autopilot");
+    assert.ok(tick.loop.provider_roles.some((entry) => entry.provider === "deepseek"));
+    assert.ok(tick.loop.next_actions.some((entry) => entry.action === "ground_claims"));
+    assert.ok(tick.loop.queued_task?.task_id?.startsWith("agentic-"));
+
+    const pending = parseToolResult(await s.call("hermes_list_pending_tasks", {}));
+    assert.equal(pending.ok, true);
+    assert.ok(pending.tasks.some((task) => task.task_id === tick.loop.queued_task.task_id));
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includeEvents: true,
+      eventLimit: 100,
+    }));
+    const eventTypes = live.recent_outbox_events.map((event) => event.event_type);
+    assert.ok(eventTypes.includes("agentic.tick"));
+    assert.ok(eventTypes.includes("claim.audit.failed"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("backend and GitLab stdio round-trip: status is redacted and missing-token paths are safe", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-backend-gitlab-"));
   const emptyGitLabEnv = path.join(tmp, ".env.gitlab");
@@ -1048,6 +1170,101 @@ test("backend and GitLab stdio round-trip: status is redacted and missing-token 
     assert.equal(ultimateBootstrap.ok, false);
     assert.equal(ultimateBootstrap.status, "missing_token");
     assert.equal(ultimateBootstrap.backend_status.secret_values_returned, false);
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("provider-performance stdio round-trip: record, rank, and live status expose model routing scores", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-provider-perf-"));
+  const s = await startServer(tmp);
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of PROVIDER_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing provider tool: ${expected}`);
+    }
+
+    const minimax = parseToolResult(await s.call("hermes_provider_record_outcome", {
+      provider_id: "minimax",
+      model_name: "MiniMax-M3",
+      task_type: "pacman_timer_scan",
+      outcome: "verified",
+      reward: 1,
+      latency_ms: 700,
+      context: "narrowed live timer candidates",
+      evidence: "ce_ping 30/30",
+    }));
+    assert.equal(minimax.ok, true, `record minimax failed: ${JSON.stringify(minimax)}`);
+
+    const deepseek = parseToolResult(await s.call("hermes_provider_record_outcome", {
+      provider_id: "deepseek",
+      model_name: "deepseek-chat",
+      task_type: "pacman_timer_scan",
+      outcome: "failed",
+      context: "wrong scan lane",
+    }));
+    assert.equal(deepseek.ok, true, `record deepseek failed: ${JSON.stringify(deepseek)}`);
+
+    const ranked = parseToolResult(await s.call("hermes_provider_rank", {
+      task_type: "pacman_timer_scan",
+      candidates: ["deepseek", "siliconflow", "minimax"],
+    }));
+    assert.equal(ranked.ok, true, `rank failed: ${JSON.stringify(ranked)}`);
+    assert.deepEqual(
+      ranked.providers.map((entry) => entry.provider_id),
+      ["minimax", "siliconflow", "deepseek"]
+    );
+
+    const stats = parseToolResult(await s.call("hermes_provider_stats", {
+      provider_id: "minimax",
+      task_type: "pacman_timer_scan",
+      include_history: true,
+    }));
+    assert.equal(stats.ok, true, `stats failed: ${JSON.stringify(stats)}`);
+    assert.equal(stats.providers[0].verified, 1);
+    assert.equal(stats.providers[0].recent_events[0].model_name, "MiniMax-M3");
+
+    const live = parseToolResult(await s.call("hermes_live_status", {
+      includeProviderStats: true,
+      includeAgents: false,
+      includeEvents: false,
+    }));
+    assert.equal(live.ok, true);
+    assert.ok(live.provider_performance.some((entry) => entry.provider_id === "minimax"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("WinMerge stdio round-trip: status and safe path validation are exposed", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-winmerge-"));
+  const s = await startServer(tmp, {
+    HERMES_WINMERGE_EXE: process.execPath,
+    HERMES_WINMERGE_ALLOWED_ROOTS: tmp,
+  });
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of WINMERGE_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing WinMerge tool: ${expected}`);
+    }
+
+    const status = parseToolResult(await s.call("hermes_winmerge_status", {}));
+    assert.equal(status.ok, true, `status failed: ${JSON.stringify(status)}`);
+    assert.equal(status.found, true);
+    assert.ok(status.allowed_roots.some((root) => path.resolve(root) === path.resolve(tmp)));
+
+    await fs.writeFile(path.join(tmp, "left.txt"), "left", "utf8");
+    const privateRejected = parseToolResult(await s.call("hermes_winmerge_compare", {
+      owner: "rt-agent-1",
+      leftPath: path.join(tmp, "left.txt"),
+      rightPath: path.join(tmp, "private", "right.txt"),
+    }));
+    assert.equal(privateRejected.ok, false);
+    assert.match(privateRejected.message, /private|missing_winmerge/i);
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

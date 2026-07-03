@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs thirty-seven independent ve
 | 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 82 MCP tools |
+| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 91 MCP tools |
 | 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -110,7 +110,7 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **82 MCP tools** for coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
+The server exposes **91 MCP tools** for coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, provider-performance routing, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
@@ -127,6 +127,7 @@ TEST/TICKETS    get_test_mode       set_test_mode       report_bug
                 list_bug_tickets   update_bug_ticket   submit_bug_fix
 CONTRACTS       upsert_project_contract list_project_contracts
                 read_project_contract   anti_slop_review list_contract_reviews
+CLAIM AUDIT     decompose_claims   audit_claims   list_claim_audits agentic_tick
 REALTIME        live_status         wait_for_events
 BACKEND         backend_status
 GITLAB          gitlab_status       gitlab_ensure_project

@@ -169,10 +169,14 @@ export class HermesAgentBridge {
    * @param {string[]} [options.failover_order=DEFAULT_FAILOVER]
    * @param {string[]} [options.scope]
    * @param {string} [options.projectGoals]
-   * @param {object} [options.modelOverrides] - { providerName: modelId }
-   * @param {Array} [options.registryProviders] - extra providers loaded from
-   *   policies/provider-registry/registry.yaml; appended to failover list.
-   */
+ * @param {object} [options.modelOverrides] - { providerName: modelId }
+ * @param {Array} [options.registryProviders] - extra providers loaded from
+ *   policies/provider-registry/registry.yaml; appended to failover list.
+ * @param {ProviderPerformanceTracker} [options.providerPerformance] - optional
+ *   proof-backed provider scorer. When present, Hermes keeps the configured
+ *   failover order as baseline but prefers providers with better recent
+ *   outcomes for the requested task type.
+ */
   constructor({
     orchestrator,
     enabled = false,
@@ -181,6 +185,7 @@ export class HermesAgentBridge {
     projectGoals = null,
     modelOverrides = {},
     registryProviders = [],
+    providerPerformance = null,
   } = {}) {
     if (!orchestrator) throw new Error("HermesAgentBridge requires an orchestrator");
     this.orchestrator = orchestrator;
@@ -190,6 +195,7 @@ export class HermesAgentBridge {
     this.projectGoals = projectGoals;
     this.modelOverrides = modelOverrides;
     this.registryProviders = registryProviders;
+    this.providerPerformance = providerPerformance;
     this.activeSessionId = null;
     // Merge registry providers into the PROVIDERS map (don't shadow built-ins).
     this._mergedProviders = { ...PROVIDERS };
@@ -218,12 +224,36 @@ export class HermesAgentBridge {
     return list;
   }
 
+  async _providersForTask(taskType) {
+    const providers = this._resolvedProviders();
+    if (!this.providerPerformance || providers.length < 2) return providers;
+    try {
+      const ranked = await this.providerPerformance.rankProviders({
+        task_type: taskType,
+        candidates: providers.map((p) => p.name),
+        min_score: 0,
+      });
+      const rankMap = new Map((ranked.providers || []).map((entry, index) => [entry.provider_id, { ...entry, index }]));
+      return providers
+        .map((provider, inputOrder) => ({ provider, inputOrder, rank: rankMap.get(provider.name) }))
+        .sort((a, b) => {
+          const aScore = a.rank?.score ?? 1.0;
+          const bScore = b.rank?.score ?? 1.0;
+          if (bScore !== aScore) return bScore - aScore;
+          return a.inputOrder - b.inputOrder;
+        })
+        .map((entry) => entry.provider);
+    } catch {
+      return providers;
+    }
+  }
+
   /**
    * Probe each enabled provider in order; return the first that's healthy.
    */
   async healthCheck() {
     if (!this.enabled) return { ok: false, reason: "bridge disabled" };
-    const providers = this._resolvedProviders();
+    const providers = await this._providersForTask("health_probe");
     if (providers.length === 0) {
       return { ok: false, reason: "no providers configured (no API keys + LM Studio absent)" };
     }
@@ -362,7 +392,8 @@ export class HermesAgentBridge {
    */
   async _askAgent(payload) {
     const overallStart = Date.now();
-    const providers = this._resolvedProviders();
+    const taskType = payload?.task ? `hermes_agent:${payload.task}` : "hermes_agent:decision";
+    const providers = await this._providersForTask(taskType);
     if (providers.length === 0) {
       return { ok: false, reason: "no providers available" };
     }
@@ -376,7 +407,18 @@ export class HermesAgentBridge {
       if (Date.now() - overallStart > DECISION_OVERALL_TIMEOUT_MS) {
         return { ok: false, reason: "overall decision timeout exceeded" };
       }
+      const providerStart = Date.now();
       const result = await this._callProvider(p, messages);
+      if (this.providerPerformance) {
+        await this.providerPerformance.recordOutcome({
+          provider_id: p.name,
+          model_name: p.model,
+          task_type: taskType,
+          outcome: result.ok ? "completed" : (result.reason || "").includes("timeout") ? "timeout" : "failed",
+          latency_ms: Date.now() - providerStart,
+          context: result.ok ? "Hermes Agent decision returned parseable JSON" : result.reason,
+        }).catch(() => {});
+      }
       if (result.ok) return { ...result, provider_used: p.name, model_used: p.model };
       lastErr = result.reason;
     }

@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { config as loadDotenv } from "dotenv";
 import { resolveEnvFileCandidate } from "./core/env-file.mjs";
 import { HermesLockManager } from "./core/lock-manager.mjs";
@@ -12,6 +12,7 @@ import { GateRunner } from "./core/gate-runner.mjs";
 import { SkillRotation } from "./core/skill-rotation.mjs";
 import { ReputationTracker } from "./core/reputation.mjs";
 import { CapabilityDispatch } from "./core/capability-dispatch.mjs";
+import { ProviderPerformanceTracker } from "./core/provider-performance.mjs";
 import { A2AStub } from "./core/a2a-stub.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
@@ -69,6 +70,7 @@ let gates;
 let skills;
 let reputation;
 let dispatch;
+let providerPerformance;
 let a2a;
 let anon;
 let hermesAgent;
@@ -88,6 +90,10 @@ async function buildRuntime(workspaceRoot) {
   const nextGates = new GateRunner({ workspaceRoot: resolvedWorkspaceRoot });
   const nextSkills = new SkillRotation({ workspaceRoot: resolvedWorkspaceRoot, stateDirName: configuredStateDirName });
   const nextReputation = new ReputationTracker({ workspaceRoot: resolvedWorkspaceRoot, stateDirName: configuredStateDirName });
+  const nextProviderPerformance = new ProviderPerformanceTracker({
+    workspaceRoot: resolvedWorkspaceRoot,
+    stateDirName: configuredStateDirName
+  });
   // P1-15 (audit 2026-05-03): inject the server's already-created reputation +
   // skills into CapabilityDispatch instead of letting it construct its own
   // parallel instances. This guarantees any in-memory state added later (caches,
@@ -116,11 +122,13 @@ async function buildRuntime(workspaceRoot) {
       : null,
     projectGoals: process.env.HERMES_AGENT_PROJECT_GOALS || null,
     registryProviders: registryLoad.providers || [],
+    providerPerformance: nextProviderPerformance,
   });
 
   await nextManager.init();
   await nextSkills.init();
   await nextReputation.init();
+  await nextProviderPerformance.init();
   await nextDispatch.init();
   await nextA2a.init();
   await nextAnon.init();
@@ -135,6 +143,7 @@ async function buildRuntime(workspaceRoot) {
     skills: nextSkills,
     reputation: nextReputation,
     dispatch: nextDispatch,
+    providerPerformance: nextProviderPerformance,
     a2a: nextA2a,
     anon: nextAnon,
     hermesAgent: nextHermesAgent,
@@ -194,6 +203,7 @@ async function activateWorkspace(
   skills = nextRuntime.skills;
   reputation = nextRuntime.reputation;
   dispatch = nextRuntime.dispatch;
+  providerPerformance = nextRuntime.providerPerformance;
   a2a = nextRuntime.a2a;
   anon = nextRuntime.anon;
   hermesAgent = nextRuntime.hermesAgent;
@@ -270,6 +280,9 @@ const EventType = z.enum([
   "contract.updated",
   "contract.reviewed",
   "slop.detected",
+  "claim.audit.passed",
+  "claim.audit.failed",
+  "agentic.tick",
   "bug.reported",
   "bug.updated",
   "bug.fix_submitted",
@@ -356,6 +369,8 @@ const LegacyPathId = z
   .refine((id) => !id.includes(".."), "id must not contain parent refs");
 const TaskId = LegacyPathId.describe("Stable task id safe for use as a state-file path component.");
 const OptionalTaskId = z.union([LegacyPathId, z.literal("")]).default("");
+const ComparePath = z.string().min(1).max(1000).describe("Existing file or directory path allowed for local comparison.");
+const ClaimLatencyMode = z.enum(["instant", "grounded", "debate"]).default("instant");
 
 function toolResult(value) {
   return {
@@ -412,6 +427,14 @@ function contractPath(contractId) {
 
 function contractReviewPath(reviewId) {
   return path.join(manager.paths.contractReviewsDir, `${reviewId}.json`);
+}
+
+function claimAuditDir() {
+  return path.join(manager.paths.stateDir, "claim_audits");
+}
+
+function claimAuditPath(auditId) {
+  return path.join(claimAuditDir(), `${auditId}.json`);
 }
 
 function inboxDir(owner) {
@@ -495,6 +518,174 @@ function commandExists(name) {
     windowsHide: true
   });
   return result.status === 0;
+}
+
+function commandPath(name) {
+  const cmd = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(cmd, [name], {
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true
+  });
+  if (result.status !== 0) return "";
+  return String(result.stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0] || "";
+}
+
+async function fileExistsPath(candidate) {
+  if (!candidate) return false;
+  try {
+    const st = await fs.stat(candidate);
+    return st.isFile() || st.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function resolveWinMergeExecutable() {
+  const candidates = uniqueSorted([
+    process.env.HERMES_WINMERGE_EXE,
+    process.env.WINMERGE_EXE,
+    "C:\\Program Files\\WinMerge\\WinMergeU.exe",
+    "C:\\Program Files\\WinMerge\\WinMerge.exe",
+    "C:\\Program Files (x86)\\WinMerge\\WinMergeU.exe",
+    commandPath("WinMergeU.exe"),
+    commandPath("WinMerge.exe")
+  ]).map((value) => path.resolve(String(value)));
+  const checked = [];
+  for (const candidate of candidates) {
+    checked.push(candidate);
+    try {
+      const st = await fs.stat(candidate);
+      if (st.isFile()) {
+        return { found: true, executable: candidate, checked };
+      }
+    } catch {}
+  }
+  return { found: false, executable: "", checked };
+}
+
+function compareAllowedRoots() {
+  const roots = [runtime?.workspaceRoot || manager?.workspaceRoot].filter(Boolean);
+  const envRoots = String(process.env.HERMES_WINMERGE_ALLOWED_ROOTS || "")
+    .split(";")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  roots.push(...envRoots);
+  if (process.platform === "win32") roots.push("G:\\Github");
+  return uniqueSorted(roots.map((root) => path.resolve(root)));
+}
+
+async function validateComparePath(raw, label) {
+  const value = String(raw || "").trim();
+  if (!value) throw new Error(`${label} is required`);
+  const resolved = path.resolve(value);
+  const parts = resolved.split(/[\\/]+/).map((part) => part.toLowerCase());
+  if (parts.includes("private") || parts.includes(".git") || path.basename(resolved).toLowerCase().includes(".env")) {
+    throw new Error(`${label} must not reference private, .env, or .git paths`);
+  }
+  const roots = compareAllowedRoots();
+  const allowed = roots.some((root) => {
+    const rel = path.relative(root, resolved);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  });
+  if (!allowed) {
+    throw new Error(`${label} must be under active workspace or HERMES_WINMERGE_ALLOWED_ROOTS`);
+  }
+  if (!(await fileExistsPath(resolved))) throw new Error(`${label} does not exist: ${value}`);
+  return resolved;
+}
+
+async function winMergeStatusSnapshot() {
+  const resolved = await resolveWinMergeExecutable();
+  return {
+    ok: true,
+    found: resolved.found,
+    executable: resolved.executable,
+    checked: resolved.checked,
+    allowed_roots: compareAllowedRoots(),
+    workspace_root: runtime?.workspaceRoot || manager?.workspaceRoot || null,
+    usage: resolved.found
+      ? "Call hermes_winmerge_compare with leftPath and rightPath to open a visual compare."
+      : "Install WinMerge or set HERMES_WINMERGE_EXE to WinMergeU.exe."
+  };
+}
+
+async function launchWinMergeCompare({
+  owner = "system",
+  leftPath,
+  rightPath,
+  ancestorPath = "",
+  recursive = true,
+  readOnly = false,
+  wait = false,
+  title = ""
+} = {}) {
+  const status = await resolveWinMergeExecutable();
+  if (!status.found) {
+    return { ok: false, status: "missing_winmerge", winmerge: await winMergeStatusSnapshot() };
+  }
+  const left = await validateComparePath(leftPath, "leftPath");
+  const right = await validateComparePath(rightPath, "rightPath");
+  const ancestor = ancestorPath ? await validateComparePath(ancestorPath, "ancestorPath") : "";
+  const args = ["/e", "/u"];
+  if (recursive) args.push("/r");
+  if (readOnly) args.push("/wl", "/wr");
+  if (title) args.push("/dl", `${title} left`, "/dr", `${title} right`);
+  if (ancestor) args.push(left, ancestor, right);
+  else args.push(left, right);
+  let exitCode = null;
+  let pid = null;
+  if (wait) {
+    const result = spawnSync(status.executable, args, {
+      encoding: "utf8",
+      shell: false,
+      windowsHide: false,
+      timeout: 10 * 60 * 1000
+    });
+    exitCode = result.status;
+  } else {
+    const child = spawn(status.executable, args, {
+      detached: true,
+      stdio: "ignore",
+      shell: false,
+      windowsHide: false
+    });
+    pid = child.pid;
+    child.unref();
+  }
+  await manager.emitManualEvent({
+    event_type: "evidence.appended",
+    owner,
+    task_id: null,
+    files: [],
+    summary: `WinMerge compare launched: ${path.basename(left)} vs ${path.basename(right)}`,
+    next_actor: "unassigned",
+    recommended_action: "review_fix",
+    payload: {
+      tool: "winmerge",
+      executable: status.executable,
+      left,
+      right,
+      ancestor: ancestor || null,
+      recursive: Boolean(recursive),
+      read_only: Boolean(readOnly),
+      wait: Boolean(wait),
+      pid,
+      exit_code: exitCode
+    }
+  });
+  return {
+    ok: true,
+    status: wait ? "completed" : "launched",
+    executable: status.executable,
+    pid,
+    exit_code: exitCode,
+    left_path: left,
+    right_path: right,
+    ancestor_path: ancestor || "",
+    args_redacted: args.map((arg) => String(arg)),
+    next_tools: ["hermes_append_evidence", "hermes_anti_slop_review", "hermes_complete_work"]
+  };
 }
 
 function backendStatusSnapshot({ includeCli = true } = {}) {
@@ -1906,6 +2097,655 @@ async function listContractReviews({ status = "all", severity = "", limit = 100 
   return { ok: true, workspace_root: manager.workspaceRoot, status, count: reviews.length, reviews: reviews.slice(0, bounded) };
 }
 
+const CLAIM_STOPWORDS = new Set([
+  "about", "after", "again", "agent", "agents", "also", "because", "before", "being", "between",
+  "could", "every", "from", "have", "into", "make", "more", "need", "needs", "only", "project",
+  "should", "that", "their", "there", "these", "thing", "this", "those", "through", "using",
+  "what", "when", "where", "which", "while", "with", "without", "would", "your"
+]);
+
+const CLAIM_RISK_PATTERNS = Object.freeze([
+  { code: "secret.raw_token", type: "security", severity: "critical", regex: /(glpat-[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_]{10,}|ghp_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9]{20,}|PRIVATE-TOKEN\s*[:=])/ },
+  { code: "completion.release_ready", type: "completion", severity: "high", regex: /\b(release[- ]ready|production[- ]ready|complete|completed|done|finished|perfect)\b/i },
+  { code: "completion.everything_fixed", type: "completion", severity: "high", regex: /\b(everything\s+(?:is\s+)?(?:fixed|working|complete)|all\s+(?:bugs?|issues?)\s+(?:are\s+)?(?:fixed|gone)|no\s+bugs?\s+remain)\b/i },
+  { code: "proof.test_result", type: "test_result", severity: "medium", regex: /\b(\d+\s+(?:pass|passed|fail|failed|skip|skipped)|tests?\s+(?:pass|passed|fail|failed)|proof\s+check|truth\s+gate|ruff|pytest|npm\s+test)\b/i },
+  { code: "ci.gitlab", type: "ci", severity: "medium", regex: /\b(gitlab|pipeline|merge\s+request|merge\s+train|approval|code\s+quality|dependency\s+scan|ultimate)\b/i },
+  { code: "capability.tooling", type: "capability", severity: "medium", regex: /\b(mcp|tool(?:s)?|bridge|provider|model|minimax|deepseek|siliconflow|lm\s*studio|ollama|winmerge|ghidra|x64dbg|resource\s+hacker)\b/i },
+  { code: "temporal.current", type: "temporal", severity: "medium", regex: /\b(today|yesterday|tomorrow|latest|current|now|as of|mid[- ]?20\d\d|20\d\d-\d\d-\d\d)\b/i },
+  { code: "numeric.exact", type: "factual", severity: "low", regex: /\b\d+(?:\.\d+)?\s*(?:%|ms|s|sec|seconds?|minutes?|hours?|tools?|files?|tests?|passes?|fails?|skips?|tokens?|commits?)\b/i }
+]);
+
+function normalizeClaimAuditId(value = "") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return `claim-audit-${Date.now().toString(36)}-${shaId(`${manager.workspaceRoot}:${Date.now()}`, 8)}`;
+  const normalized = raw.replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 96);
+  if (!/^[a-z0-9][a-z0-9._-]{1,95}$/.test(normalized) || normalized.includes("..")) {
+    throw new Error("auditId must normalize to 2-96 safe path characters");
+  }
+  return normalized;
+}
+
+function splitClaimCandidates(text = "", maxClaims = 40) {
+  const bounded = clampNumber(maxClaims, { min: 1, max: 200, fallback: 40 });
+  const raw = String(text || "").replace(/\r/g, "\n").slice(0, 120_000);
+  const chunks = [];
+  for (const line of raw.split(/\n+/)) {
+    const trimmed = line
+      .replace(/^\s*(?:[-*+]|\d+[.)]|\|)\s*/, "")
+      .replace(/\s*\|\s*/g, " ")
+      .trim();
+    if (!trimmed || /^[-:| ]{3,}$/.test(trimmed)) continue;
+    const sentenceParts = trimmed.split(/(?<=[.!?])\s+/);
+    for (const part of sentenceParts) {
+      const claim = part.trim().replace(/\s+/g, " ");
+      if (claim.length >= 8) chunks.push(claim.slice(0, 700));
+      if (chunks.length >= bounded) break;
+    }
+    if (chunks.length >= bounded) break;
+  }
+  return [...new Set(chunks)].slice(0, bounded);
+}
+
+function classifyClaimText(text = "") {
+  const triggers = [];
+  let type = "factual";
+  let severity = "info";
+  for (const pattern of CLAIM_RISK_PATTERNS) {
+    if (pattern.regex.test(text)) {
+      triggers.push(pattern.code);
+      if (severityRank(pattern.severity) > severityRank(severity)) severity = pattern.severity;
+      if (type === "factual" || pattern.severity === "critical" || pattern.type === "completion") type = pattern.type;
+    }
+  }
+  if (triggers.length === 0) {
+    if (/\b(should|could|recommend|best|useful|possible|smart)\b/i.test(text)) {
+      type = "recommendation";
+      severity = "low";
+      triggers.push("recommendation.unverified");
+    } else {
+      severity = "low";
+      triggers.push("factual.ordinary");
+    }
+  }
+  const needsGrounding = ["critical", "high", "medium"].includes(severity) ||
+    /\b(pass|passed|failed|fixed|complete|release|pipeline|latest|current|today|tool|version|commit|tag|token)\b/i.test(text);
+  const confidence = severity === "critical" ? 0.1 : severity === "high" ? 0.35 : severity === "medium" ? 0.55 : 0.75;
+  return { type, severity, triggers, needs_grounding: needsGrounding, confidence };
+}
+
+function decomposeClaims({ text = "", claims = [], maxClaims = 40 } = {}) {
+  const explicit = Array.isArray(claims) ? claims : [];
+  const rawClaims = explicit.length
+    ? explicit.map((claim) => typeof claim === "string" ? { text: claim } : claim).filter(Boolean)
+    : splitClaimCandidates(text, maxClaims).map((claim) => ({ text: claim }));
+  const bounded = clampNumber(maxClaims, { min: 1, max: 200, fallback: 40 });
+  return rawClaims.slice(0, bounded).map((claim, index) => {
+    const claimText = String(claim?.text || claim?.claim || "").trim().replace(/\s+/g, " ").slice(0, 700);
+    const classified = classifyClaimText(claimText);
+    return {
+      claim_id: String(claim?.claim_id || claim?.id || `claim-${String(index + 1).padStart(3, "0")}`),
+      text: claimText,
+      type: claim?.type || classified.type,
+      severity: claim?.severity || classified.severity,
+      confidence: Number.isFinite(Number(claim?.confidence)) ? Math.max(0, Math.min(1, Number(claim.confidence))) : classified.confidence,
+      triggers: normalizeStringList([...(claim?.triggers || []), ...classified.triggers], 20),
+      needs_grounding: claim?.needs_grounding ?? classified.needs_grounding,
+      source: String(claim?.source || "agent_output").slice(0, 80)
+    };
+  }).filter((claim) => claim.text);
+}
+
+function claimTerms(text = "") {
+  return [...new Set(String(text || "").toLowerCase().match(/[a-z0-9_.-]{4,}/g) || [])]
+    .filter((term) => !CLAIM_STOPWORDS.has(term))
+    .slice(0, 12);
+}
+
+function evidenceBlob({ evidence = [], gates = [] } = {}) {
+  const safe = { evidence: Array.isArray(evidence) ? evidence.slice(0, 80) : [], gates: Array.isArray(gates) ? gates.slice(0, 80) : [] };
+  return JSON.stringify(safe).toLowerCase();
+}
+
+function evidenceSupportsClaim(claim, { evidence = [], gates = [] } = {}) {
+  const blob = evidenceBlob({ evidence, gates });
+  if (!blob || blob === "{\"evidence\":[],\"gates\":[]}") return false;
+  const terms = claimTerms(claim.text);
+  const hits = terms.filter((term) => blob.includes(term)).length;
+  if (claim.type === "test_result" && (Array.isArray(gates) ? gates : []).some(gatePasses)) return true;
+  if (claim.type === "completion" && (Array.isArray(gates) ? gates : []).some(gatePasses) && (Array.isArray(evidence) ? evidence : []).length) return true;
+  return terms.length > 0 && hits >= Math.min(2, terms.length);
+}
+
+function groundingRequestForClaim(claim) {
+  let suggestedTools = ["hermes_append_evidence", "hermes_verify_evidence"];
+  if (claim.type === "completion") suggestedTools = ["hermes_anti_slop_review", "hermes_run_gate", "hermes_append_evidence"];
+  else if (claim.type === "test_result") suggestedTools = ["hermes_run_gate", "hermes_append_evidence"];
+  else if (claim.type === "ci") suggestedTools = ["hermes_gitlab_status", "hermes_gitlab_ultimate_status", "hermes_append_evidence"];
+  else if (claim.type === "security") suggestedTools = ["hermes_anti_slop_review", "hermes_report_bug"];
+  else if (claim.type === "capability") suggestedTools = ["hermes_backend_status", "hermes_live_status", "hermes_append_evidence"];
+  return {
+    claim_id: claim.claim_id,
+    reason: claim.type === "completion"
+      ? "Completion/release claims need passing gates plus explicit evidence."
+      : "Claim should be grounded before another agent treats it as true.",
+    suggested_tools: suggestedTools,
+    prompt: `Ground or disprove this claim with direct tool output or project evidence: ${claim.text}`
+  };
+}
+
+function claimCorrectionPacket({ auditId, owner, taskId, latencyMode, claims, findings, groundingRequests }) {
+  const risky = claims.filter((claim) => findings.some((finding) => finding.claim_id === claim.claim_id));
+  return {
+    audit_id: auditId,
+    latency_mode: latencyMode,
+    generator_instruction: "Produce factual claims with proof links, gate output, or explicit uncertainty. Avoid completion language unless gates are attached.",
+    auditor_instruction: "Check each claim against evidence. Mark unsupported claims, request only targeted grounding, and never invent proof.",
+    rewriter_instruction: risky.length
+      ? "Rewrite only the flagged claims. Keep supported claims unchanged, add exact gaps, and replace unproven certainty with conditional language."
+      : "No rewrite required unless new evidence changes a claim.",
+    claims_to_fix: risky.map((claim) => ({
+      claim_id: claim.claim_id,
+      text: claim.text,
+      severity: claim.severity,
+      required_grounding: groundingRequests.filter((request) => request.claim_id === claim.claim_id)
+    })),
+    handoff_message: risky.length
+      ? `Claim audit ${auditId} needs correction for ${risky.length} claim(s). Task ${taskId || "n/a"}, owner ${owner}.`
+      : `Claim audit ${auditId} passed.`
+  };
+}
+
+async function auditClaims({
+  owner,
+  auditId = "",
+  taskId = "",
+  text = "",
+  claims = [],
+  files = [],
+  gates = [],
+  evidence = [],
+  contractIds = [],
+  latencyMode = "instant",
+  createTicket = true,
+  autoTicketThreshold = "high",
+  notifyAgents = true,
+  generatorProvider = "",
+  generatorModel = "",
+  auditorProvider = "",
+  auditorModel = "",
+  maxClaims = 40
+} = {}) {
+  const startedMs = Date.now();
+  const id = normalizeClaimAuditId(auditId);
+  const normalizedFiles = normalizeOptionalFiles(files);
+  const normalizedLatency = ["instant", "grounded", "debate"].includes(latencyMode) ? latencyMode : "instant";
+  const claimList = decomposeClaims({ text, claims, maxClaims });
+  const findings = [];
+  const groundingRequests = [];
+  const evidenceArray = Array.isArray(evidence) ? evidence.slice(0, 100) : [];
+  const gateArray = Array.isArray(gates) ? gates.slice(0, 100) : [];
+  const allContracts = await listProjectContracts({ includeDefault: true, limit: 500 });
+  const wantedIds = normalizeStringList(contractIds, 100).map(normalizeContractId);
+  const contracts = wantedIds.length
+    ? allContracts.contracts.filter((contract) => wantedIds.includes(contract.contract_id))
+    : allContracts.contracts;
+
+  function addClaimFinding({ claim, severity = "medium", code, message, evidence: findingEvidence = {} }) {
+    findings.push({
+      severity,
+      code,
+      claim_id: claim?.claim_id || null,
+      claim_text: claim?.text || "",
+      message,
+      evidence: findingEvidence
+    });
+  }
+
+  for (const claim of claimList) {
+    const supported = evidenceSupportsClaim(claim, { evidence: evidenceArray, gates: gateArray });
+    claim.supported = supported;
+    if (claim.triggers.includes("secret.raw_token")) {
+      addClaimFinding({
+        claim,
+        severity: "critical",
+        code: "claim.secret_exposure",
+        message: "Claim text appears to contain a raw secret/token pattern and must not be repeated."
+      });
+      groundingRequests.push(groundingRequestForClaim(claim));
+      continue;
+    }
+    if (claim.type === "completion" && !supported) {
+      addClaimFinding({
+        claim,
+        severity: "high",
+        code: "claim.unproven_completion",
+        message: "Completion/release-ready wording is unsupported by passing gates and explicit evidence."
+      });
+      groundingRequests.push(groundingRequestForClaim(claim));
+      continue;
+    }
+    if (claim.type === "test_result" && !supported) {
+      addClaimFinding({
+        claim,
+        severity: "high",
+        code: "claim.unproven_test_result",
+        message: "Test/proof result claim lacks matching gate or evidence record."
+      });
+      groundingRequests.push(groundingRequestForClaim(claim));
+      continue;
+    }
+    if (claim.needs_grounding && !supported) {
+      addClaimFinding({
+        claim,
+        severity: severityRank(claim.severity) >= severityRank("medium") ? "medium" : "low",
+        code: "claim.needs_grounding",
+        message: "Factual or capability claim needs targeted grounding before reuse."
+      });
+      groundingRequests.push(groundingRequestForClaim(claim));
+    }
+  }
+
+  const claimText = claimList.map((claim) => claim.text).join("\n");
+  for (const contract of contracts) {
+    const forbiddenHits = textMatchesAny(claimText, contract.forbidden_claim_patterns || []);
+    if (forbiddenHits.length && !gateArray.some(gatePasses)) {
+      findings.push({
+        severity: "high",
+        code: "contract.forbidden_claim",
+        claim_id: null,
+        claim_text: "",
+        message: `Project contract ${contract.contract_id} flagged ungrounded forbidden claim language.`,
+        evidence: { patterns: forbiddenHits.slice(0, 10), contract_id: contract.contract_id }
+      });
+    }
+  }
+
+  const severity = maxSeverity(findings);
+  const ok = findings.length === 0;
+  const groundingMode = normalizedLatency === "instant"
+    ? "manual_or_agent_followup"
+    : normalizedLatency === "grounded"
+      ? "targeted_grounding_requested"
+      : "multi_agent_debate_requested";
+  const correctionPacket = claimCorrectionPacket({
+    auditId: id,
+    owner,
+    taskId,
+    latencyMode: normalizedLatency,
+    claims: claimList,
+    findings,
+    groundingRequests
+  });
+  const audit = {
+    audit_schema_version: 1,
+    audit_id: id,
+    workspace_root: manager.workspaceRoot,
+    owner,
+    task_id: taskId || null,
+    status: ok ? "pass" : "needs_correction",
+    severity,
+    latency_mode: normalizedLatency,
+    grounding_mode: groundingMode,
+    files: normalizedFiles,
+    claims: claimList,
+    findings,
+    grounding_requests: groundingRequests,
+    correction_packet: correctionPacket,
+    providers: {
+      generator: generatorProvider ? { provider: generatorProvider, model: generatorModel || "" } : null,
+      auditor: auditorProvider ? { provider: auditorProvider, model: auditorModel || "" } : null
+    },
+    contracts: contracts.map((contract) => contract.contract_id),
+    performance: { duration_ms: Date.now() - startedMs, claim_count: claimList.length },
+    created_utc: utcNow()
+  };
+  await ensureDir(claimAuditDir());
+  await writeJsonAtomic(claimAuditPath(id), audit);
+  const evidenceEntry = await manager.appendEvidence({
+    owner,
+    taskId,
+    kind: ok ? "claim.audit.passed" : "claim.audit.failed",
+    summary: ok ? `Claim audit passed: ${id}` : `Claim audit needs correction: ${severity}`,
+    data: { audit_id: id, status: audit.status, severity, finding_count: findings.length, claim_count: claimList.length }
+  });
+  await manager.emitManualEvent({
+    event_type: ok ? "claim.audit.passed" : "claim.audit.failed",
+    owner,
+    task_id: taskId || null,
+    files: normalizedFiles,
+    summary: ok ? `Claim audit passed: ${id}` : `Claim audit found ${findings.length} issue(s)`,
+    next_actor: "unassigned",
+    recommended_action: ok ? "acknowledge" : "fix_scope",
+    payload: { audit_id: id, status: audit.status, severity, finding_count: findings.length, grounding_requests: groundingRequests.length }
+  });
+
+  let ticket = null;
+  const threshold = autoTicketThreshold || "high";
+  if (createTicket !== false && threshold !== "never" && severityRank(severity) >= severityRank(threshold)) {
+    ticket = await reportBugTicket({
+      reporter: owner,
+      ticketId: `claim-${id}`,
+      title: `Claim audit ${severity}: ${taskId || id}`,
+      summary: `HermesProof claim audit found ${findings.length} unsupported or risky claim(s).`,
+      severity: severity === "critical" ? "critical" : "high",
+      files: normalizedFiles,
+      reproduction: "Run hermes_audit_claims with the same answer/claims/evidence.",
+      expected: "Agent claims are backed by direct evidence, gates, or explicit uncertainty.",
+      actual: findings.map((finding) => `${finding.severity}: ${finding.code} - ${finding.message}`).join("\n"),
+      evidence: [{ kind: "claim_audit", audit_id: id, findings: findings.length }],
+      tags: ["claim-audit", "anti-hallucination"],
+      enqueue: true,
+      priority: severity === "critical" ? 100 : 80,
+      taskId: `claim-${id}`
+    });
+  }
+
+  let notifications = null;
+  if (notifyAgents !== false && !ok) {
+    const active = (await listPresenceRecords({ includeStale: false })).presence
+      .filter((record) => record.owner !== owner && (record.status === "idle" || record.can_interrupt || record.status === "reviewing"))
+      .map((record) => record.owner)
+      .slice(0, 8);
+    if (active.length) {
+      notifications = await sendInboxMessage({
+        sender: owner,
+        recipients: active,
+        type: "assistance_request",
+        priority: severityRank(severity) >= severityRank("high") ? "high" : "normal",
+        subject: `Claim audit needs correction: ${id}`,
+        body: correctionPacket.handoff_message,
+        taskId: taskId || "",
+        files: normalizedFiles,
+        requiresAck: false,
+        metadata: { kind: "claim_audit", audit_id: id, severity, finding_count: findings.length }
+      });
+    }
+  }
+
+  const providerRecords = [];
+  if (generatorProvider) {
+    providerRecords.push(await providerPerformance.recordOutcome({
+      provider_id: generatorProvider,
+      model_name: generatorModel,
+      task_type: "claim-generation",
+      outcome: ok ? "verified" : "needs_proof",
+      latency_ms: audit.performance.duration_ms,
+      context: taskId || "claim-audit",
+      evidence: id
+    }).catch((err) => ({ ok: false, provider_id: generatorProvider, message: err.message })));
+  }
+  if (auditorProvider) {
+    providerRecords.push(await providerPerformance.recordOutcome({
+      provider_id: auditorProvider,
+      model_name: auditorModel,
+      task_type: "claim-auditor",
+      outcome: "completed",
+      latency_ms: audit.performance.duration_ms,
+      context: taskId || "claim-audit",
+      evidence: id
+    }).catch((err) => ({ ok: false, provider_id: auditorProvider, message: err.message })));
+  }
+
+  return {
+    ok,
+    status: audit.status,
+    workspace_root: manager.workspaceRoot,
+    audit,
+    ticket,
+    notifications,
+    provider_records: providerRecords,
+    evidence: evidenceEntry.evidence,
+    duration_ms: audit.performance.duration_ms,
+    next_tools: ok
+      ? ["hermes_complete_work", "hermes_provider_record_outcome"]
+      : ["hermes_run_gate", "hermes_append_evidence", "hermes_request_assistance", "hermes_anti_slop_review"]
+  };
+}
+
+async function listClaimAudits({ status = "all", severity = "", limit = 100 } = {}) {
+  await ensureDir(claimAuditDir());
+  const names = await fs.readdir(claimAuditDir()).catch(() => []);
+  const audits = [];
+  for (const name of names.filter((item) => item.endsWith(".json"))) {
+    const audit = await readJson(path.join(claimAuditDir(), name), null);
+    if (!audit) continue;
+    if (status !== "all" && audit.status !== status) continue;
+    if (severity && audit.severity !== severity) continue;
+    audits.push(audit);
+  }
+  audits.sort((a, b) => String(b.created_utc || "").localeCompare(String(a.created_utc || "")));
+  const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 100 });
+  return { ok: true, workspace_root: manager.workspaceRoot, status, count: audits.length, audits: audits.slice(0, bounded) };
+}
+
+function providerRolePlan(candidates = []) {
+  const ids = normalizeStringList(candidates, 20).map((value) => value.toLowerCase());
+  const wanted = ids.length ? ids : ["minimax", "deepseek", "siliconflow", "lm-studio", "ollama"];
+  const roleHints = {
+    minimax: ["live-controller", "cheat-engine-chat", "window-api", "gameplay-loop"],
+    deepseek: ["reverse-research", "static-analysis", "planner", "challenger"],
+    siliconflow: ["embedding-recall", "cheap-batch", "similarity-search", "profile-memory"],
+    "lm-studio": ["local-vision", "offline-review", "sensitive-local-audit", "fallback-chat"],
+    ollama: ["local-fallback", "fast-critic", "offline-helper"]
+  };
+  return wanted.map((provider) => ({
+    provider,
+    roles: roleHints[provider] || ["general-helper"],
+    task_types: roleHints[provider] || ["general"]
+  }));
+}
+
+function nextAgenticActions({ audit, mode, rankedProviders, activeAgents, keepGoing }) {
+  const actions = [];
+  const needsCorrection = audit?.status === "needs_correction";
+  const providers = rankedProviders?.providers || [];
+  const bestProvider = providers[0]?.provider_id || "";
+  if (needsCorrection) {
+    actions.push({
+      action: "ground_claims",
+      reason: "Claim audit found unsupported or risky claims.",
+      tool: "hermes_run_gate",
+      provider_hint: bestProvider || "deepseek",
+      blocking: true
+    });
+    actions.push({
+      action: "append_evidence",
+      reason: "Attach proof output or truthful gaps before the claim can be reused.",
+      tool: "hermes_append_evidence",
+      provider_hint: bestProvider || "minimax",
+      blocking: true
+    });
+    if (activeAgents.length) {
+      actions.push({
+        action: "request_assistance",
+        reason: "Active agents are available for a fast correction/handoff.",
+        tool: "hermes_request_assistance",
+        target_agents: activeAgents.map((agent) => agent.owner),
+        blocking: false
+      });
+    }
+  } else {
+    actions.push({
+      action: keepGoing ? "continue_next_probe" : "complete_or_wait",
+      reason: keepGoing ? "Current claims are grounded; continue while progress is improving." : "No correction needed and keepGoing is false.",
+      tool: keepGoing ? "hermes_enqueue_task" : "hermes_complete_work",
+      provider_hint: bestProvider || "minimax",
+      blocking: false
+    });
+  }
+  if (mode === "autopilot" && keepGoing) {
+    actions.push({
+      action: "record_progress_or_failure",
+      reason: "Autopilot mode should keep provider learning fresh and stop after repeated no-progress cycles.",
+      tool: "hermes_provider_record_outcome",
+      provider_hint: bestProvider || "minimax",
+      blocking: false
+    });
+  }
+  return actions;
+}
+
+async function agenticTick({
+  owner,
+  taskId = "",
+  mode = "assist",
+  objective = "",
+  latestOutput = "",
+  claims = [],
+  files = [],
+  gates = [],
+  evidence = [],
+  providerCandidates = ["minimax", "deepseek", "siliconflow", "lm-studio", "ollama"],
+  primaryProvider = "minimax",
+  maxClaims = 40,
+  keepGoing = true,
+  enqueueNext = true,
+  notifyAgents = true,
+  createTicket = true,
+  noProgressCycles = 0,
+  maxNoProgressCycles = 3,
+  progressSignals = []
+} = {}) {
+  const startedMs = Date.now();
+  const normalizedMode = ["assist", "autopilot", "review"].includes(mode) ? mode : "assist";
+  const normalizedFiles = normalizeOptionalFiles(files);
+  const cycles = clampNumber(noProgressCycles, { min: 0, max: 1000, fallback: 0 });
+  const maxCycles = clampNumber(maxNoProgressCycles, { min: 1, max: 100, fallback: 3 });
+  const signals = normalizeStringList(progressSignals, 50);
+  const shouldContinue = keepGoing !== false && cycles < maxCycles;
+  const rankedProviders = await providerPerformance.rankProviders({
+    task_type: objective || taskId || "agentic-loop",
+    candidates: providerCandidates,
+    min_score: 0
+  }).catch((err) => ({ ok: false, providers: [], message: err.message }));
+  const roles = providerRolePlan(providerCandidates);
+  const activeAgents = (await listPresenceRecords({ includeStale: false })).presence
+    .filter((record) => record.owner !== owner)
+    .slice(0, 12);
+  const audit = await auditClaims({
+    owner,
+    auditId: `tick-${Date.now().toString(36)}-${shaId(`${owner}:${taskId}:${Date.now()}`, 8)}`,
+    taskId,
+    text: latestOutput || objective,
+    claims,
+    files: normalizedFiles,
+    gates,
+    evidence,
+    latencyMode: normalizedMode === "review" ? "grounded" : "instant",
+    createTicket,
+    notifyAgents: false,
+    generatorProvider: primaryProvider,
+    auditorProvider: rankedProviders.providers?.find((provider) => provider.provider_id !== primaryProvider)?.provider_id || "",
+    maxClaims
+  });
+  const nextActions = nextAgenticActions({
+    audit: audit.audit,
+    mode: normalizedMode,
+    rankedProviders,
+    activeAgents,
+    keepGoing: shouldContinue
+  });
+  let queued = null;
+  if (enqueueNext !== false && shouldContinue && audit.status === "needs_correction") {
+    queued = await manager.enqueueTask({
+      taskId: `agentic-${audit.audit.audit_id}`,
+      title: `Ground/correct claim audit ${audit.audit.audit_id}`,
+      summary: audit.audit.correction_packet.handoff_message,
+      files_hint: normalizedFiles,
+      priority: audit.audit.severity === "critical" ? 100 : 80,
+      target_owner_pattern: ".*",
+      ttl_minutes: 120,
+      data: {
+        kind: "agentic_claim_correction",
+        audit_id: audit.audit.audit_id,
+        objective,
+        next_actions: nextActions,
+        provider_roles: roles
+      },
+      enqueued_by: owner
+    });
+  }
+  let notifications = null;
+  if (notifyAgents !== false && activeAgents.length && audit.status === "needs_correction") {
+    notifications = await sendInboxMessage({
+      sender: owner,
+      recipients: activeAgents.map((record) => record.owner).slice(0, 8),
+      type: "assistance_request",
+      priority: audit.audit.severity === "critical" ? "urgent" : "high",
+      subject: `Agentic tick needs help: ${taskId || audit.audit.audit_id}`,
+      body: audit.audit.correction_packet.handoff_message,
+      taskId,
+      files: normalizedFiles,
+      requiresAck: false,
+      metadata: {
+        kind: "agentic_tick",
+        audit_id: audit.audit.audit_id,
+        objective,
+        next_actions: nextActions
+      }
+    });
+  }
+  const loopState = {
+    ok: audit.ok,
+    status: audit.status === "needs_correction" ? "needs_action" : shouldContinue ? "continue" : "stop",
+    mode: normalizedMode,
+    objective,
+    task_id: taskId || null,
+    no_progress_cycles: cycles,
+    max_no_progress_cycles: maxCycles,
+    keep_going: shouldContinue,
+    progress_signals: signals,
+    provider_roles: roles,
+    ranked_providers: rankedProviders.providers || [],
+    active_agents: activeAgents.map((record) => ({ owner: record.owner, status: record.status, role: record.role, can_interrupt: record.can_interrupt })),
+    audit_id: audit.audit.audit_id,
+    next_actions: nextActions,
+    queued_task: queued?.task || null,
+    notifications,
+    duration_ms: Date.now() - startedMs
+  };
+  await manager.appendEvidence({
+    owner,
+    taskId,
+    kind: "agentic.tick",
+    summary: `Agentic tick ${loopState.status}: ${taskId || objective || audit.audit.audit_id}`,
+    data: {
+      audit_id: audit.audit.audit_id,
+      status: loopState.status,
+      action_count: nextActions.length,
+      provider_count: loopState.ranked_providers.length,
+      active_agent_count: loopState.active_agents.length
+    }
+  });
+  await manager.emitManualEvent({
+    event_type: "agentic.tick",
+    owner,
+    task_id: taskId || null,
+    files: normalizedFiles,
+    summary: `Agentic tick ${loopState.status}: ${taskId || objective || audit.audit.audit_id}`,
+    next_actor: "unassigned",
+    recommended_action: audit.status === "needs_correction" ? "fix_scope" : "acknowledge",
+    payload: {
+      audit_id: audit.audit.audit_id,
+      status: loopState.status,
+      mode: normalizedMode,
+      next_actions: nextActions,
+      queued_task_id: queued?.task?.task_id || null
+    }
+  });
+  return {
+    ok: audit.ok,
+    workspace_root: manager.workspaceRoot,
+    loop: loopState,
+    audit: audit.audit,
+    provider_records: audit.provider_records,
+    ticket: audit.ticket,
+    next_tools: shouldContinue
+      ? ["hermes_pick_task", "hermes_request_assistance", "hermes_provider_rank", "hermes_audit_claims"]
+      : ["hermes_complete_work", "hermes_provider_record_outcome"]
+  };
+}
+
 async function requestAssistance({
   requester,
   requiredSkills = [],
@@ -2694,18 +3534,20 @@ registerTool(
       includeAgents: z.boolean().default(true),
       includePresence: z.boolean().default(true),
       includeProfiles: z.boolean().default(false),
+      includeProviderStats: z.boolean().default(true),
       eventLimit: z.number().int().min(1).max(500).default(20)
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
   },
   async (args) => {
     try {
-      const [state, events, agentState, presence, profiles] = await Promise.all([
+      const [state, events, agentState, presence, profiles, providerStats] = await Promise.all([
         manager.getStateSummary(),
         args?.includeEvents === false ? null : manager.listEvents({ status: "outbox", limit: args?.eventLimit || 20 }),
         args?.includeAgents === false ? null : anon.getState(),
         args?.includePresence === false ? null : listPresenceRecords({ includeStale: true }),
-        args?.includeProfiles === true ? listAgentProfiles({ includePresence: false, limit: 100 }) : null
+        args?.includeProfiles === true ? listAgentProfiles({ includePresence: false, limit: 100 }) : null,
+        args?.includeProviderStats === false ? null : providerPerformance.stats({})
       ]);
       const staleLocks = state.locks.filter((lock) => lock.is_stale);
       return toolResult({
@@ -2723,6 +3565,7 @@ registerTool(
         anonymous_agents: agentState || null,
         presence: presence?.presence || [],
         agent_profiles: profiles?.profiles || [],
+        provider_performance: providerStats?.providers || [],
         workspace: workspaceSnapshot()
       });
     } catch (err) { return toolError(err); }
@@ -2741,6 +3584,46 @@ registerTool(
   },
   async (args) => {
     try { return toolResult(backendStatusSnapshot({ includeCli: args?.includeCli !== false })); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_winmerge_status",
+  {
+    title: "WinMerge status",
+    description: "Detect the local WinMerge executable and return safe compare roots. Secret values and private paths are not returned.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async () => {
+    try { return toolResult(await winMergeStatusSnapshot()); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_winmerge_compare",
+  {
+    title: "Launch WinMerge compare",
+    description: "Open WinMerge for a safe visual compare between two existing workspace or approved-root paths. Use this for proof-backed review of copied experiment workspaces against baselines.",
+    inputSchema: {
+      owner: Owner.default("system"),
+      leftPath: ComparePath,
+      rightPath: ComparePath,
+      ancestorPath: z.string().max(1000).default("")
+        .describe("Optional existing base/ancestor path for three-way compare."),
+      recursive: z.boolean().default(true)
+        .describe("Pass /r for recursive folder compare."),
+      readOnly: z.boolean().default(false)
+        .describe("Open left and right as read-only with /wl /wr when true."),
+      wait: z.boolean().default(false)
+        .describe("Wait for WinMerge to close. Default false so agents are not blocked."),
+      title: z.string().max(120).default("")
+        .describe("Optional compare title used for left/right labels.")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await launchWinMergeCompare(args)); } catch (err) { return toolError(err); }
   }
 );
 
@@ -3365,6 +4248,108 @@ registerTool(
   },
   async (args) => {
     try { return toolResult(await listContractReviews(args || {})); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_decompose_claims",
+  {
+    title: "Decompose claims",
+    description: "Split an agent answer into structured factual claims with deterministic risk, confidence, and grounding flags before another agent trusts it.",
+    inputSchema: {
+      text: z.string().default(""),
+      claims: z.array(z.union([z.string(), z.record(z.any())])).default([]),
+      maxClaims: z.number().int().min(1).max(200).default(40)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      const claims = decomposeClaims(args || {});
+      return toolResult({ ok: true, workspace_root: manager.workspaceRoot, count: claims.length, claims });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_audit_claims",
+  {
+    title: "Audit claims",
+    description: "Agentic hallucination guard: decompose/audit claims against evidence, gates, and contracts, then write a correction packet, event, optional ticket, and provider outcome.",
+    inputSchema: {
+      owner: Owner,
+      auditId: z.string().max(96).default(""),
+      taskId: OptionalTaskId,
+      text: z.string().default(""),
+      claims: z.array(z.union([z.string(), z.record(z.any())])).default([]),
+      files: z.array(z.string()).default([]),
+      gates: z.array(z.record(z.any())).default([]),
+      evidence: z.array(z.record(z.any())).default([]),
+      contractIds: z.array(z.string()).default([]),
+      latencyMode: ClaimLatencyMode,
+      createTicket: z.boolean().default(true),
+      autoTicketThreshold: AutoTicketThreshold,
+      notifyAgents: z.boolean().default(true),
+      generatorProvider: z.string().default(""),
+      generatorModel: z.string().default(""),
+      auditorProvider: z.string().default(""),
+      auditorModel: z.string().default(""),
+      maxClaims: z.number().int().min(1).max(200).default(40)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await auditClaims(args)); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_list_claim_audits",
+  {
+    title: "List claim audits",
+    description: "List prior anti-hallucination claim audits and correction packets from the shared workspace state.",
+    inputSchema: {
+      status: z.enum(["all", "pass", "needs_correction"]).default("all"),
+      severity: z.union([ContractSeverity, z.literal("")]).default(""),
+      limit: z.number().int().min(1).max(500).default(100)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try { return toolResult(await listClaimAudits(args || {})); } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_agentic_tick",
+  {
+    title: "Agentic loop tick",
+    description: "Run one bounded agentic coordination tick: audit latest output, rank providers, inspect active agents, queue grounding/fix work, notify helpers, and emit durable next actions.",
+    inputSchema: {
+      owner: Owner,
+      taskId: OptionalTaskId,
+      mode: z.enum(["assist", "autopilot", "review"]).default("assist"),
+      objective: z.string().default(""),
+      latestOutput: z.string().default(""),
+      claims: z.array(z.union([z.string(), z.record(z.any())])).default([]),
+      files: z.array(z.string()).default([]),
+      gates: z.array(z.record(z.any())).default([]),
+      evidence: z.array(z.record(z.any())).default([]),
+      providerCandidates: z.array(z.string()).default(["minimax", "deepseek", "siliconflow", "lm-studio", "ollama"]),
+      primaryProvider: z.string().default("minimax"),
+      maxClaims: z.number().int().min(1).max(200).default(40),
+      keepGoing: z.boolean().default(true),
+      enqueueNext: z.boolean().default(true),
+      notifyAgents: z.boolean().default(true),
+      createTicket: z.boolean().default(true),
+      noProgressCycles: z.number().int().min(0).max(1000).default(0),
+      maxNoProgressCycles: z.number().int().min(1).max(100).default(3),
+      progressSignals: z.array(z.string()).default([])
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false }
+  },
+  async (args) => {
+    try { return toolResult(await agenticTick(args)); } catch (err) { return toolError(err); }
   }
 );
 
@@ -4680,6 +5665,90 @@ registerTool(
     try {
       const result = await dispatch.recommend(args.task_type, args.candidates);
       return toolResult(result);
+    } catch (err) { return toolError(err); }
+  }
+);
+
+const ProviderId = z.string().min(2).max(80).regex(/^[A-Za-z0-9._-]+$/)
+  .describe("Provider routing id, e.g. minimax, deepseek, siliconflow, lm-studio.");
+const ProviderOutcome = z.enum(["verified", "completed", "partial", "needs_proof", "failed", "timeout", "rejected"]);
+
+registerTool(
+  "hermes_provider_record_outcome",
+  {
+    title: "Record provider outcome",
+    description: "Record a proof-backed model-provider outcome for a task type. This is separate from agent reputation and lets HermesProof learn whether MiniMax, DeepSeek, SiliconFlow, LM Studio, or another provider is best for live control, planning, review, vision, reverse engineering, or release gates.",
+    inputSchema: {
+      provider_id: ProviderId,
+      model_name: z.string().max(160).default("")
+        .describe("Optional model id. Stored for routing stats but never treated as a secret."),
+      task_type: z.string().min(1).max(80).default("general")
+        .describe("Task lane, e.g. aice_live_controller, pacman_timer_scan, reverse_static_analysis, critic_review."),
+      outcome: ProviderOutcome
+        .describe("verified/completed/partial/needs_proof/failed/timeout/rejected."),
+      reward: z.number().min(-1).max(1).optional()
+        .describe("Optional override learning signal from -1.0 to +1.0. Omit to use the default outcome reward."),
+      latency_ms: z.number().int().nonnegative().optional()
+        .describe("Optional observed latency for the provider call or job."),
+      context: z.string().max(300).default("")
+        .describe("Short redacted context. Do not include tokens or private file contents."),
+      evidence: z.string().max(300).default("")
+        .describe("Proof reference such as gate name, commit, ticket, or log path. Do not include secrets.")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const result = await providerPerformance.recordOutcome(args);
+      return toolResult(result);
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_provider_stats",
+  {
+    title: "Provider performance stats",
+    description: "Read provider performance by provider and optional task_type. Shows success/failure rates, score, recommendation, and recent redacted events when requested.",
+    inputSchema: {
+      provider_id: ProviderId.optional(),
+      task_type: z.string().min(1).max(80).optional(),
+      include_history: z.boolean().default(false)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await providerPerformance.stats({
+        provider_id: args?.provider_id || "",
+        task_type: args?.task_type || "",
+        include_history: args?.include_history === true
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_provider_rank",
+  {
+    title: "Rank providers for a task",
+    description: "Rank configured or supplied providers for a specific task_type using the proof-backed provider ledger. Unknown providers keep a neutral baseline so new models can be tried without being unfairly blocked.",
+    inputSchema: {
+      task_type: z.string().min(1).max(80).default("general"),
+      candidates: z.array(ProviderId).max(50).default([])
+        .describe("Optional provider ids to rank. Empty means rank providers with recorded history."),
+      min_score: z.number().min(0).max(5).default(0)
+        .describe("Minimum score to include. Use 0 to see every candidate.")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await providerPerformance.rankProviders({
+        task_type: args?.task_type || "general",
+        candidates: args?.candidates || [],
+        min_score: args?.min_score ?? 0
+      }));
     } catch (err) { return toolError(err); }
   }
 );

@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 82 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, gates, evidence, events, queue pickup, anonymous orchestration, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 91 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -18,9 +18,11 @@ The server exposes 82 MCP tools across coordination, workspace switching, projec
 | Workspace       | `hermes_get_workspace`, `hermes_set_workspace`, `hermes_connect_project`                                                                    |
 | Test / Tickets  | `hermes_get_test_mode`, `hermes_set_test_mode`, `hermes_report_bug`, `hermes_list_bug_tickets`, `hermes_update_bug_ticket`, `hermes_submit_bug_fix` |
 | Contracts       | `hermes_upsert_project_contract`, `hermes_list_project_contracts`, `hermes_read_project_contract`, `hermes_anti_slop_review`, `hermes_list_contract_reviews` |
+| Claim Audit     | `hermes_decompose_claims`, `hermes_audit_claims`, `hermes_list_claim_audits`, `hermes_agentic_tick`                                 |
 | Realtime        | `hermes_live_status`, `hermes_wait_for_events`                                                                                              |
 | Backend         | `hermes_backend_status`                                                                                                                     |
 | GitLab          | `hermes_gitlab_status`, `hermes_gitlab_ensure_project`, `hermes_gitlab_list_merge_requests`, `hermes_gitlab_create_merge_request`, `hermes_gitlab_ultimate_status`, `hermes_gitlab_bootstrap_ultimate` |
+| Compare         | `hermes_winmerge_status`, `hermes_winmerge_compare`                                                                                         |
 | Profiles        | `hermes_register_agent_profile`, `hermes_get_agent_profile`, `hermes_list_agent_profiles`, `hermes_update_agent_capabilities`, `hermes_join_project` |
 | Presence        | `hermes_update_presence`, `hermes_list_presence`, `hermes_find_agents`                                                                      |
 | Assistance      | `hermes_request_assistance`, `hermes_wait_for_assistance`                                                                                   |
@@ -29,6 +31,7 @@ The server exposes 82 MCP tools across coordination, workspace switching, projec
 | Diagnostics     | `hermes_get_state`, `hermes_doctor`, `hermes_read_policy`                                                                                   |
 | Anonymous       | `hermes_list_agents`, `hermes_anonymous_claim`, `hermes_anonymous_release`, `hermes_anonymous_state`, `hermes_record_outcome`, `hermes_record_task` |
 | Dispatch        | `hermes_dispatch_recommend`                                                                                                                 |
+| Providers       | `hermes_provider_record_outcome`, `hermes_provider_stats`, `hermes_provider_rank`                                                           |
 | USER session    | `hermes_user_grant_session`, `hermes_user_revoke_session`, `hermes_user_check_authorization`                                                |
 | A2A             | `hermes_a2a_create_task`, `hermes_a2a_get_task`, `hermes_a2a_update_task`, `hermes_a2a_list_tasks`                                          |
 | Hermes Agent    | `hermes_agent_health`, `hermes_agent_request_user_session`, `hermes_agent_resolve_blocked`, `hermes_agent_revoke_session`                   |
@@ -215,6 +218,141 @@ Runs a bounded, fast review of a proposed completion claim, changed files, gates
   "scanFileContent": true,
   "maxFilesToScan": 25,
   "autoTicket": true
+}
+```
+
+## hermes_decompose_claims
+
+Splits an agent answer into structured claims with type, severity, confidence,
+and `needs_grounding`. Use this before accepting long status reports or
+provider output as truth.
+
+```json
+{
+  "text": "Everything is fixed and release ready. npm test: 316 passed.",
+  "maxClaims": 40
+}
+```
+
+## hermes_audit_claims
+
+Runs the agentic hallucination guard. HermesProof decomposes claims, checks
+them against supplied evidence/gates/project contracts, stores a correction
+packet, emits `claim.audit.passed` or `claim.audit.failed`, can open a ticket,
+and can record provider outcomes for routing.
+
+```json
+{
+  "owner": "minimax-controller",
+  "taskId": "pacman-timer-scan",
+  "text": "Timer freeze is complete and all tests passed.",
+  "gates": [],
+  "evidence": [],
+  "latencyMode": "instant",
+  "generatorProvider": "minimax",
+  "auditorProvider": "deepseek"
+}
+```
+
+## hermes_list_claim_audits
+
+Lists stored claim audits and correction packets so later agents can resume
+from the exact unsupported claims, grounding requests, and provider outcomes.
+
+```json
+{
+  "status": "needs_correction",
+  "limit": 25
+}
+```
+
+## hermes_agentic_tick
+
+Runs one bounded coordination step for agentic work. The tick audits the latest
+agent output, ranks provider candidates such as MiniMax, DeepSeek, SiliconFlow,
+LM Studio, and Ollama, checks active agents, queues correction/grounding work
+when needed, notifies helpers, and emits an `agentic.tick` event.
+
+```json
+{
+  "owner": "minimax-controller",
+  "taskId": "pacman-loop",
+  "mode": "autopilot",
+  "objective": "Find PAC-MAN timer and speed addresses",
+  "latestOutput": "Timer freeze is complete and all tests passed.",
+  "providerCandidates": ["minimax", "deepseek", "siliconflow", "lm-studio"],
+  "primaryProvider": "minimax",
+  "keepGoing": true,
+  "progressSignals": ["bridge reachable", "candidate count decreased"]
+}
+```
+
+## hermes_provider_record_outcome
+
+Records proof-backed model-provider performance by project and task lane. Use it when an agent finishes or fails a provider-backed job, for example MiniMax live CE control, DeepSeek reverse-analysis planning, SiliconFlow embedding recall, or LM Studio vision review. This updates `.hermes3d_orchestrator/provider_performance.json`; it does not call any provider and does not store secrets.
+
+```json
+{
+  "provider_id": "minimax",
+  "model_name": "MiniMax-M3",
+  "task_type": "aice_live_controller",
+  "outcome": "verified",
+  "reward": 1,
+  "latency_ms": 820,
+  "context": "PAC-MAN timer scan narrowed and table row added",
+  "evidence": "AICE live proof 30/30 ce_ping"
+}
+```
+
+## hermes_provider_stats
+
+Reads provider score, success rate, failure rate, average reward, latency, and recommendation. Use `task_type` to keep lanes separate; a provider can be good at embeddings and bad at live CE control without one result polluting the other.
+
+```json
+{
+  "provider_id": "siliconflow",
+  "task_type": "embedding_recall",
+  "include_history": true
+}
+```
+
+## hermes_provider_rank
+
+Ranks providers for a task. Unknown providers keep a neutral baseline so new models can be tried; providers with repeated proof-backed failures are pushed down or marked `avoid`.
+
+```json
+{
+  "task_type": "pacman_timer_scan",
+  "candidates": ["minimax", "deepseek", "siliconflow", "lm-studio"],
+  "min_score": 0
+}
+```
+
+## hermes_winmerge_status
+
+Detects local WinMerge, reports the resolved executable, and lists safe compare
+roots. Secret values and private paths are not returned.
+
+```json
+{}
+```
+
+## hermes_winmerge_compare
+
+Launches WinMerge for a two-way or optional three-way compare between existing
+safe paths. Use this to compare copied experiment workspaces against baselines
+or to review agent edits before closing a ticket. Paths must stay under the
+active workspace, `HERMES_WINMERGE_ALLOWED_ROOTS`, or the approved local
+`G:\Github` lab root, and private/env/git paths are rejected.
+
+```json
+{
+  "owner": "codex-impl-01",
+  "leftPath": "G:\\Github\\Steam_Games\\PAC-MAN Championship Edition DX+",
+  "rightPath": "G:\\Github\\Steam_Games\\_aice_workspaces\\PAC-MAN\\run-001\\baseline\\files",
+  "recursive": true,
+  "readOnly": false,
+  "wait": false
 }
 ```
 

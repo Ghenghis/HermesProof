@@ -8,12 +8,13 @@ This roadmap is the architecture spine. Each stage is a distinct PR / checkpoint
 
 ## Honest framing (the rule that governs everything below)
 
-HermesProof is and stays a **passive coordination + proof layer**. It does not call LLM APIs. It does not directly wake hosted chat sessions (Claude.ai, ChatGPT, Claude Desktop). The "loop" between agents is achieved by:
+HermesProof's core lock, queue, evidence, ticket, and gate path is a **passive coordination + proof layer**. The optional Hermes Agent bridge can call configured LLM providers for scoped USER-delegate decisions, but the coordination path itself does not require an LLM and does not directly wake hosted chat sessions (Claude.ai, ChatGPT, Claude Desktop). The "loop" between agents is achieved by:
 
 1. **Durable file-based events** that any process can observe
 2. **Mechanical CI checks** that run without an LLM
 3. **Optional local watchers / webhooks** that the user configures
 4. **Optional headless agent runners** as a separate, opt-in tier
+5. **Optional provider-performance routing** that records proof-backed outcomes for providers such as MiniMax, DeepSeek, SiliconFlow, LM Studio, Ollama, and others, then ranks them per task lane.
 
 If you want a fully hands-free loop with no human bridge, that is **CP-HERMESPROOF-0.7+** (Optional Headless Runners) and is explicitly out of scope until the earlier stages prove the friction is gone everywhere else.
 

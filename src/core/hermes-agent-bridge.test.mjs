@@ -172,6 +172,118 @@ describe("HermesAgentBridge USER session hardening", () => {
     assert.equal(providers[0].model, "synthetic-model");
   });
 
+  it("uses provider-performance ranking without changing the baseline provider list", async () => {
+    const providerPerformance = {
+      async rankProviders({ task_type, candidates }) {
+        assert.equal(task_type, "aice_live_controller");
+        assert.deepEqual(candidates, ["provider-a", "provider-b"]);
+        return {
+          ok: true,
+          providers: [
+            { provider_id: "provider-b", score: 2.25 },
+            { provider_id: "provider-a", score: 0.5 },
+          ],
+        };
+      },
+    };
+    const bridge = new HermesAgentBridge({
+      orchestrator: makeOrchestrator(),
+      enabled: true,
+      failover_order: ["provider-a", "provider-b"],
+      providerPerformance,
+      registryProviders: [
+        {
+          name: "provider-a",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9998/v1/chat/completions",
+          model_env: null,
+          model_default: "model-a",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+        {
+          name: "provider-b",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9999/v1/chat/completions",
+          model_env: null,
+          model_default: "model-b",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+      ],
+    });
+
+    assert.deepEqual(bridge._resolvedProviders().map((p) => p.name), ["provider-a", "provider-b"]);
+    assert.deepEqual((await bridge._providersForTask("aice_live_controller")).map((p) => p.name), ["provider-b", "provider-a"]);
+  });
+
+  it("records provider success and failure from Hermes Agent decisions", async () => {
+    const recorded = [];
+    const providerPerformance = {
+      async rankProviders({ candidates }) {
+        return {
+          ok: true,
+          providers: candidates.map((provider_id) => ({ provider_id, score: 1.0 })),
+        };
+      },
+      async recordOutcome(event) {
+        recorded.push(event);
+        return { ok: true };
+      },
+    };
+    class RecordingBridge extends HermesAgentBridge {
+      async _callProvider(provider) {
+        if (provider.name === "provider-a") {
+          return { ok: false, reason: "provider-a timeout" };
+        }
+        return { ok: true, verdict: "approve", rationale: "json ok" };
+      }
+    }
+    const bridge = new RecordingBridge({
+      orchestrator: makeOrchestrator(),
+      enabled: true,
+      failover_order: ["provider-a", "provider-b"],
+      providerPerformance,
+      registryProviders: [
+        {
+          name: "provider-a",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9998/v1/chat/completions",
+          model_env: null,
+          model_default: "model-a",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+        {
+          name: "provider-b",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9999/v1/chat/completions",
+          model_env: null,
+          model_default: "model-b",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+      ],
+    });
+
+    const decision = await bridge._askAgent({ task: "unit_test_decision" });
+
+    assert.equal(decision.ok, true);
+    assert.equal(decision.provider_used, "provider-b");
+    assert.deepEqual(recorded.map((event) => [event.provider_id, event.outcome, event.task_type]), [
+      ["provider-a", "timeout", "hermes_agent:unit_test_decision"],
+      ["provider-b", "completed", "hermes_agent:unit_test_decision"],
+    ]);
+  });
+
   it("writes USER-session decisions to the chained evidence ledger", async () => {
     await withAnonymousOrchestrator(async (orchestrator) => {
       const bridge = new TestBridge({
