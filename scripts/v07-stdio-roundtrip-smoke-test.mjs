@@ -132,6 +132,16 @@ const PROVIDER_TOOLS = Object.freeze([
   "hermes_provider_rank",
 ]);
 
+const KILOCODE_TOOLS = Object.freeze([
+  "hermes_kilocode_status",
+  "hermes_kilocode_set_guardrails",
+  "hermes_kilocode_policy_check",
+  "hermes_kilocode_checkpoint_progress",
+  "hermes_kilocode_record_delegation",
+  "hermes_kilocode_evaluate_infrastructure_proof",
+  "hermes_kilocode_record_infrastructure_proof",
+]);
+
 const WINMERGE_TOOLS = Object.freeze([
   "hermes_winmerge_status",
   "hermes_winmerge_compare",
@@ -1294,6 +1304,196 @@ test("provider-performance stdio round-trip: record, rank, and live status expos
     }));
     assert.equal(live.ok, true);
     assert.ok(live.provider_performance.some((entry) => entry.provider_id === "minimax"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("KiloCode/OpenHands stdio round-trip: status, policy, and redacted delegation proof", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-kilo-openhands-"));
+  const s = await startServer(tmp);
+  const fakeSecret = "sk-cp-abcdefghijklmnop123456";
+  try {
+    const list = await s.request("tools/list", {});
+    const names = new Set((list?.result?.tools || []).map((t) => t.name));
+    for (const expected of KILOCODE_TOOLS) {
+      assert.ok(names.has(expected), `tools/list missing KiloCode/OpenHands tool: ${expected}`);
+    }
+
+    const status = parseToolResult(await s.call("hermes_kilocode_status", {
+      includeProviderRank: false,
+    }));
+    assert.equal(status.ok, true, `KiloCode status failed: ${JSON.stringify(status)}`);
+    assert.equal(status.secret_values_returned, false);
+    assert.equal(status.readiness.hermes_agent_enabled, false);
+    assert.equal(status.provider_ranking, null);
+    assert.equal(status.visual_progress.require_visual_proof, true);
+
+    const guardrails = parseToolResult(await s.call("hermes_kilocode_set_guardrails", {
+      owner: "rt-kilo",
+      reason: "keep work visible and milestone based",
+      hyperfocus_visual_mode: true,
+      require_visual_proof: true,
+      block_until_usable: true,
+    }));
+    assert.equal(guardrails.ok, true, `KiloCode guardrails failed: ${JSON.stringify(guardrails)}`);
+    assert.equal(guardrails.secret_values_returned, false);
+    assert.equal(guardrails.guardrails.hyperfocus_visual_mode, true);
+    assert.equal(guardrails.guardrails.visual_milestone_step_interval, 2);
+    assert.equal(guardrails.guardrails.visual_milestone_minutes, 30);
+    assert.doesNotMatch(JSON.stringify(guardrails), new RegExp(["AD", "HD"].join(""), "i"));
+    assert.doesNotMatch(JSON.stringify(guardrails), new RegExp(["embarr", "ass"].join(""), "i"));
+
+    const guardedStatus = parseToolResult(await s.call("hermes_kilocode_status", {
+      includeProviderRank: false,
+    }));
+    assert.equal(guardedStatus.visual_progress.hyperfocus_visual_mode, true);
+    assert.equal(guardedStatus.visual_progress.checkpoint_every_steps, 2);
+
+    const guardedPolicy = parseToolResult(await s.call("hermes_kilocode_policy_check", {
+      trigger: "explicit",
+      explicit: true,
+      action_summary: "add another visual panel before this one is usable",
+      scope_change: true,
+      current_milestone_usable: false,
+    }));
+    assert.equal(guardedPolicy.ok, true, `KiloCode guarded policy failed: ${JSON.stringify(guardedPolicy)}`);
+    assert.equal(guardedPolicy.decision, "deny");
+    assert.equal(guardedPolicy.blocked_by_guardrails, true);
+    assert.ok(guardedPolicy.guardrail_effects.includes("current_milestone_not_usable"));
+    assert.ok(guardedPolicy.required_actions.some((action) => action.id === "capture_visual_proof"));
+
+    const missingCheckpoint = parseToolResult(await s.call("hermes_kilocode_checkpoint_progress", {
+      owner: "rt-kilo",
+      milestone_id: "first-screen",
+      milestone_goal: "Make first screen usable",
+      status: "working",
+      summary: "Claimed visual proof that does not exist",
+      visual_proof_paths: ["proof/missing.png"],
+    }));
+    assert.equal(missingCheckpoint.ok, false);
+    assert.equal(missingCheckpoint.status, "missing_visual_proof");
+
+    await fs.mkdir(path.join(tmp, "proof"), { recursive: true });
+    await fs.writeFile(path.join(tmp, "proof", "screen.txt"), "visible checkpoint", "utf8");
+    const checkpoint = parseToolResult(await s.call("hermes_kilocode_checkpoint_progress", {
+      owner: "rt-kilo",
+      milestone_id: "first-screen",
+      milestone_goal: "Make first screen usable",
+      status: "usable",
+      current_milestone_usable: true,
+      summary: "First screen is visible and usable",
+      visual_proof_paths: ["proof/screen.txt"],
+      gates: [{ gate: "manual visual proof", status: "pass", evidence: "proof/screen.txt exists" }],
+      next_action: "Continue to OpenHands delegation smoke",
+    }));
+    assert.equal(checkpoint.ok, true, `KiloCode checkpoint failed: ${JSON.stringify(checkpoint)}`);
+    assert.equal(checkpoint.secret_values_returned, false);
+    assert.equal(checkpoint.checkpoint.current_milestone_usable, true);
+    assert.equal(checkpoint.checkpoint.visual_proof[0].exists, true);
+    assert.equal(checkpoint.evidence.kind, "kilocode.progress.checkpoint");
+
+    const policy = parseToolResult(await s.call("hermes_kilocode_policy_check", {
+      trigger: "ssh",
+      risk: "high",
+      capabilities: ["ssh", "external_network"],
+      action_summary: "inspect approved VPS logs without passing secrets",
+    }));
+    assert.equal(policy.ok, true, `KiloCode policy failed: ${JSON.stringify(policy)}`);
+    assert.equal(policy.delegate, true);
+    assert.equal(policy.decision, "ask");
+    assert.ok(policy.required_permissions.includes("openhands_ssh"));
+
+    const recorded = parseToolResult(await s.call("hermes_kilocode_record_delegation", {
+      owner: "rt-kilo",
+      task_id: "kilo-openhands-stdio",
+      provider_id: "minimax",
+      model_name: "MiniMax-M3",
+      openhands_conversation_id: "conv-stdio",
+      trigger: "missing_tool",
+      risk: "medium",
+      outcome: "verified",
+      latency_ms: 900,
+      summary: `OpenHands completed terminal setup using ${fakeSecret}`,
+      evidence: `stdout Authorization: Bearer abcdefghijklmnopqrstuvwxyz`,
+      permission_decision: "allow",
+      secret_scan: "passed",
+    }));
+    assert.equal(recorded.ok, true, `KiloCode record failed: ${JSON.stringify(recorded)}`);
+    assert.equal(recorded.secret_values_returned, false);
+    assert.doesNotMatch(JSON.stringify(recorded), new RegExp(fakeSecret));
+    assert.doesNotMatch(JSON.stringify(recorded), /abcdefghijklmnopqrstuvwxyz/);
+
+    const infrastructureChecks = [
+      { id: "cloudflare.waf_rules_enabled", status: "pass", rule_count: 3, observed_utc: "2026-07-04T12:00:00Z" },
+      { id: "cloudflare.secret_probe_blocked", status: "pass", http_status: 403, latency_ms: 110 },
+      { id: "cloudflare.scanner_ua_blocked", status: "pass", http_status: 403, latency_ms: 105 },
+      { id: "vps.ssh_health", status: "pass", exit_code: 0, command: "ssh daveai uptime" },
+      { id: "vps.origin_guard_installed", status: "pass", exit_code: 0, command: "nginx -t" },
+      { id: "vps.homepage_ok", status: "pass", http_status: 200, latency_ms: 85 },
+      { id: "vps.secret_probe_blocked", status: "pass", http_status: 444, latency_ms: 45 },
+      { id: "vps.resource_headroom", status: "pass", evidence_id: "ev_12345678" },
+      { id: "cloudflare.cache_rule", status: "warn", evidence: "cache settings permission not available in this token", observed_utc: "2026-07-04T12:00:00Z" },
+    ];
+    const infrastructureEval = parseToolResult(await s.call("hermes_kilocode_evaluate_infrastructure_proof", {
+      resource: "edge_and_origin",
+      checks: infrastructureChecks,
+    }));
+    assert.equal(infrastructureEval.ok, true, `KiloCode infra eval failed: ${JSON.stringify(infrastructureEval)}`);
+    assert.equal(infrastructureEval.release_ready, true);
+    assert.equal(infrastructureEval.gate_status, "warn");
+
+    await fs.writeFile(path.join(tmp, "proof", "cloudflare-vps-smoke.json"), JSON.stringify({ ok: true }), "utf8");
+    const infrastructureRecorded = parseToolResult(await s.call("hermes_kilocode_record_infrastructure_proof", {
+      owner: "rt-kilo",
+      task_id: "kilo-infra-stdio",
+      resource: "edge_and_origin",
+      target: "daveai.tech",
+      summary: "Cloudflare edge and VPS origin proof recorded",
+      checks: infrastructureChecks,
+      proof_paths: ["proof/cloudflare-vps-smoke.json"],
+    }));
+    assert.equal(infrastructureRecorded.ok, true, `KiloCode infra record failed: ${JSON.stringify(infrastructureRecorded)}`);
+    assert.equal(infrastructureRecorded.evidence.kind, "kilocode.infrastructure.proof");
+    assert.equal(infrastructureRecorded.release_ready, true);
+
+    const infrastructureFake = parseToolResult(await s.call("hermes_kilocode_record_infrastructure_proof", {
+      owner: "rt-kilo",
+      resource: "cloudflare_edge",
+      summary: "fake UI-only proof should be rejected",
+      checks: [
+        { id: "cloudflare.waf_rules_enabled", status: "pass", mock: true, rule_count: 3 },
+        { id: "cloudflare.secret_probe_blocked", status: "pass", http_status: 403 },
+        { id: "cloudflare.scanner_ua_blocked", status: "pass", ui_only: true, http_status: 403 },
+      ],
+    }));
+    assert.equal(infrastructureFake.ok, false);
+    assert.equal(infrastructureFake.status, "rejected_fake_or_stubbed_proof");
+
+    const gitlabRunnerEval = parseToolResult(await s.call("hermes_kilocode_evaluate_infrastructure_proof", {
+      resource: "gitlab_runner",
+      checks: [
+        { id: "gitlab.runner_registered", status: "pass", evidence_id: "ev_12345678" },
+        { id: "gitlab.runner_self_hosted", status: "pass", command: "gitlab-runner verify" },
+        { id: "gitlab.runner_executor_ready", status: "pass", evidence: "docker executor ready", observed_utc: "2026-07-04T12:00:00Z" },
+        { id: "gitlab.pipeline_smoke_passed", status: "pass", evidence_id: "ev_23456789" },
+        { id: "gitlab.runner_secret_scope_checked", status: "pass", evidence: "masked/protected variables only", observed_utc: "2026-07-04T12:00:00Z" },
+      ],
+    }));
+    assert.equal(gitlabRunnerEval.ok, true);
+    assert.equal(gitlabRunnerEval.gate_status, "pass");
+    assert.equal(gitlabRunnerEval.release_ready, true);
+
+    const stats = parseToolResult(await s.call("hermes_provider_stats", {
+      provider_id: "minimax",
+      task_type: "kilocode_openhands_delegation",
+      include_history: true,
+    }));
+    assert.equal(stats.ok, true, `KiloCode provider stats failed: ${JSON.stringify(stats)}`);
+    assert.equal(stats.providers[0].verified, 1);
+    assert.doesNotMatch(JSON.stringify(stats), new RegExp(fakeSecret));
+    assert.doesNotMatch(JSON.stringify(stats), /abcdefghijklmnopqrstuvwxyz/);
   } finally {
     s.stop();
     await fs.rm(tmp, { recursive: true, force: true });

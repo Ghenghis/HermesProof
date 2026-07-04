@@ -16,6 +16,17 @@ import { ProviderPerformanceTracker } from "./core/provider-performance.mjs";
 import { A2AStub } from "./core/a2a-stub.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
+import {
+  KILOCODE_TASK_TYPE,
+  evaluateKilocodeInfrastructureProof,
+  evaluateKilocodePolicy,
+  kilocodeStatusSnapshot,
+  readKilocodeGuardrails,
+  recordKilocodeInfrastructureProof,
+  recordKilocodeProgressCheckpoint,
+  recordKilocodeDelegation,
+  setKilocodeGuardrails
+} from "./core/kilocode-integration.mjs";
 import { createGitLabClient, resolveGitLabConfig } from "./core/gitlab-client.mjs";
 import { loadRegistryProviders } from "./core/registry-providers.mjs";
 import {
@@ -373,6 +384,49 @@ const TaskId = LegacyPathId.describe("Stable task id safe for use as a state-fil
 const OptionalTaskId = z.union([LegacyPathId, z.literal("")]).default("");
 const ComparePath = z.string().min(1).max(1000).describe("Existing file or directory path allowed for local comparison.");
 const ClaimLatencyMode = z.enum(["instant", "grounded", "debate"]).default("instant");
+const KilocodeProgressStatus = z.enum(["planned", "working", "blocked", "usable", "verified", "complete"]).default("working");
+const KilocodeInfrastructureResource = z.enum([
+  "cloudflare_edge",
+  "vps_origin",
+  "gitlab_runner",
+  "edge_and_origin",
+  "delivery_pipeline",
+]).default("edge_and_origin");
+const KilocodeInfrastructureCheck = z.object({
+  id: z.string().min(1).max(120),
+  status: z.string().min(1).max(40),
+  evidence: z.string().max(500).optional(),
+  http_status: z.number().int().min(100).max(599).optional(),
+  exit_code: z.number().int().min(0).max(255).optional(),
+  latency_ms: z.number().int().nonnegative().max(600000).optional(),
+  rule_count: z.number().int().nonnegative().max(10000).optional(),
+  command: z.string().max(240).optional(),
+  observed_utc: z.string().max(80).optional(),
+  evidence_id: z.string().max(80).optional(),
+  mock: z.boolean().optional(),
+  mocked: z.boolean().optional(),
+  fake: z.boolean().optional(),
+  stub: z.boolean().optional(),
+  stubbed: z.boolean().optional(),
+  ui_only: z.boolean().optional(),
+  uiOnly: z.boolean().optional(),
+  skipped: z.boolean().optional(),
+  skip: z.boolean().optional(),
+  hardcoded_success: z.boolean().optional(),
+  hardcodedSuccess: z.boolean().optional(),
+}).passthrough();
+const KilocodeGuardrailsPatch = z.object({
+  mvp_first: z.boolean().optional(),
+  no_new_ideas_mode: z.boolean().optional(),
+  force_mvp_gui_first: z.boolean().optional(),
+  require_visual_proof: z.boolean().optional(),
+  screenshot_on_checkpoint: z.boolean().optional(),
+  block_until_usable: z.boolean().optional(),
+  hyperfocus_visual_mode: z.boolean().optional(),
+  focus_mode: z.boolean().optional(),
+  visual_milestone_step_interval: z.number().int().min(1).max(100).optional(),
+  visual_milestone_minutes: z.number().int().min(5).max(1440).optional(),
+}).default({});
 
 function toolResult(value) {
   return {
@@ -1655,6 +1709,7 @@ function defaultProjectContract() {
       { id: "raw-secret", severity: "critical", regex: "(glpat-[A-Za-z0-9_-]{10,}|github_pat_[A-Za-z0-9_]{10,}|ghp_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9]{20,}|PRIVATE-TOKEN\\s*[:=])" },
       { id: "prompt-injection", severity: "high", regex: "(ignore\\s+previous\\s+instructions|developer\\s+mode|reveal\\s+system\\s+prompt|disable\\s+safety)" },
       { id: "fake-proof-language", severity: "high", regex: "(truth and proof.*without.*(?:test|gate|evidence)|verified.*without.*(?:test|gate|evidence))" },
+      { id: "ui-only-not-wired", severity: "high", regex: "(ui[- ]only|not\\s+wired|frontend[- ]only|placeholder\\s+success|hardcoded\\s+success|fake\\s+data|mock\\s+data|stubbed\\s+implementation)" },
       { id: "destructive-git", severity: "critical", regex: "(git\\s+reset\\s+--hard|git\\s+clean\\s+-fd|git\\s+checkout\\s+--\\s+\\.)" }
     ],
     max_files_without_review: 25,
@@ -1772,10 +1827,71 @@ function maxSeverity(findings = []) {
     severityRank(finding.severity) > severityRank(best) ? finding.severity : best, "info");
 }
 
-function gatePasses(gate) {
+function gateStatus(gate) {
+  return String(gate?.status || gate?.result || gate?.verdict || "").toLowerCase();
+}
+
+function gateClaimsPass(gate) {
   if (!gate || typeof gate !== "object") return false;
-  const status = String(gate.status || gate.result || gate.verdict || "").toLowerCase();
+  const status = gateStatus(gate);
   return gate.ok === true || gate.passed === true || status === "pass" || status === "passed" || status === "ok";
+}
+
+function gateName(gate) {
+  return String(gate?.gate || gate?.id || gate?.name || gate?.command || "").toLowerCase();
+}
+
+function gateExitCode(gate) {
+  for (const key of ["exitCode", "exit_code", "code", "statusCode", "status_code"]) {
+    const value = gate?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+  }
+  return null;
+}
+
+function gateHasEvidenceId(gate) {
+  const values = [
+    gate?.evidence_id,
+    gate?.evidenceId,
+    gate?.evidence?.id,
+    gate?.evidence?.evidence_id,
+    gate?.evidence?.evidenceId,
+    gate?.evidence?.evidence?.id,
+    gate?.proof_id,
+    gate?.proofId,
+  ];
+  return values.some((value) => typeof value === "string" && /^ev_[A-Za-z0-9_-]{8,}$/.test(value));
+}
+
+function gateHasRealnessBlocker(gate) {
+  if (!gate || typeof gate !== "object") return false;
+  const name = gateName(gate);
+  const status = gateStatus(gate);
+  const exitCode = gateExitCode(gate);
+  if (exitCode !== null && exitCode !== 0) return true;
+  if (gate.skipped === true || gate.skip === true || /^skip/.test(status)) return true;
+  if (
+    /(hermesproof|hermes[._-]?evidence|evidence[._-]?chain|evidence[._-]?ledger|proof[._-]?ledger)/i.test(name) &&
+    !gateHasEvidenceId(gate)
+  ) return true;
+  return [
+    "mock",
+    "mocked",
+    "stub",
+    "stubbed",
+    "fake",
+    "fakeData",
+    "fake_data",
+    "hardcodedSuccess",
+    "hardcoded_success",
+    "uiOnly",
+    "ui_only",
+  ].some((key) => gate[key] === true);
+}
+
+function gatePasses(gate) {
+  return gateClaimsPass(gate) && !gateHasRealnessBlocker(gate);
 }
 
 function hasReviewGate(gates = []) {
@@ -1796,6 +1912,57 @@ function textMatchesAny(text, patterns = []) {
     if (regex && regex.test(text)) hits.push(pattern);
   }
   return hits;
+}
+
+function collectGateRealnessFindings(gates = []) {
+  const findings = [];
+  if (!Array.isArray(gates)) return findings;
+  for (const gate of gates) {
+    if (!gateClaimsPass(gate)) continue;
+    const name = gateName(gate);
+    const exitCode = gateExitCode(gate);
+    if (exitCode !== null && exitCode !== 0) {
+      findings.push({
+        severity: "critical",
+        code: "gate.nonzero_exit_claimed_pass",
+        message: "A gate claimed pass while reporting a non-zero process exit code.",
+        evidence: { gate: name || "unnamed", exit_code: exitCode }
+      });
+    }
+    const flaggedKeys = [
+      "mock",
+      "mocked",
+      "stub",
+      "stubbed",
+      "fake",
+      "fakeData",
+      "fake_data",
+      "hardcodedSuccess",
+      "hardcoded_success",
+      "uiOnly",
+      "ui_only",
+    ].filter((key) => gate[key] === true);
+    if (flaggedKeys.length) {
+      findings.push({
+        severity: flaggedKeys.some((key) => /hardcoded|fake|stub|ui/i.test(key)) ? "critical" : "high",
+        code: "gate.fake_or_stub_claimed_pass",
+        message: "A gate claimed pass while marking itself as mock, fake, stubbed, hardcoded, or UI-only.",
+        evidence: { gate: name || "unnamed", flagged_keys: flaggedKeys }
+      });
+    }
+    if (
+      /(hermesproof|hermes[._-]?evidence|evidence[._-]?chain|evidence[._-]?ledger|proof[._-]?ledger)/i.test(name) &&
+      !gateHasEvidenceId(gate)
+    ) {
+      findings.push({
+        severity: "high",
+        code: "gate.hermes_evidence_id_missing",
+        message: "A HermesProof/evidence gate claimed pass without an evidence id.",
+        evidence: { gate: name || "unnamed" }
+      });
+    }
+  }
+  return findings;
 }
 
 function collectChangedFilesFromGit() {
@@ -1903,6 +2070,10 @@ async function antiSlopReview({
       code: "contract.missing",
       message: "No project contract was available; using no shared acceptance rules is unsafe for multi-agent work."
     });
+  }
+
+  for (const finding of collectGateRealnessFindings(gates)) {
+    addFinding(finding);
   }
 
   for (const contract of contracts) {
@@ -2522,9 +2693,10 @@ async function listClaimAudits({ status = "all", severity = "", limit = 100 } = 
 
 function providerRolePlan(candidates = []) {
   const ids = normalizeStringList(candidates, 20).map((value) => value.toLowerCase());
-  const wanted = ids.length ? ids : ["minimax", "deepseek", "siliconflow", "lm-studio", "ollama"];
+  const wanted = ids.length ? ids : ["minimax", "deepinfra", "deepseek", "siliconflow", "lm-studio", "ollama"];
   const roleHints = {
     minimax: ["live-controller", "cheat-engine-chat", "window-api", "gameplay-loop"],
+    deepinfra: ["authorized-reverse-engineering", "uncensored-local-analysis", "openhands-sidecar", "fallback-agent"],
     deepseek: ["reverse-research", "static-analysis", "planner", "challenger"],
     siliconflow: ["embedding-recall", "cheap-batch", "similarity-search", "profile-memory"],
     "lm-studio": ["local-vision", "offline-review", "sensitive-local-audit", "fallback-chat"],
@@ -2839,7 +3011,7 @@ async function agenticTick({
   files = [],
   gates = [],
   evidence = [],
-  providerCandidates = ["minimax", "deepseek", "siliconflow", "lm-studio", "ollama"],
+  providerCandidates = ["minimax", "deepinfra", "deepseek", "siliconflow", "lm-studio", "ollama"],
   primaryProvider = "minimax",
   maxClaims = 40,
   keepGoing = true,
@@ -4579,7 +4751,7 @@ registerTool(
       files: z.array(z.string()).default([]),
       gates: z.array(z.record(z.any())).default([]),
       evidence: z.array(z.record(z.any())).default([]),
-      providerCandidates: z.array(z.string()).default(["minimax", "deepseek", "siliconflow", "lm-studio", "ollama"]),
+      providerCandidates: z.array(z.string()).default(["minimax", "deepinfra", "deepseek", "siliconflow", "lm-studio", "ollama"]),
       primaryProvider: z.string().default("minimax"),
       maxClaims: z.number().int().min(1).max(200).default(40),
       keepGoing: z.boolean().default(true),
@@ -5938,8 +6110,31 @@ registerTool(
 );
 
 const ProviderId = z.string().min(2).max(80).regex(/^[A-Za-z0-9._-]+$/)
-  .describe("Provider routing id, e.g. minimax, deepseek, siliconflow, lm-studio.");
+  .describe("Provider routing id, e.g. minimax, deepinfra, deepseek, siliconflow, lm-studio.");
 const ProviderOutcome = z.enum(["verified", "completed", "partial", "needs_proof", "failed", "timeout", "rejected"]);
+const KilocodeMode = z.enum(["normal", "authorized_reverse_engineering", "yolo"]);
+const KilocodeDelegationTrigger = z.enum([
+  "explicit",
+  "missing_tool",
+  "repeated_failure",
+  "ssh",
+  "vps",
+  "browser",
+  "docker",
+  "install",
+  "deploy",
+  "long_running",
+  "stuck",
+  "openhands",
+  "simple_edit",
+  "read_only",
+  "secret_required",
+  "destructive",
+  "unknown",
+]);
+const KilocodeRisk = z.enum(["low", "medium", "high", "critical"]);
+const KilocodePermissionDecision = z.enum(["allow", "ask", "deny"]);
+const KilocodeSecretScanStatus = z.enum(["passed", "failed", "not_checked"]);
 
 registerTool(
   "hermes_provider_record_outcome",
@@ -6017,6 +6212,233 @@ registerTool(
         candidates: args?.candidates || [],
         min_score: args?.min_score ?? 0
       }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_status",
+  {
+    title: "KiloCode/OpenHands integration status",
+    description: "Return redacted readiness for KiloCode using OpenHands through HermesProof: provider registry, MiniMax/OpenHands env presence, Hermes Agent bridge state, and optional provider ranking.",
+    inputSchema: {
+      includeProviderRank: z.boolean().default(true),
+      candidates: z.array(ProviderId).max(50).default(["minimax", "deepinfra", "deepseek", "siliconflow", "lm-studio", "ollama"]),
+      task_type: z.string().min(1).max(80).default(KILOCODE_TASK_TYPE)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const providerRanking = args?.includeProviderRank === false
+        ? null
+        : await providerPerformance.rankProviders({
+            task_type: args?.task_type || KILOCODE_TASK_TYPE,
+            candidates: args?.candidates || ["minimax", "deepinfra", "deepseek", "siliconflow", "lm-studio", "ollama"],
+            min_score: 0
+          });
+      const savedGuardrails = await readKilocodeGuardrails({
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || ""
+      });
+      return toolResult(kilocodeStatusSnapshot({
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || "",
+        registryProviderCount: runtime?.registryProviderCount || 0,
+        registryLoadOk: runtime?.registryLoadOk === true,
+        bridgeEnabled: process.env.HERMES_AGENT_ENABLED === "1",
+        bridgeReason: process.env.HERMES_AGENT_ENABLED === "1" ? "enabled_by_env" : "set HERMES_AGENT_ENABLED=1 to enable autonomous Hermes Agent bridge",
+        providerRanking,
+        guardrails: savedGuardrails.guardrails
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_set_guardrails",
+  {
+    title: "Set KiloCode project guardrails",
+    description: "Update workspace-local KiloCode guardrails for MVP-first work, visual proof, usable milestones, focus mode, and hyperfocus visual mode. Stores only booleans, intervals, and a redacted reason.",
+    inputSchema: {
+      owner: Owner.optional(),
+      reason: z.string().max(300).default(""),
+      reset: z.boolean().default(false),
+      mvp_first: z.boolean().optional(),
+      no_new_ideas_mode: z.boolean().optional(),
+      force_mvp_gui_first: z.boolean().optional(),
+      require_visual_proof: z.boolean().optional(),
+      screenshot_on_checkpoint: z.boolean().optional(),
+      block_until_usable: z.boolean().optional(),
+      hyperfocus_visual_mode: z.boolean().optional(),
+      focus_mode: z.boolean().optional(),
+      visual_milestone_step_interval: z.number().int().min(1).max(100).optional(),
+      visual_milestone_minutes: z.number().int().min(5).max(1440).optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(await setKilocodeGuardrails({
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || "",
+        ...(args || {})
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_policy_check",
+  {
+    title: "KiloCode/OpenHands delegation policy",
+    description: "Evaluate whether KiloCode should continue locally, ask for approval, deny, or delegate to OpenHands for a tool/capability gap. The response is redacted and does not execute actions.",
+    inputSchema: {
+      trigger: KilocodeDelegationTrigger.default("unknown"),
+      risk: KilocodeRisk.default("medium"),
+      capabilities: z.array(z.string().min(1).max(80)).max(25).default([]),
+      explicit: z.boolean().default(false),
+      repeated_failures: z.number().int().nonnegative().max(20).default(0),
+      action_summary: z.string().max(2000).default(""),
+      scope_change: z.boolean().default(false),
+      visual_proof_provided: z.boolean().default(false),
+      current_milestone_usable: z.boolean().default(false),
+      guardrails: KilocodeGuardrailsPatch.optional()
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const savedGuardrails = await readKilocodeGuardrails({
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || ""
+      });
+      return toolResult(evaluateKilocodePolicy({
+        ...(args || {}),
+        guardrails: {
+          ...savedGuardrails.guardrails,
+          ...((args || {}).guardrails || {}),
+        }
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_checkpoint_progress",
+  {
+    title: "Checkpoint KiloCode progress",
+    description: "Record a real KiloCode milestone checkpoint with optional visual proof paths, gate results, usable/complete status, guardrail effects, and hash-chained HermesProof evidence.",
+    inputSchema: {
+      owner: Owner,
+      milestone_id: z.string().max(100).default(""),
+      milestone_goal: z.string().max(300).default(""),
+      status: KilocodeProgressStatus,
+      summary: z.string().max(2000).default(""),
+      visual_proof_paths: z.array(z.string().min(1).max(1000)).max(20).default([]),
+      gates: z.array(z.object({
+        gate: z.string().min(1).max(160),
+        status: z.string().min(1).max(40),
+        evidence: z.string().max(500).optional(),
+      })).max(50).default([]),
+      next_action: z.string().max(500).default(""),
+      current_milestone_usable: z.boolean().default(false),
+      guardrails: KilocodeGuardrailsPatch.optional()
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const savedGuardrails = await readKilocodeGuardrails({
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || ""
+      });
+      return toolResult(await recordKilocodeProgressCheckpoint({
+        manager,
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || "",
+        ...(args || {}),
+        guardrails: {
+          ...savedGuardrails.guardrails,
+          ...((args || {}).guardrails || {}),
+        }
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_record_delegation",
+  {
+    title: "Record KiloCode/OpenHands delegation",
+    description: "Record a redacted KiloCode OpenHands sidecar outcome in provider-performance stats and the HermesProof evidence ledger. Do not pass raw secrets or private file contents.",
+    inputSchema: {
+      owner: Owner,
+      task_id: z.string().max(100).default(""),
+      provider_id: ProviderId.default("minimax"),
+      model_name: z.string().max(160).default(""),
+      openhands_conversation_id: z.string().max(160).default(""),
+      trigger: KilocodeDelegationTrigger.default("unknown"),
+      risk: KilocodeRisk.default("medium"),
+      outcome: ProviderOutcome,
+      latency_ms: z.number().int().nonnegative().optional(),
+      summary: z.string().max(2000).default(""),
+      evidence: z.string().max(300).default(""),
+      permission_decision: KilocodePermissionDecision.default("ask"),
+      secret_scan: KilocodeSecretScanStatus.default("not_checked"),
+      mode: KilocodeMode.default("normal"),
+      uncensored: z.boolean().default(false),
+      reverse_engineering_authorized: z.boolean().default(false)
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(await recordKilocodeDelegation({
+        manager,
+        providerPerformance,
+        ...args
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_record_infrastructure_proof",
+  {
+    title: "Record KiloCode Cloudflare/VPS proof",
+    description: "Record redacted Cloudflare edge and VPS origin proof for KiloCode release/deploy gates. Rejects mocked, fake, stubbed, skipped, hardcoded, or UI-only pass claims.",
+    inputSchema: {
+      owner: Owner,
+      task_id: z.string().max(100).default(""),
+      resource: KilocodeInfrastructureResource,
+      target: z.string().max(160).default(""),
+      summary: z.string().max(2000).default(""),
+      checks: z.array(KilocodeInfrastructureCheck).min(1).max(100),
+      proof_paths: z.array(z.string().min(1).max(1000)).max(20).default([]),
+      next_action: z.string().max(500).default("")
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(await recordKilocodeInfrastructureProof({
+        manager,
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || "",
+        ...(args || {})
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_evaluate_infrastructure_proof",
+  {
+    title: "Evaluate KiloCode Cloudflare/VPS proof",
+    description: "Evaluate Cloudflare edge and VPS origin checks without writing evidence. Use this before release/deploy claims to see missing, weak, warning, or fake proof.",
+    inputSchema: {
+      resource: KilocodeInfrastructureResource,
+      checks: z.array(KilocodeInfrastructureCheck).min(1).max(100)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(evaluateKilocodeInfrastructureProof(args || {}));
     } catch (err) { return toolError(err); }
   }
 );
