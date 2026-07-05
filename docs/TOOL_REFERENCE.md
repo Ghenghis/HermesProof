@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 92 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 101 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails, KiloCode agent-bus proof enforcement, A2A task exchange, Hermes Agent bridging, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -33,6 +33,7 @@ The server exposes 92 MCP tools across coordination, workspace switching, projec
 | Anonymous       | `hermes_list_agents`, `hermes_anonymous_claim`, `hermes_anonymous_release`, `hermes_anonymous_state`, `hermes_record_outcome`, `hermes_record_task` |
 | Dispatch        | `hermes_dispatch_recommend`                                                                                                                 |
 | Providers       | `hermes_provider_record_outcome`, `hermes_provider_stats`, `hermes_provider_rank`                                                           |
+| KiloCode        | `hermes_kilocode_status`, `hermes_kilocode_set_guardrails`, `hermes_kilocode_policy_check`, `hermes_kilocode_checkpoint_progress`, `hermes_kilocode_record_delegation`, `hermes_kilocode_evaluate_agent_bus_event`, `hermes_kilocode_record_agent_bus_event`, `hermes_kilocode_evaluate_infrastructure_proof`, `hermes_kilocode_record_infrastructure_proof` |
 | USER session    | `hermes_user_grant_session`, `hermes_user_revoke_session`, `hermes_user_check_authorization`                                                |
 | A2A             | `hermes_a2a_create_task`, `hermes_a2a_get_task`, `hermes_a2a_update_task`, `hermes_a2a_list_tasks`                                          |
 | Hermes Agent    | `hermes_agent_health`, `hermes_agent_request_user_session`, `hermes_agent_resolve_blocked`, `hermes_agent_revoke_session`                   |
@@ -346,6 +347,91 @@ Ranks providers for a task. Unknown providers keep a neutral baseline so new mod
   "task_type": "pacman_timer_scan",
   "candidates": ["minimax", "deepseek", "siliconflow", "lm-studio"],
   "min_score": 0
+}
+```
+
+## hermes_kilocode_status
+
+Returns a redacted readiness snapshot for KiloCode using OpenHands through HermesProof. It reports whether MiniMax and OpenHands-related environment names are present, whether the Hermes Agent bridge is enabled, provider-registry health, current project guardrails, visual-progress checkpoint timing, and optional provider ranking for `kilocode_openhands_delegation`. It never returns secret values.
+
+```json
+{
+  "includeProviderRank": true,
+  "candidates": ["minimax", "deepseek", "siliconflow", "lm-studio", "ollama"],
+  "task_type": "kilocode_openhands_delegation"
+}
+```
+
+## hermes_kilocode_set_guardrails
+
+Updates workspace-local KiloCode project guardrails. These are active controls for project completion: MVP-first work, visual proof, screenshot checkpoints, blocked new scope until the current milestone is usable, focus mode, and `hyperfocus_visual_mode`. The tool stores only booleans, interval values, and a redacted reason.
+
+```json
+{
+  "owner": "kilocode-agent",
+  "reason": "keep first usable milestone visible",
+  "mvp_first": true,
+  "require_visual_proof": true,
+  "block_until_usable": true,
+  "hyperfocus_visual_mode": true
+}
+```
+
+## hermes_kilocode_policy_check
+
+Evaluates whether KiloCode should handle a task locally, delegate to OpenHands, ask first, or deny delegation because the request contains raw secrets or violates active project guardrails. It is a policy check only; it does not start OpenHands, call a model, or execute commands. Responses include `guardrail_goals`, `required_actions`, `visual_proof_required`, `blocked_by_guardrails`, and checkpoint timing.
+
+```json
+{
+  "trigger": "ssh",
+  "risk": "high",
+  "capabilities": ["ssh", "external_network"],
+  "explicit": false,
+  "repeated_failures": 2,
+  "action_summary": "inspect approved VPS logs without embedding credentials",
+  "scope_change": false,
+  "visual_proof_provided": false,
+  "current_milestone_usable": false
+}
+```
+
+## hermes_kilocode_checkpoint_progress
+
+Records a real KiloCode milestone checkpoint with optional visual proof paths, gate results, usable/complete status, guardrail effects, and hash-chained HermesProof evidence. If `visual_proof_paths` are supplied, HermesProof verifies the paths exist before recording the checkpoint.
+
+```json
+{
+  "owner": "kilocode-agent",
+  "milestone_id": "first-screen",
+  "milestone_goal": "Make the first project screen usable",
+  "status": "usable",
+  "summary": "The first screen launches and is visible.",
+  "visual_proof_paths": ["proof/first-screen.png"],
+  "gates": [{ "gate": "manual visual proof", "status": "pass", "evidence": "proof/first-screen.png exists" }],
+  "next_action": "Run OpenHands delegation smoke",
+  "current_milestone_usable": true
+}
+```
+
+## hermes_kilocode_record_delegation
+
+Records a completed KiloCode/OpenHands sidecar result in both provider-performance stats and the hash-chained evidence ledger. Inputs are redacted before storage, so callers should still pass summaries and proof references rather than raw prompts, private file contents, or secrets.
+
+```json
+{
+  "owner": "kilocode-agent",
+  "task_id": "repo-setup-smoke",
+  "provider_id": "minimax",
+  "model_name": "MiniMax-M3",
+  "openhands_conversation_id": "conversation-reference",
+  "trigger": "missing_tool",
+  "risk": "medium",
+  "outcome": "verified",
+  "latency_ms": 1200,
+  "summary": "OpenHands completed the missing terminal setup step.",
+  "evidence": "smoke-test passed",
+  "permission_decision": "allow",
+  "secret_scan": "passed"
 }
 ```
 
@@ -812,7 +898,7 @@ Appends evidence to `.hermes3d_orchestrator/evidence/ledger.ndjson`.
 
 ## hermes_verify_evidence
 
-Verifies the evidence hash chain and reports the first invalid row if the ledger was edited after the fact.
+Verifies the evidence hash chain and reports invalid rows if the ledger was edited after the fact. If `PROOF/evidence-ledger-checkpoints.json` is present and its checkpoint hash is valid, the verifier accepts only the exact historical fork rows listed there, returns `ok: true`, and keeps `strict_ok: false` so operators can see that a documented historical fork was accepted rather than rewritten.
 
 ```json
 {}

@@ -6,10 +6,13 @@ import path from "node:path";
 import { HermesLockManager } from "./lock-manager.mjs";
 import { ProviderPerformanceTracker } from "./provider-performance.mjs";
 import {
+  KILOCODE_AGENT_BUS_TASK_TYPE,
   KILOCODE_TASK_TYPE,
+  evaluateKilocodeAgentBusEnvelope,
   evaluateKilocodeInfrastructureProof,
   evaluateKilocodePolicy,
   readKilocodeGuardrails,
+  recordKilocodeAgentBusEvent,
   recordKilocodeInfrastructureProof,
   recordKilocodeProgressCheckpoint,
   recordKilocodeDelegation,
@@ -233,6 +236,88 @@ describe("KiloCode/OpenHands HermesProof integration", () => {
     assert.doesNotMatch(combined, /sk-cp-abcdef1234567890|abcdefghijklmnopqrstuvwxyz/);
     assert.match(combined, /\[REDACTED_TOKEN\]|\[REDACTED\]/);
     assert.match(combined, /authorized_reverse_engineering/);
+  });
+
+  it("evaluates agent-bus completion proof and rejects completion without evidence", () => {
+    const missingEvidence = evaluateKilocodeAgentBusEnvelope({
+      schema: "kilo.agent.bus.v1",
+      event_type: "task.completed",
+      substrate: "cao",
+      task_id: "cao-task-1",
+      worker_id: "cao-worker-1",
+      summary: "UI panel says the worker is done",
+    });
+
+    assert.equal(missingEvidence.ok, false);
+    assert.equal(missingEvidence.status, "rejected_completion_without_evidence");
+    assert.ok(missingEvidence.required_actions.some((action) => /ev_\*/.test(action)));
+
+    const accepted = evaluateKilocodeAgentBusEnvelope({
+      schema: "kilo.agent.bus.v1",
+      event_type: "task.completed",
+      substrate: "cao",
+      task_id: "cao-task-1",
+      worker_id: "cao-worker-1",
+      summary: "Worker completed with linked proof",
+      evidence_id: "ev_12345678",
+      checks: [{ id: "cao.worker.exit", status: "pass", evidence_id: "ev_12345678" }],
+    });
+
+    assert.equal(accepted.ok, true);
+    assert.equal(accepted.status, "accepted");
+    assert.equal(accepted.task_type, KILOCODE_AGENT_BUS_TASK_TYPE);
+    assert.deepEqual(accepted.proof_refs, ["ev_12345678"]);
+    assert.equal(accepted.secret_values_returned, false);
+  });
+
+  it("records accepted agent-bus events but refuses fake or UI-only proof", async () => {
+    const manager = new HermesLockManager({ workspaceRoot: tmpDir });
+    await manager.init();
+
+    const proof = await recordKilocodeAgentBusEvent({
+      manager,
+      owner: "codex-kilo",
+      envelope: {
+        schema: "kilo.agent.bus.v1",
+        event_type: "proof.attached",
+        substrate: "agent_orchestrator",
+        task_id: "ao-task-1",
+        worker_id: "aider-reviewer-1",
+        lane: "review",
+        summary: "Aider review proof attached with a concrete artifact hash",
+        artifacts: [{ kind: "log", path: "proof/aider-review.txt", sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789" }],
+        checks: [{ id: "aider.review.exit", status: "pass", exit_code: 0 }],
+      },
+    });
+
+    assert.equal(proof.ok, true);
+    assert.equal(proof.status, "recorded");
+    assert.equal(proof.evidence.kind, "kilocode.agent_bus.event");
+    assert.equal(proof.evaluation.has_concrete_proof, true);
+
+    const fake = await recordKilocodeAgentBusEvent({
+      manager,
+      owner: "codex-kilo",
+      envelope: {
+        schema: "kilo.agent.bus.v1",
+        event_type: "proof.attached",
+        substrate: "goose",
+        task_id: "goose-task-1",
+        worker_id: "goose-worker-1",
+        summary: "fake proof should not land",
+        checks: [{ id: "goose.browser.done", status: "pass", ui_only: true }],
+      },
+    });
+
+    assert.equal(fake.ok, false);
+    assert.equal(fake.status, "rejected_fake_or_stubbed_event");
+    assert.ok(fake.evaluation.required_actions.some((action) => /mocked|fake|stubbed|UI-only/i.test(action)));
+
+    const evidenceCheck = await manager.verifyEvidence();
+    assert.equal(evidenceCheck.ok, true);
+    const evidenceText = await fs.readFile(path.join(tmpDir, ".hermes3d_orchestrator", "evidence", "ledger.ndjson"), "utf8");
+    assert.match(evidenceText, /kilocode\.agent_bus\.event/);
+    assert.doesNotMatch(evidenceText, /fake proof should not land/);
   });
 
   it("evaluates Cloudflare and VPS infrastructure proof as release gates", () => {

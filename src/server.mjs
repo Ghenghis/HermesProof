@@ -18,10 +18,12 @@ import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orc
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
 import {
   KILOCODE_TASK_TYPE,
+  evaluateKilocodeAgentBusEnvelope,
   evaluateKilocodeInfrastructureProof,
   evaluateKilocodePolicy,
   kilocodeStatusSnapshot,
   readKilocodeGuardrails,
+  recordKilocodeAgentBusEvent,
   recordKilocodeInfrastructureProof,
   recordKilocodeProgressCheckpoint,
   recordKilocodeDelegation,
@@ -403,6 +405,100 @@ const KilocodeInfrastructureCheck = z.object({
   command: z.string().max(240).optional(),
   observed_utc: z.string().max(80).optional(),
   evidence_id: z.string().max(80).optional(),
+  mock: z.boolean().optional(),
+  mocked: z.boolean().optional(),
+  fake: z.boolean().optional(),
+  stub: z.boolean().optional(),
+  stubbed: z.boolean().optional(),
+  ui_only: z.boolean().optional(),
+  uiOnly: z.boolean().optional(),
+  skipped: z.boolean().optional(),
+  skip: z.boolean().optional(),
+  hardcoded_success: z.boolean().optional(),
+  hardcodedSuccess: z.boolean().optional(),
+}).passthrough();
+const KilocodeAgentBusCheck = z.object({
+  id: z.string().min(1).max(120),
+  status: z.string().max(40).optional(),
+  result: z.string().max(40).optional(),
+  evidence: z.string().max(500).optional(),
+  summary: z.string().max(500).optional(),
+  evidence_id: z.string().max(120).optional(),
+  evidenceId: z.string().max(120).optional(),
+  exit_code: z.number().int().min(0).max(255).optional(),
+  exitCode: z.number().int().min(0).max(255).optional(),
+  http_status: z.number().int().min(100).max(599).optional(),
+  httpStatus: z.number().int().min(100).max(599).optional(),
+  latency_ms: z.number().int().nonnegative().max(600000).optional(),
+  latencyMs: z.number().int().nonnegative().max(600000).optional(),
+  mock: z.boolean().optional(),
+  mocked: z.boolean().optional(),
+  fake: z.boolean().optional(),
+  stub: z.boolean().optional(),
+  stubbed: z.boolean().optional(),
+  ui_only: z.boolean().optional(),
+  uiOnly: z.boolean().optional(),
+  skipped: z.boolean().optional(),
+  skip: z.boolean().optional(),
+  hardcoded_success: z.boolean().optional(),
+  hardcodedSuccess: z.boolean().optional(),
+}).passthrough();
+const KilocodeAgentBusArtifact = z.object({
+  kind: z.string().max(80).optional(),
+  type: z.string().max(80).optional(),
+  path: z.string().max(1000).optional(),
+  file: z.string().max(1000).optional(),
+  sha256: z.string().max(160).optional(),
+  hash: z.string().max(160).optional(),
+  artifact_hash: z.string().max(160).optional(),
+  artifactHash: z.string().max(160).optional(),
+  exists: z.boolean().optional(),
+  bytes: z.number().int().nonnegative().optional(),
+  size: z.number().int().nonnegative().optional(),
+}).passthrough();
+const KilocodeAgentBusProofRef = z.union([
+  z.string().max(160),
+  z.object({
+    id: z.string().max(160).optional(),
+    evidence_id: z.string().max(160).optional(),
+    evidenceId: z.string().max(160).optional(),
+  }).passthrough(),
+]);
+const KilocodeAgentBusEnvelope = z.object({
+  schema: z.string().max(80).default("kilo.agent.bus.v1"),
+  event_type: z.string().max(80).default(""),
+  eventType: z.string().max(80).optional(),
+  type: z.string().max(80).optional(),
+  substrate: z.string().max(80).default("unknown"),
+  source: z.string().max(80).optional(),
+  orchestrator: z.string().max(80).optional(),
+  task_id: z.string().max(160).default(""),
+  taskId: z.string().max(160).optional(),
+  worker_id: z.string().max(160).optional(),
+  workerId: z.string().max(160).optional(),
+  agent_id: z.string().max(160).optional(),
+  agentId: z.string().max(160).optional(),
+  session_id: z.string().max(160).optional(),
+  sessionId: z.string().max(160).optional(),
+  lane: z.string().max(80).optional(),
+  summary: z.string().max(2000).default(""),
+  message: z.string().max(2000).optional(),
+  evidence_id: z.string().max(160).optional(),
+  evidenceId: z.string().max(160).optional(),
+  evidence_ids: z.array(z.string().max(160)).max(20).optional(),
+  evidenceIds: z.array(z.string().max(160)).max(20).optional(),
+  proof_refs: z.array(KilocodeAgentBusProofRef).max(20).optional(),
+  proofRefs: z.array(KilocodeAgentBusProofRef).max(20).optional(),
+  artifacts: z.array(KilocodeAgentBusArtifact).max(50).optional(),
+  proof_artifacts: z.array(KilocodeAgentBusArtifact).max(50).optional(),
+  proofArtifacts: z.array(KilocodeAgentBusArtifact).max(50).optional(),
+  checks: z.array(KilocodeAgentBusCheck).max(100).optional(),
+  gates: z.array(KilocodeAgentBusCheck).max(100).optional(),
+  command: z.string().max(1000).optional(),
+  command_summary: z.string().max(1000).optional(),
+  commandSummary: z.string().max(1000).optional(),
+  exit_code: z.number().int().min(0).max(255).optional(),
+  exitCode: z.number().int().min(0).max(255).optional(),
   mock: z.boolean().optional(),
   mocked: z.boolean().optional(),
   fake: z.boolean().optional(),
@@ -6392,6 +6488,46 @@ registerTool(
         manager,
         providerPerformance,
         ...args
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_evaluate_agent_bus_event",
+  {
+    title: "Evaluate KiloCode agent-bus event",
+    description: "Evaluate a CAO/OpenHands/Aider/Goose/OpenCode handoff, proof, cleanup, or completion envelope without writing evidence. Rejects mocked, fake, stubbed, skipped, hardcoded, UI-only, or completion-without-ev_* claims.",
+    inputSchema: {
+      envelope: KilocodeAgentBusEnvelope,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(evaluateKilocodeAgentBusEnvelope((args || {}).envelope || {}));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_record_agent_bus_event",
+  {
+    title: "Record KiloCode agent-bus event",
+    description: "Record a redacted KiloCode/CAO/OpenHands/Aider/Goose/OpenCode agent-bus event into HermesProof. Completed tasks must reference valid ev_* evidence; fake or UI-only proof is rejected and not appended.",
+    inputSchema: {
+      owner: Owner,
+      task_id: z.string().max(160).default("")
+        .describe("Optional override task id. Defaults to envelope.task_id."),
+      envelope: KilocodeAgentBusEnvelope,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(await recordKilocodeAgentBusEvent({
+        manager,
+        ...(args || {})
       }));
     } catch (err) { return toolError(err); }
   }

@@ -55,7 +55,7 @@ The proof harness — `npm run truth-gates` — runs thirty-seven independent ve
 | 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 92 MCP tools |
+| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 101 MCP tools |
 | 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -110,7 +110,7 @@ Single stdio process per workspace, four MCP clients, durable queue and proof st
 <img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
 </div>
 
-The server exposes **92 MCP tools** for coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, provider-performance routing, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
+The server exposes **101 MCP tools** for coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails/checkpoints, KiloCode agent-bus proof enforcement, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
 
 ```text
 CLAIM           claim_task          release_task
@@ -145,6 +145,11 @@ DIAGNOSTICS     get_state           recover_stale_locks doctor              read
                 list_agents
 ANONYMOUS       anonymous_claim     anonymous_release   anonymous_state
                 record_outcome      record_task         dispatch_recommend
+PROVIDERS       provider_record_outcome provider_stats   provider_rank
+KILOCODE        kilocode_status     kilocode_set_guardrails kilocode_policy_check
+                kilocode_checkpoint_progress kilocode_record_delegation
+                kilocode_evaluate_agent_bus_event kilocode_record_agent_bus_event
+                kilocode_evaluate_infrastructure_proof kilocode_record_infrastructure_proof
 USER SESSION    user_grant_session  user_revoke_session user_check_authorization
 A2A             a2a_create_task     a2a_get_task        a2a_update_task     a2a_list_tasks
 AGENT           agent_health        agent_request_user_session

@@ -138,6 +138,8 @@ const KILOCODE_TOOLS = Object.freeze([
   "hermes_kilocode_policy_check",
   "hermes_kilocode_checkpoint_progress",
   "hermes_kilocode_record_delegation",
+  "hermes_kilocode_evaluate_agent_bus_event",
+  "hermes_kilocode_record_agent_bus_event",
   "hermes_kilocode_evaluate_infrastructure_proof",
   "hermes_kilocode_record_infrastructure_proof",
 ]);
@@ -1424,6 +1426,75 @@ test("KiloCode/OpenHands stdio round-trip: status, policy, and redacted delegati
     assert.equal(recorded.secret_values_returned, false);
     assert.doesNotMatch(JSON.stringify(recorded), new RegExp(fakeSecret));
     assert.doesNotMatch(JSON.stringify(recorded), /abcdefghijklmnopqrstuvwxyz/);
+
+    const busClaim = parseToolResult(await s.call("hermes_kilocode_evaluate_agent_bus_event", {
+      envelope: {
+        schema: "kilo.agent.bus.v1",
+        event_type: "task.claimed",
+        substrate: "cao",
+        task_id: "cao-dummy",
+        worker_id: "cao-worker-1",
+        session_id: "tmux-cao-dummy",
+        lane: "supervisor",
+        summary: "Claimed a real coordination task for Kilo/OpenHands/Aider/Goose handoff testing",
+      },
+    }));
+    assert.equal(busClaim.ok, true, `Kilo agent bus claim rejected: ${JSON.stringify(busClaim)}`);
+    assert.equal(busClaim.status, "accepted");
+    assert.equal(busClaim.event_type, "task.claimed");
+    assert.equal(busClaim.secret_values_returned, false);
+
+    const busProof = parseToolResult(await s.call("hermes_kilocode_record_agent_bus_event", {
+      owner: "rt-kilo",
+      envelope: {
+        schema: "kilo.agent.bus.v1",
+        event_type: "proof.attached",
+        substrate: "cao",
+        task_id: "cao-dummy",
+        worker_id: "cao-worker-1",
+        session_id: "tmux-cao-dummy",
+        lane: "supervisor",
+        summary: "Attached concrete bus proof for the coordination handoff",
+        artifacts: [{ kind: "log", path: "proof/cao-dummy.txt", sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }],
+        checks: [{ id: "cao.worker.exit", status: "pass", exit_code: 0, evidence: "worker command completed" }],
+      },
+    }));
+    assert.equal(busProof.ok, true, `Kilo agent bus proof record failed: ${JSON.stringify(busProof)}`);
+    assert.equal(busProof.evidence.kind, "kilocode.agent_bus.event");
+    assert.equal(busProof.evaluation.has_concrete_proof, true);
+
+    const busFakeCompletion = parseToolResult(await s.call("hermes_kilocode_record_agent_bus_event", {
+      owner: "rt-kilo",
+      envelope: {
+        schema: "kilo.agent.bus.v1",
+        event_type: "task.completed",
+        substrate: "cao",
+        task_id: "cao-dummy",
+        worker_id: "cao-worker-1",
+        summary: "Dashboard says done, but no proof id is attached",
+      },
+    }));
+    assert.equal(busFakeCompletion.ok, false);
+    assert.equal(busFakeCompletion.status, "rejected_completion_without_evidence");
+
+    const busCompletion = parseToolResult(await s.call("hermes_kilocode_record_agent_bus_event", {
+      owner: "rt-kilo",
+      envelope: {
+        schema: "kilo.agent.bus.v1",
+        event_type: "task.completed",
+        substrate: "cao",
+        task_id: "cao-dummy",
+        worker_id: "cao-worker-1",
+        session_id: "tmux-cao-dummy",
+        lane: "supervisor",
+        summary: "Coordination handoff completed with linked HermesProof evidence",
+        evidence_id: busProof.evidence.id,
+        checks: [{ id: "cao.worker.exit", status: "pass", evidence_id: busProof.evidence.id }],
+      },
+    }));
+    assert.equal(busCompletion.ok, true, `Kilo agent bus completion record failed: ${JSON.stringify(busCompletion)}`);
+    assert.equal(busCompletion.evidence.kind, "kilocode.agent_bus.event");
+    assert.equal(busCompletion.evaluation.proof_refs[0], busProof.evidence.id);
 
     const infrastructureChecks = [
       { id: "cloudflare.waf_rules_enabled", status: "pass", rule_count: 3, observed_utc: "2026-07-04T12:00:00Z" },

@@ -5,9 +5,38 @@ const DEFAULT_PRIVATE_ROOT = "G:\\private";
 
 const KILOCODE_TASK_TYPE = "kilocode_openhands_delegation";
 const KILOCODE_INFRASTRUCTURE_TASK_TYPE = "kilocode_infrastructure_proof";
+const KILOCODE_AGENT_BUS_TASK_TYPE = "kilocode_agent_bus_event";
 const VALID_MODES = new Set(["normal", "authorized_reverse_engineering", "yolo"]);
 const KILOCODE_GUARDRAILS_FILE = "kilocode_guardrails.json";
 const KILOCODE_PROGRESS_FILE = "kilocode_progress.json";
+const VALID_AGENT_BUS_SCHEMAS = new Set(["kilo.agent.bus.v1", "hermesproof.kilo.agent.bus.v1"]);
+const VALID_AGENT_BUS_EVENT_TYPES = new Set([
+  "task.requested",
+  "task.claimed",
+  "task.started",
+  "handoff.sent",
+  "message.sent",
+  "proof.attached",
+  "task.completed",
+  "task.failed",
+  "worker.cleanup",
+  "status.updated",
+]);
+const VALID_AGENT_BUS_SUBSTRATES = new Set([
+  "kilo",
+  "cao",
+  "agent_orchestrator",
+  "openhands",
+  "aider",
+  "goose",
+  "opencode",
+  "gitlab",
+  "vps",
+  "cloudflare",
+  "unknown",
+]);
+const COMPLETION_AGENT_BUS_EVENTS = new Set(["task.completed"]);
+const PROOF_AGENT_BUS_EVENTS = new Set(["proof.attached", "task.completed"]);
 const VALID_INFRASTRUCTURE_RESOURCES = new Set([
   "cloudflare_edge",
   "vps_origin",
@@ -257,6 +286,258 @@ function infrastructureCheckIsFake(check = {}) {
       check.skip === true ||
       /mock|fake|stub|skip/.test(status)
   );
+}
+
+function normalizeAgentBusEventType(value) {
+  const cleaned = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s:-]+/g, ".")
+    .replace(/[^a-z0-9.]+/g, "")
+    .replace(/\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+  return VALID_AGENT_BUS_EVENT_TYPES.has(cleaned) ? cleaned : "unknown";
+}
+
+function normalizeAgentBusSubstrate(value) {
+  const cleaned = String(value || "unknown")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return VALID_AGENT_BUS_SUBSTRATES.has(cleaned) ? cleaned : "unknown";
+}
+
+function validEvidenceId(value) {
+  return /^ev_[A-Za-z0-9_-]{8,}$/.test(String(value || "").trim());
+}
+
+function normalizeAgentBusProofRefs(envelope = {}) {
+  const refs = [];
+  const direct = envelope.evidence_id || envelope.evidenceId;
+  if (direct) refs.push(String(direct).trim());
+  const candidates = []
+    .concat(Array.isArray(envelope.evidence_ids) ? envelope.evidence_ids : [])
+    .concat(Array.isArray(envelope.evidenceIds) ? envelope.evidenceIds : [])
+    .concat(Array.isArray(envelope.proof_refs) ? envelope.proof_refs : [])
+    .concat(Array.isArray(envelope.proofRefs) ? envelope.proofRefs : []);
+  for (const entry of candidates) {
+    if (typeof entry === "string") refs.push(entry.trim());
+    else if (entry && typeof entry === "object") refs.push(String(entry.evidence_id || entry.evidenceId || entry.id || "").trim());
+  }
+  return [...new Set(refs.filter(validEvidenceId))].slice(0, 20);
+}
+
+function normalizeAgentBusArtifacts(artifacts = []) {
+  return (Array.isArray(artifacts) ? artifacts : [])
+    .slice(0, 50)
+    .map((artifact) => {
+      if (typeof artifact === "string") return { path: redactString(artifact, { max: 300 }) };
+      const hash = artifact?.sha256 || artifact?.hash || artifact?.artifact_hash || artifact?.artifactHash || "";
+      return {
+        kind: redactString(artifact?.kind || artifact?.type || "", { max: 80 }),
+        path: redactString(artifact?.path || artifact?.file || "", { max: 300 }),
+        sha256: redactString(hash, { max: 120 }),
+        exists: typeof artifact?.exists === "boolean" ? artifact.exists : null,
+        bytes: Number.isFinite(Number(artifact?.bytes ?? artifact?.size)) ? Number(artifact?.bytes ?? artifact?.size) : null,
+      };
+    });
+}
+
+function normalizeAgentBusChecks(checks = []) {
+  return (Array.isArray(checks) ? checks : [])
+    .slice(0, 100)
+    .map((check) => ({
+      id: redactString(check?.id || check?.gate || check?.name || "", { max: 120 }),
+      status: redactString(check?.status || check?.result || "", { max: 40 }),
+      evidence: redactString(check?.evidence || check?.summary || "", { max: 300 }),
+      evidence_id: validEvidenceId(check?.evidence_id || check?.evidenceId) ? String(check.evidence_id || check.evidenceId).trim() : "",
+      exit_code: Number.isFinite(Number(check?.exit_code ?? check?.exitCode)) ? Number(check.exit_code ?? check.exitCode) : null,
+      http_status: Number.isFinite(Number(check?.http_status ?? check?.httpStatus)) ? Number(check.http_status ?? check.httpStatus) : null,
+      latency_ms: Number.isFinite(Number(check?.latency_ms ?? check?.latencyMs)) ? Number(check.latency_ms ?? check.latencyMs) : null,
+    }))
+    .filter((check) => check.id);
+}
+
+function agentBusArtifactHasConcreteSignal(artifact = {}) {
+  return Boolean(
+    artifact.sha256 ||
+      artifact.exists === true ||
+      artifact.bytes !== null ||
+      (artifact.path && artifact.kind)
+  );
+}
+
+function agentBusCheckHasConcreteSignal(check = {}) {
+  return Boolean(
+    check.evidence_id ||
+      check.exit_code !== null ||
+      check.http_status !== null ||
+      check.latency_ms !== null ||
+      check.evidence
+  );
+}
+
+function agentBusEventIsFake(envelope = {}) {
+  return Boolean(
+    envelope.mock === true ||
+      envelope.mocked === true ||
+      envelope.fake === true ||
+      envelope.stub === true ||
+      envelope.stubbed === true ||
+      envelope.uiOnly === true ||
+      envelope.ui_only === true ||
+      envelope.hardcodedSuccess === true ||
+      envelope.hardcoded_success === true ||
+      envelope.skipped === true ||
+      envelope.skip === true ||
+      (Array.isArray(envelope.checks) && envelope.checks.some(infrastructureCheckIsFake))
+  );
+}
+
+function evaluateKilocodeAgentBusEnvelope(envelope = {}) {
+  const schema = String(envelope.schema || "").trim();
+  const eventType = normalizeAgentBusEventType(envelope.event_type || envelope.eventType || envelope.type);
+  const substrate = normalizeAgentBusSubstrate(envelope.substrate || envelope.source || envelope.orchestrator);
+  const taskId = redactString(envelope.task_id || envelope.taskId || "", { max: 120 });
+  const workerId = redactString(envelope.worker_id || envelope.workerId || envelope.agent_id || envelope.agentId || "", { max: 160 });
+  const sessionId = redactString(envelope.session_id || envelope.sessionId || "", { max: 160 });
+  const lane = redactString(envelope.lane || "", { max: 80 });
+  const summary = redactString(envelope.summary || envelope.message || "", { max: 600 });
+  const proofRefs = normalizeAgentBusProofRefs(envelope);
+  const artifacts = normalizeAgentBusArtifacts(envelope.artifacts || envelope.proof_artifacts || envelope.proofArtifacts || []);
+  const checks = normalizeAgentBusChecks(envelope.checks || envelope.gates || []);
+  const missing = [];
+  const requiredActions = [];
+  const fakeFindings = [];
+
+  if (!VALID_AGENT_BUS_SCHEMAS.has(schema)) missing.push("schema");
+  if (eventType === "unknown") missing.push("event_type");
+  if (!taskId) missing.push("task_id");
+  if (agentBusEventIsFake(envelope)) {
+    fakeFindings.push({
+      reason: "mock_fake_stub_skipped_hardcoded_or_ui_only_event_claimed",
+      event_type: eventType,
+      substrate,
+    });
+  }
+
+  const hasEvidenceRef = proofRefs.length > 0;
+  const hasConcreteArtifact = artifacts.some(agentBusArtifactHasConcreteSignal);
+  const hasConcreteCheck = checks.some(agentBusCheckHasConcreteSignal);
+  const hasConcreteCommand =
+    Boolean(envelope.command || envelope.command_summary || envelope.commandSummary) &&
+    Number.isFinite(Number(envelope.exit_code ?? envelope.exitCode));
+  const hasConcreteProof = hasEvidenceRef || hasConcreteArtifact || hasConcreteCheck || hasConcreteCommand;
+
+  if (COMPLETION_AGENT_BUS_EVENTS.has(eventType) && !hasEvidenceRef) {
+    missing.push("completion_evidence_id");
+    requiredActions.push("Attach a valid ev_* evidence id before recording task.completed.");
+  }
+  if (PROOF_AGENT_BUS_EVENTS.has(eventType) && !hasConcreteProof) {
+    missing.push("concrete_proof");
+    requiredActions.push("Attach an ev_* id, artifact hash/path, command exit code, HTTP status, or test gate proof.");
+  }
+  if (fakeFindings.length) {
+    requiredActions.push("Remove mocked, fake, stubbed, skipped, hardcoded, or UI-only agent-bus proof.");
+  }
+  if (!VALID_AGENT_BUS_SCHEMAS.has(schema)) requiredActions.push("Use schema kilo.agent.bus.v1.");
+  if (eventType === "unknown") requiredActions.push("Use a known event type such as task.claimed, handoff.sent, proof.attached, task.completed, or worker.cleanup.");
+  if (!taskId) requiredActions.push("Provide a stable task_id for the handoff/completion envelope.");
+
+  const ok = missing.length === 0 && fakeFindings.length === 0;
+  const status = ok
+    ? "accepted"
+    : fakeFindings.length
+      ? "rejected_fake_or_stubbed_event"
+      : COMPLETION_AGENT_BUS_EVENTS.has(eventType) && missing.includes("completion_evidence_id")
+        ? "rejected_completion_without_evidence"
+        : PROOF_AGENT_BUS_EVENTS.has(eventType) && missing.includes("concrete_proof")
+          ? "rejected_weak_proof_event"
+          : "rejected_invalid_envelope";
+
+  return {
+    ok,
+    status,
+    secret_values_returned: false,
+    task_type: KILOCODE_AGENT_BUS_TASK_TYPE,
+    schema,
+    event_type: eventType,
+    substrate,
+    task_id: taskId,
+    worker_id: workerId,
+    session_id: sessionId,
+    lane,
+    summary,
+    proof_refs: proofRefs,
+    artifacts,
+    checks,
+    has_concrete_proof: hasConcreteProof,
+    missing,
+    fake_findings: fakeFindings,
+    required_actions: requiredActions,
+  };
+}
+
+async function recordKilocodeAgentBusEvent({
+  manager,
+  owner,
+  envelope = {},
+  task_id = "",
+} = {}) {
+  if (!manager) throw new Error("manager is required");
+  if (!owner) throw new Error("owner is required");
+
+  const evaluation = evaluateKilocodeAgentBusEnvelope(envelope);
+  if (!evaluation.ok) {
+    return {
+      ok: false,
+      status: evaluation.status,
+      secret_values_returned: false,
+      evaluation,
+    };
+  }
+
+  const payload = redactIntegrationText({
+    schema: "hermesproof.kilocode.agent_bus.v1",
+    ts_utc: new Date().toISOString(),
+    owner,
+    task_id: evaluation.task_id,
+    event_type: evaluation.event_type,
+    substrate: evaluation.substrate,
+    worker_id: evaluation.worker_id,
+    session_id: evaluation.session_id,
+    lane: evaluation.lane,
+    summary: evaluation.summary,
+    proof_refs: evaluation.proof_refs,
+    artifacts: evaluation.artifacts,
+    checks: evaluation.checks,
+    has_concrete_proof: evaluation.has_concrete_proof,
+    source_envelope: envelope,
+    secret_values_returned: false,
+  }, { max: 900 });
+
+  const evidenceResult = await manager.appendEvidence({
+    owner,
+    taskId: task_id || evaluation.task_id,
+    kind: "kilocode.agent_bus.event",
+    summary: `Kilo agent bus ${evaluation.event_type}: ${evaluation.summary || evaluation.substrate}`,
+    data: payload,
+  });
+
+  return {
+    ok: true,
+    status: "recorded",
+    secret_values_returned: false,
+    task_type: KILOCODE_AGENT_BUS_TASK_TYPE,
+    evaluation,
+    evidence: evidenceResult.evidence,
+    next_tool: evaluation.event_type === "task.completed"
+      ? "hermes_kilocode_checkpoint_progress"
+      : evaluation.event_type === "task.failed"
+        ? "hermes_kilocode_policy_check"
+        : "hermes_kilocode_record_agent_bus_event",
+  };
 }
 
 function evaluateKilocodeInfrastructureProof({
@@ -857,6 +1138,9 @@ function kilocodeStatusSnapshot({
       "hermes_kilocode_policy_check",
       "hermes_kilocode_checkpoint_progress",
       "hermes_kilocode_record_delegation",
+      "hermes_kilocode_evaluate_agent_bus_event",
+      "hermes_kilocode_record_agent_bus_event",
+      "hermes_kilocode_evaluate_infrastructure_proof",
       "hermes_kilocode_record_infrastructure_proof",
       "hermes_provider_rank",
     ],
@@ -1036,14 +1320,17 @@ async function recordKilocodeInfrastructureProof({
 }
 
 export {
+  KILOCODE_AGENT_BUS_TASK_TYPE,
   KILOCODE_INFRASTRUCTURE_TASK_TYPE,
   KILOCODE_PERMISSION_NAMES,
   KILOCODE_TASK_TYPE,
   DEFAULT_KILOCODE_GUARDRAILS,
+  evaluateKilocodeAgentBusEnvelope,
   evaluateKilocodeInfrastructureProof,
   evaluateKilocodePolicy,
   kilocodeStatusSnapshot,
   normalizeKilocodeGuardrails,
+  recordKilocodeAgentBusEvent,
   recordKilocodeProgressCheckpoint,
   recordKilocodeDelegation,
   recordKilocodeInfrastructureProof,
