@@ -19,6 +19,7 @@ import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
 import {
   KILOCODE_TASK_TYPE,
   evaluateKilocodeAgentBusEnvelope,
+  evaluateKilocodeInstalledVsixReleaseProof,
   evaluateKilocodeInfrastructureProof,
   evaluateKilocodePolicy,
   kilocodeStatusSnapshot,
@@ -510,6 +511,49 @@ const KilocodeAgentBusEnvelope = z.object({
   skip: z.boolean().optional(),
   hardcoded_success: z.boolean().optional(),
   hardcodedSuccess: z.boolean().optional(),
+}).passthrough();
+const KilocodeInstalledVsixReleaseProof = z.object({
+  schema: z.string().max(120).optional(),
+  proof_schema: z.string().max(120).optional(),
+  proofSchema: z.string().max(120).optional(),
+  contractVersion: z.string().max(160).optional(),
+  contract_version: z.string().max(160).optional(),
+  vsixSha256: z.string().max(160).optional(),
+  vsix_sha256: z.string().max(160).optional(),
+  vsix_hash: z.string().max(160).optional(),
+  resultFileExists: z.boolean().optional(),
+  outputRoot: z.string().max(1000).optional(),
+  output_root: z.string().max(1000).optional(),
+  startedAt: z.string().max(120).optional(),
+  started_at: z.string().max(120).optional(),
+  finishedAt: z.string().max(120).optional(),
+  finished_at: z.string().max(120).optional(),
+  windowOpenedAt: z.string().max(120).optional(),
+  window_opened_at: z.string().max(120).optional(),
+  windowClosedAt: z.string().max(120).optional(),
+  window_closed_at: z.string().max(120).optional(),
+  gates: z.any().optional(),
+  gateResults: z.any().optional(),
+  gate_results: z.any().optional(),
+  heartbeat: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  heartbeats: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  heartbeatLines: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  heartbeat_lines: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  visibleSidecarToolSmokes: z.any().optional(),
+  visible_sidecar_tool_smokes: z.any().optional(),
+  preflightResults: z.any().optional(),
+  preflights: z.any().optional(),
+  preflight_runners: z.any().optional(),
+  error: z.any().optional(),
+  mock: z.boolean().optional(),
+  mocked: z.boolean().optional(),
+  fake: z.boolean().optional(),
+  stub: z.boolean().optional(),
+  stubbed: z.boolean().optional(),
+  ui_only: z.boolean().optional(),
+  uiOnly: z.boolean().optional(),
+  skipped: z.boolean().optional(),
+  skip: z.boolean().optional(),
 }).passthrough();
 const KilocodeGuardrailsPatch = z.object({
   mvp_first: z.boolean().optional(),
@@ -6506,6 +6550,28 @@ registerTool(
   async (args) => {
     try {
       return toolResult(evaluateKilocodeAgentBusEnvelope((args || {}).envelope || {}));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_evaluate_installed_vsix_release_proof",
+  {
+    title: "Evaluate KiloCode installed VSIX release proof",
+    description: "Evaluate the versioned KiloCode strict installed-VSIX contract without writing evidence. Requires every Kilo preflight, state-gated vscode-extension-tester UI proof, installed VSIX hashes, gate snapshots, heartbeats, real sidecar evidence, and recursive anti-fake metadata checks.",
+    inputSchema: {
+      proof: KilocodeInstalledVsixReleaseProof,
+      required_gate_count: z.number().int().min(1).max(21).default(10),
+      required_gates: z.array(z.string().min(1).max(160)).max(21).default([]),
+      max_heartbeat_age_ms: z.number().int().min(1000).max(900000).default(150000),
+      max_runtime_ms: z.number().int().min(60000).max(7200000).default(1800000),
+      now_ms: z.number().int().positive().optional()
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(evaluateKilocodeInstalledVsixReleaseProof((args || {}).proof || {}, args || {}));
     } catch (err) { return toolError(err); }
   }
 );
