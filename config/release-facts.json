@@ -1,0 +1,74 @@
+{
+  "schema": "hermesproof.release-facts.v1",
+  "version": "0.9.0-rc.1",
+  "releaseTag": "v0.9.0-rc.1",
+  "gitlab": {
+    "projectUrl": "https://gitlab.com/Ghenghis/HermesProof",
+    "pagesUrl": "https://ghenghis.gitlab.io/HermesProof",
+    "apiProject": "Ghenghis%2FHermesProof"
+  },
+  "channels": {
+    "stable": "refs/heads/main",
+    "preview": "refs/heads/release/hp-mha-serena-shippable"
+  },
+  "servers": {
+    "core": {
+      "name": "hermes3d-locks",
+      "tools": 121
+    },
+    "composite": {
+      "name": "hp-mha-serena",
+      "tools": 34
+    }
+  },
+  "serena": {
+    "version": "1.6.2.dev0",
+    "cataloguedTools": 52,
+    "desktopActiveTools": 29,
+    "governedLspTools": 15,
+    "rawMutationTools": 0
+  },
+  "truthGates": 37,
+  "nodeMinimum": 20,
+  "install": {
+    "defaultTargets": [
+      "kilocode",
+      "vscode",
+      "codex",
+      "windsurf",
+      "lm-studio",
+      "ollama",
+      "claude-desktop",
+      "claude-code",
+      "cursor",
+      "devin"
+    ],
+    "nativeMcpHosts": [
+      "kilocode",
+      "vscode",
+      "codex",
+      "windsurf",
+      "lm-studio",
+      "claude-desktop",
+      "claude-code",
+      "cursor",
+      "devin"
+    ]
+  },
+  "localModels": {
+    "preferred": {
+      "id": "lm-studio-lm-link",
+      "baseUrl": "http://127.0.0.1:1234/v1",
+      "statusCommand": ["lms", "link", "status", "--json"]
+    },
+    "fallback": {
+      "id": "ollama",
+      "baseUrl": "http://127.0.0.1:11434",
+      "statusUrl": "http://127.0.0.1:11434/api/tags"
+    }
+  },
+  "capabilityProfiles": [
+    "backend-default",
+    "reverse-engineering-local"
+  ]
+}
