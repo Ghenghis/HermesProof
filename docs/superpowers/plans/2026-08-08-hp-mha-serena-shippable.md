@@ -114,6 +114,24 @@
 6. Replay: build a redacted content-addressed failure capsule and verify deterministic rerun.
 7. Test selector: derive affected tests from Serena references and previous evidence; always run the complete release suite at the final gate.
 
+## Task 7A: Add the Project Completion Director and continuous visual proof
+
+**Files:** `src/core/project-completion.mjs`, `src/core/project-completion.test.mjs`, `src/core/live-preview.mjs`, `src/core/live-preview.test.mjs`, `scripts/hps-project.mjs`, `policies/project-phases.json`
+
+1. Compile an outcome brief and acceptance graph from audience, success conditions, non-goals, and constraints.
+2. Enforce `IDEA -> PLANNED -> SCAFFOLDED -> BACKEND_WORKING -> VERTICAL_SLICE_WORKING -> VISUALLY_PROVEN -> RELEASE_READY`.
+3. Put new ideas into a versioned backlog and upgrade graph when the active slice has not yet been visually proven.
+4. Allow an editable policy override only with recorded impact, displaced work, new proof, and rollback.
+5. Gate backend readiness on migrations, seed data, API contracts, logic tests, integration tests, and real API responses.
+6. Require a real-data vertical slice; mock-only screens cannot advance the project.
+7. Add a bounded Windows 11 process, port, URL, and health-check adapter.
+8. Add a Hostinger Linux adapter for systemd, PM2, or Docker plus reverse proxy and HTTPS diagnostics, with secrets redacted.
+9. Capture browser navigation, screenshots, API traces, and durable-data correlation at every visual checkpoint.
+10. Expose `hps_project_init`, `hps_scope_budget`, `hps_idea_backlog`, `hps_vertical_slice`, `hps_preview`, `hps_progress`, and `hps_promote_milestone`.
+11. Block feature promotion until the current slice is visually proven, then create a checkpoint, replay command, and upgrade graph.
+12. Offer beginner mode with one next best action and expert mode with the full evidence graph.
+13. Prove a blank sample project becomes a navigable working slice while extra ideas remain safely queued.
+
 ## Task 8: Add the MCP capability firewall and ecosystem profiles
 
 **Files:** `src/core/capability-firewall.mjs`, tests, `policies/provider-registry/**`, `policies/profiles/**`.

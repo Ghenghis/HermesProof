@@ -60,6 +60,20 @@ The task corpus has separately hashed optimization and holdout sets, four repres
 
 Merkle leaves are canonical hashes of run records. The root is recomputed from persisted leaves and verified independently. Any missing leaf, altered trace, invalid root, or evaluator inconsistency exits nonzero and cannot print a pass result.
 
+## Project Completion Director and visual proof
+
+The completion director converts a project goal into an outcome brief with an audience, measurable success conditions, explicit non-goals, constraints, and an acceptance graph. It advances work only through evidence-backed states:
+
+`IDEA -> PLANNED -> SCAFFOLDED -> BACKEND_WORKING -> VERTICAL_SLICE_WORKING -> VISUALLY_PROVEN -> RELEASE_READY`
+
+New feature ideas remain editable, but they enter a versioned backlog and upgrade graph until the current vertical slice is proven. A policy override may promote an idea early only when its scope impact, displaced work, new evidence requirements, and rollback path are recorded.
+
+Backend readiness requires migrations and seeds, machine-readable API contracts, business-logic tests, integration tests, and a real-data API response. Frontends cannot satisfy the vertical-slice gate with mocks. Each checkpoint correlates browser navigation and screenshots with the API request and durable data that produced the visible result.
+
+A bounded preview manager detects the project stack and launches health-checked services on Windows 11 or a Hostinger Linux VPS. It owns ports, process lifetimes, URLs, reverse-proxy configuration, and redacted deployment diagnostics. The progress surface always reports the live URL, current gate, proof freshness, screenshot, API health, exact blocker, and one next best action; it never invents an optimistic percentage.
+
+Every scope expansion first creates a reproducible checkpoint, evidence capsule, and replay command. Clean extension points, ADRs, and the upgrade graph preserve editability without sacrificing a working release.
+
 ## User workflows
 
 One-command workflows are available as npm commands and MCP calls:
