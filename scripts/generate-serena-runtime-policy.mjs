@@ -37,7 +37,7 @@ export function buildSerenaRuntimePolicy() {
       },
       transport: "stdio",
       language_backend: "LSP",
-      language_servers: ["typescript"],
+      languages: ["typescript"],
       project_config: ".serena/project.yml",
       context_config: ".serena/hermesproof-context.yml",
       read_only: true,

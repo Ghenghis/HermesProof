@@ -25,7 +25,7 @@ async function withWorkspace(fn) {
     path.join(root, ".serena", "project.yml"),
     [
       "project_name: HpMhaSerenaE2E",
-      "language_servers:",
+      "languages:",
       "- typescript",
       "read_only: true",
       "excluded_tools:",
@@ -105,6 +105,7 @@ async function connectClient(workspaceRoot, versionNegotiation) {
       ...process.env,
       HERMES_WORKSPACE_ROOT: workspaceRoot,
       HERMES_STATE_DIR_NAME: ".hermes-test",
+      HERMESPROOF_MANAGED_ROOT: path.join(workspaceRoot, ".hermesproof-managed"),
       SERENA_HOME: path.join(workspaceRoot, ".serena-runtime")
     },
     stderr: "pipe"
@@ -143,7 +144,15 @@ async function exerciseCoordination(client, owner, taskId, workspaceRoot) {
     "hp_mha_serena_health",
     "hp_mha_serena_release",
     "hp_mha_serena_semantic_inspect",
-    "hp_mha_serena_status"
+    "hp_mha_serena_status",
+    "hp_mha_update_apply",
+    "hp_mha_update_auto",
+    "hp_mha_update_channel",
+    "hp_mha_update_check",
+    "hp_mha_update_cleanup",
+    "hp_mha_update_evidence",
+    "hp_mha_update_rollback",
+    "hp_mha_update_status"
   ]);
 
   const binding = await client.callTool({
@@ -182,6 +191,14 @@ async function exerciseCoordination(client, owner, taskId, workspaceRoot) {
     workspace_handle: binding.structuredContent.workspace_handle,
     owner
   };
+  const updateStatus = await client.callTool({
+    name: "hp_mha_update_status",
+    arguments: workspaceAuth
+  });
+  assert.equal(updateStatus.isError, undefined);
+  assert.equal(updateStatus.structuredContent.ok, true);
+  assert.equal(updateStatus.structuredContent.currentSha, null);
+  assert.equal(updateStatus.structuredContent.auto.enabled, false);
   const runtimeStatus = await client.callTool({
     name: "hp_mha_runtime_status",
     arguments: workspaceAuth

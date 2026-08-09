@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod4";
 
+import { createProductionUpdateManager } from "../updater/production-update-manager.mjs";
 import { SERENA_SELECTED_LSP_TOOLS } from "./serena-catalog.mjs";
 import { HpMhaSerenaService } from "./service.mjs";
 
@@ -61,6 +62,11 @@ export function buildHpMhaSerenaServer({ service, era = "unknown" } = {}) {
   const workspaceAuth = {
     workspace_handle: z.string().min(1),
     owner: z.string().trim().min(1).max(128)
+  };
+  const updateMutationAuth = {
+    ...workspaceAuth,
+    task_id: z.string().trim().min(1).max(128),
+    idempotency_key: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/)
   };
   const managerTools = [
     {
@@ -345,6 +351,138 @@ export function buildHpMhaSerenaServer({ service, era = "unknown" } = {}) {
         workspaceHandle: input.workspace_handle,
         owner: input.owner,
         report: input.report
+      })
+    },
+    {
+      name: "hp_mha_update_status",
+      title: "Read managed release and auto-update status",
+      description: "Read the active and previous immutable releases, channel, quarantine state, scheduler status, and last automatic update result.",
+      inputSchema: z.object({ ...workspaceAuth }),
+      readOnly: true,
+      idempotent: true,
+      call: (input) => service.updateStatus({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner
+      })
+    },
+    {
+      name: "hp_mha_update_check",
+      title: "Check the allowlisted GitLab update channel",
+      description: "Resolve the configured allowlisted GitLab ref to an exact SHA without staging or activating it.",
+      inputSchema: z.object({ ...workspaceAuth }),
+      readOnly: true,
+      idempotent: true,
+      call: (input) => service.updateCheck({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner
+      })
+    },
+    {
+      name: "hp_mha_update_evidence",
+      title: "Read candidate verification evidence",
+      description: "Read the digest-bound named-gate evidence for one exact release SHA.",
+      inputSchema: z.object({
+        ...workspaceAuth,
+        sha: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/)
+      }),
+      readOnly: true,
+      idempotent: true,
+      call: (input) => service.updateEvidence({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner,
+        sha: input.sha
+      })
+    },
+    {
+      name: "hp_mha_update_apply",
+      title: "Verify and atomically activate an update",
+      description: "Stage the configured exact SHA, require every candidate gate, snapshot client configs, activate both servers, post-probe, and roll back on failure. Requires the exact updater operation lock.",
+      inputSchema: z.object({ ...updateMutationAuth }),
+      idempotent: true,
+      call: (input) => service.updateApply({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner,
+        taskId: input.task_id,
+        idempotencyKey: input.idempotency_key
+      })
+    },
+    {
+      name: "hp_mha_update_rollback",
+      title: "Roll back to the previous known-good release",
+      description: "Atomically switch the stable launcher back to the protected previous release. Requires the exact updater operation lock.",
+      inputSchema: z.object({ ...updateMutationAuth }),
+      destructive: true,
+      idempotent: true,
+      call: (input) => service.updateRollback({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner,
+        taskId: input.task_id,
+        idempotencyKey: input.idempotency_key
+      })
+    },
+    {
+      name: "hp_mha_update_channel",
+      title: "Select stable or acknowledged preview updates",
+      description: "Persist the update channel. Preview selection requires an explicit acknowledgement and the exact updater operation lock.",
+      inputSchema: z.object({
+        ...updateMutationAuth,
+        channel: z.enum(["stable", "preview"]),
+        acknowledge_preview: z.boolean().default(false)
+      }),
+      idempotent: true,
+      call: (input) => service.updateChannel({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner,
+        taskId: input.task_id,
+        idempotencyKey: input.idempotency_key,
+        channel: input.channel,
+        acknowledgePreview: input.acknowledge_preview
+      })
+    },
+    {
+      name: "hp_mha_update_auto",
+      title: "Configure per-user automatic refresh",
+      description: "Install, update, or remove the bounded per-user scheduler with deterministic jitter, backoff, and an optional UTC maintenance window.",
+      inputSchema: z.object({
+        ...updateMutationAuth,
+        enabled: z.boolean(),
+        cadence_hours: z.number().int().min(1).max(168).default(6),
+        jitter_minutes: z.number().int().min(0).max(240).default(45),
+        maintenance_window_utc: z.object({
+          startHour: z.number().int().min(0).max(23),
+          endHour: z.number().int().min(0).max(23)
+        }).nullable().default(null)
+      }),
+      idempotent: true,
+      call: (input) => service.updateAuto({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner,
+        taskId: input.task_id,
+        idempotencyKey: input.idempotency_key,
+        enabled: input.enabled,
+        cadenceHours: input.cadence_hours,
+        jitterMinutes: input.jitter_minutes,
+        maintenanceWindowUtc: input.maintenance_window_utc
+      })
+    },
+    {
+      name: "hp_mha_update_cleanup",
+      title: "Plan or apply contained release cleanup",
+      description: "Remove only unprotected immutable releases under the managed root. Current and previous releases are always retained; dry-run is the default.",
+      inputSchema: z.object({
+        ...updateMutationAuth,
+        retain: z.number().int().min(2).max(20).default(2),
+        dry_run: z.boolean().default(true)
+      }),
+      destructive: true,
+      idempotent: true,
+      call: (input) => service.updateCleanup({
+        workspaceHandle: input.workspace_handle,
+        owner: input.owner,
+        taskId: input.task_id,
+        idempotencyKey: input.idempotency_key,
+        retain: input.retain,
+        dryRun: input.dry_run
       })
     }
   ];
@@ -682,7 +820,8 @@ export async function main() {
   }
   const service = new HpMhaSerenaService({
     workspaceRoot,
-    stateDirName: process.env.HERMES_STATE_DIR_NAME || undefined
+    stateDirName: process.env.HERMES_STATE_DIR_NAME || undefined,
+    updateManagerFactory: () => createProductionUpdateManager({ workspaceRoot })
   });
   await service.init();
 

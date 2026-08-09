@@ -17,6 +17,7 @@ import {
   createKiloBackendInstallPlan,
   probeKiloBackend
 } from "../core/kilo-backend-kit.mjs";
+import { REVERSE_ENGINEERING_CAPABILITY_PACK } from "../core/reverse-engineering-kit.mjs";
 import { HermesLockManager } from "../core/lock-manager.mjs";
 import { RuntimeLifecycleManager } from "../core/runtime-lifecycle-manager.mjs";
 import {
@@ -40,6 +41,8 @@ import {
   SERENA_VERSION
 } from "./serena-catalog.mjs";
 import { SERENA_CONTEXT_NAMES } from "./context-installer.mjs";
+
+export const UPDATE_OPERATION_FILE = ".hermesproof/operations/update.lock";
 
 export class HpMhaSerenaError extends Error {
   constructor(code, message, details = undefined) {
@@ -66,6 +69,7 @@ export class HpMhaSerenaService {
     }),
     capabilityInstaller,
     kiloProbe = probeKiloBackend,
+    updateManagerFactory = null,
     receiptTtlMs = 300_000,
     now = () => Date.now()
   } = {}) {
@@ -86,6 +90,7 @@ export class HpMhaSerenaService {
     this.automationManagerFactory = automationManagerFactory;
     this.capabilityInstaller = capabilityInstaller;
     this.kiloProbe = kiloProbe;
+    this.updateManagerFactory = updateManagerFactory;
     this.receiptTtlMs = receiptTtlMs;
     this.now = now;
     this.workspaceRoot = null;
@@ -95,6 +100,8 @@ export class HpMhaSerenaService {
     this.runtimeManager = null;
     this.capabilityManager = null;
     this.automationManager = null;
+    this.updateManager = null;
+    this.updateOperations = new Map();
     this.receipts = new Map();
     this.initialized = false;
   }
@@ -115,7 +122,7 @@ export class HpMhaSerenaService {
     await this.runtimeManager.init();
     this.capabilityManager = this.capabilityManagerFactory({
       workspaceRoot: this.workspaceRoot,
-      catalog: [KILO_BACKEND_CAPABILITY_PACK],
+      catalog: [KILO_BACKEND_CAPABILITY_PACK, REVERSE_ENGINEERING_CAPABILITY_PACK],
       installer: this.capabilityInstaller || createLocalCapabilityInstaller({ workspaceRoot: this.workspaceRoot })
     });
     await this.capabilityManager.init();
@@ -131,6 +138,12 @@ export class HpMhaSerenaService {
         );
       }
     });
+    if (this.updateManagerFactory) {
+      this.updateManager = await this.updateManagerFactory({
+        workspaceRoot: this.workspaceRoot,
+        stateDirectory: this.manager.paths.stateDir
+      });
+    }
     for (const job of [
       {
         id: "deep-doctor",
@@ -821,6 +834,171 @@ export class HpMhaSerenaService {
     };
   }
 
+  requireUpdateManager() {
+    if (!this.updateManager) {
+      throw new HpMhaSerenaError(
+        "UPDATE_MANAGER_UNAVAILABLE",
+        "The managed updater is not configured for this installation"
+      );
+    }
+    return this.updateManager;
+  }
+
+  async requireUpdateOperationLock(owner, taskId) {
+    await this.requireClaimedTask(owner, taskId);
+    const locks = await this.manager.listLocks();
+    const lock = locks.locks.find((item) =>
+      item.file === UPDATE_OPERATION_FILE &&
+      item.owner === owner &&
+      item.task_id === taskId &&
+      !item.is_stale
+    );
+    if (!lock) {
+      throw new HpMhaSerenaError(
+        "EXACT_UPDATE_LOCK_REQUIRED",
+        "A live exact lock on " + UPDATE_OPERATION_FILE + " is required",
+        { file: UPDATE_OPERATION_FILE, owner, task_id: taskId }
+      );
+    }
+    return lock;
+  }
+
+  async runUpdateMutation({
+    workspaceHandle,
+    owner,
+    taskId,
+    idempotencyKey,
+    operation,
+    payload = {},
+    action
+  }) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    const lock = await this.requireUpdateOperationLock(owner, taskId);
+    if (
+      typeof idempotencyKey !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(idempotencyKey)
+    ) {
+      throw new HpMhaSerenaError(
+        "INVALID_IDEMPOTENCY_KEY",
+        "idempotencyKey must be 8-128 safe characters"
+      );
+    }
+    const key = [owner, taskId, operation, idempotencyKey].join(":");
+    const payloadDigest = sha256Hex(canonicalJSON(payload));
+    const existing = this.updateOperations.get(key);
+    if (existing) {
+      if (existing.payloadDigest !== payloadDigest) {
+        throw new HpMhaSerenaError(
+          "IDEMPOTENCY_PAYLOAD_MISMATCH",
+          "The idempotency key was already used with different arguments"
+        );
+      }
+      return await existing.promise;
+    }
+    const promise = (async () => {
+      const result = await action(this.requireUpdateManager());
+      const evidence = await this.manager.appendEvidence({
+        owner,
+        taskId,
+        kind: "updater." + operation,
+        summary: "Governed updater operation: " + operation,
+        data: {
+          operation,
+          idempotency_key_sha256: sha256Hex(idempotencyKey),
+          payload_sha256: payloadDigest,
+          update_result_sha256: sha256Hex(canonicalJSON(result)),
+          operation_lock_id: lock.lock_id
+        }
+      });
+      return {
+        ...result,
+        workspace_handle_id: binding.handle_id,
+        updater_evidence: evidence.evidence
+      };
+    })();
+    this.updateOperations.set(key, { payloadDigest, promise });
+    if (this.updateOperations.size > 1_000) {
+      this.updateOperations.delete(this.updateOperations.keys().next().value);
+    }
+    return await promise;
+  }
+
+  async updateStatus({ workspaceHandle, owner } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.requireUpdateManager().status()),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async updateCheck({ workspaceHandle, owner } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.requireUpdateManager().check()),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async updateEvidence({ workspaceHandle, owner, sha } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.requireUpdateManager().evidence({ sha })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async updateApply(options = {}) {
+    return await this.runUpdateMutation({
+      ...options,
+      operation: "apply",
+      action: (manager) => manager.apply()
+    });
+  }
+
+  async updateRollback(options = {}) {
+    return await this.runUpdateMutation({
+      ...options,
+      operation: "rollback",
+      action: (manager) => manager.rollback()
+    });
+  }
+
+  async updateChannel({ channel, acknowledgePreview = false, ...options } = {}) {
+    const payload = { channel, acknowledgePreview };
+    return await this.runUpdateMutation({
+      ...options,
+      operation: "channel",
+      payload,
+      action: (manager) => manager.channel(payload)
+    });
+  }
+
+  async updateAuto({
+    enabled,
+    cadenceHours,
+    jitterMinutes,
+    maintenanceWindowUtc = null,
+    ...options
+  } = {}) {
+    const payload = { enabled, cadenceHours, jitterMinutes, maintenanceWindowUtc };
+    return await this.runUpdateMutation({
+      ...options,
+      operation: "auto",
+      payload,
+      action: (manager) => manager.configureAuto(payload)
+    });
+  }
+
+  async updateCleanup({ retain = 2, dryRun = true, ...options } = {}) {
+    const payload = { retain, dryRun };
+    return await this.runUpdateMutation({
+      ...options,
+      operation: "cleanup",
+      payload,
+      action: (manager) => manager.cleanup(payload)
+    });
+  }
+
   async close() {
     if (this.runtimeReaper) {
       clearInterval(this.runtimeReaper);
@@ -829,6 +1007,7 @@ export class HpMhaSerenaService {
     const adapter = this.serenaAdapter;
     this.serenaAdapter = null;
     this.receipts.clear();
+    this.updateOperations.clear();
     await adapter?.close();
   }
 

@@ -8,7 +8,8 @@ import path from "node:path";
 import { WorkspaceBindingError } from "../core/workspace-binding.mjs";
 import {
   HpMhaSerenaError,
-  HpMhaSerenaService
+  HpMhaSerenaService,
+  UPDATE_OPERATION_FILE
 } from "./service.mjs";
 
 function semanticAdapter() {
@@ -322,6 +323,11 @@ test("service exposes workspace-bound lifecycle, capability, automation, and Kil
       requiredCapabilities: ["kilo.cli", "mcp.client"]
     });
     assert.deepEqual(resolved.selected_pack_ids, ["kilo-backend"]);
+    const reverse = await service.capabilityResolve({
+      ...auth,
+      requiredCapabilities: ["reverse.static", "reverse.android"]
+    });
+    assert.deepEqual(reverse.selected_pack_ids, ["reverse-engineering-local"]);
     const packPlan = await service.capabilityPlan({ ...auth, packId: "kilo-backend" });
     assert.equal(packPlan.global_install, false);
     assert.equal(packPlan.enabled_after_install, false);
@@ -352,6 +358,86 @@ test("service exposes workspace-bound lifecycle, capability, automation, and Kil
     });
     assert.deepEqual(kiloPlan.pack_ids, []);
     assert.equal(kiloPlan.global_install, false);
+    await service.close();
+  });
+});
+
+test("updater controls are workspace-bound, exact-lock guarded, and idempotent", async () => {
+  await withWorkspace(async (workspaceRoot) => {
+    const calls = [];
+    const updateManager = {
+      status: async () => ({ ok: true, currentSha: "a".repeat(40) }),
+      check: async () => ({ ok: true, candidateSha: "b".repeat(40), updateAvailable: true }),
+      evidence: async ({ sha }) => ({ ok: true, sha }),
+      apply: async () => {
+        calls.push("apply");
+        await new Promise((resolve) => setImmediate(resolve));
+        return { ok: true, status: "activated", currentSha: "b".repeat(40) };
+      },
+      rollback: async () => ({ ok: true, status: "rolled_back" }),
+      channel: async ({ channel }) => ({ ok: true, channel }),
+      configureAuto: async ({ enabled }) => ({ ok: true, auto: { enabled } }),
+      cleanup: async ({ retain, dryRun }) => ({ ok: true, retain, dryRun })
+    };
+    const service = new HpMhaSerenaService({
+      workspaceRoot,
+      stateDirName: ".hermes-test",
+      updateManagerFactory: () => updateManager
+    });
+    await service.init();
+    const binding = await service.bindWorkspace({ owner: "codex-test", ttlMs: 60_000 });
+    const auth = { workspaceHandle: binding.token, owner: "codex-test" };
+    assert.equal((await service.updateStatus(auth)).currentSha, "a".repeat(40));
+    assert.equal((await service.updateCheck(auth)).updateAvailable, true);
+    assert.equal((await service.updateEvidence({ ...auth, sha: "a".repeat(40) })).sha, "a".repeat(40));
+
+    await service.manager.claimTask({
+      owner: "codex-test",
+      role: "agent",
+      taskId: "update-e2e",
+      files: [UPDATE_OPERATION_FILE],
+      reason: "Prepare updater operation"
+    });
+    await assert.rejects(
+      service.updateApply({ ...auth, taskId: "update-e2e", idempotencyKey: "apply-once" }),
+      (error) => error instanceof HpMhaSerenaError && error.code === "EXACT_UPDATE_LOCK_REQUIRED"
+    );
+    await service.manager.lockFiles({
+      owner: "codex-test",
+      role: "agent",
+      taskId: "update-e2e",
+      files: [UPDATE_OPERATION_FILE],
+      reason: "Guard updater activation"
+    });
+    const [first, second] = await Promise.all([
+      service.updateApply({ ...auth, taskId: "update-e2e", idempotencyKey: "apply-once" }),
+      service.updateApply({ ...auth, taskId: "update-e2e", idempotencyKey: "apply-once" })
+    ]);
+    assert.equal(first.currentSha, "b".repeat(40));
+    assert.deepEqual(second, first);
+    assert.deepEqual(calls, ["apply"]);
+    assert.equal((await service.updateChannel({
+      ...auth,
+      taskId: "update-e2e",
+      idempotencyKey: "preview-once",
+      channel: "preview",
+      acknowledgePreview: true
+    })).channel, "preview");
+    assert.equal((await service.updateAuto({
+      ...auth,
+      taskId: "update-e2e",
+      idempotencyKey: "auto-once",
+      enabled: true,
+      cadenceHours: 6,
+      jitterMinutes: 30
+    })).auto.enabled, true);
+    assert.equal((await service.updateCleanup({
+      ...auth,
+      taskId: "update-e2e",
+      idempotencyKey: "cleanup-once",
+      retain: 2,
+      dryRun: true
+    })).retain, 2);
     await service.close();
   });
 });
