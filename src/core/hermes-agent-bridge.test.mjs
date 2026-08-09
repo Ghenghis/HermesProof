@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { HermesAgentBridge } from "./hermes-agent-bridge.mjs";
+import { DEFAULT_FAILOVER, HermesAgentBridge, PROVIDERS } from "./hermes-agent-bridge.mjs";
 import { AnonymousOrchestrator } from "./anonymous-orchestrator.mjs";
 import { verifyChainedLog } from "./fs-utils.mjs";
 
@@ -70,6 +70,70 @@ async function readEvidenceEntries(orchestrator) {
 }
 
 describe("HermesAgentBridge USER session hardening", () => {
+  it("defaults to MiniMax M3 with DeepSeek fallback (paid-cloud-first then local)", () => {
+    // Defaults put paid cloud providers (minimax, deepinfra, deepseek, siliconflow)
+    // before local fallbacks (lm_studio, ollama). The historic 2-name failover
+    // ["minimax","deepseek"] is a strict prefix of the new explicit ordering.
+    assert.ok(DEFAULT_FAILOVER[0] === "minimax", "minimax must be the primary default");
+    assert.ok(DEFAULT_FAILOVER.includes("deepseek"), "deepseek must remain reachable");
+    assert.deepEqual(
+      DEFAULT_FAILOVER.slice(0, 4),
+      ["minimax", "deepinfra", "deepseek", "siliconflow"],
+      "paid-cloud-first ordering"
+    );
+    assert.deepEqual(
+      DEFAULT_FAILOVER.slice(4),
+      ["lm_studio", "ollama"],
+      "local-fallback ordering"
+    );
+    assert.equal(PROVIDERS.minimax.endpoint_default, "https://api.minimax.io/v1/chat/completions");
+    assert.equal(PROVIDERS.minimax.model_default, "MiniMax-M3");
+    assert.equal(PROVIDERS.deepinfra.endpoint_default, "https://api.deepinfra.com/v1/openai/chat/completions");
+    assert.equal(PROVIDERS.deepseek.model_default, "deepseek-v4-flash");
+    assert.equal(PROVIDERS.siliconflow.model_default, "deepseek-ai/DeepSeek-V4-Flash");
+  });
+
+  it("resolves alternate private env names without exposing key values", () => {
+    const old = {
+      MINIMAX_API_KEY: process.env.MINIMAX_API_KEY,
+      DEEPINFRA_API_KEY: process.env.DEEPINFRA_API_KEY,
+      DEEPINFRA_TOKEN: process.env.DEEPINFRA_TOKEN,
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+      SILICONFLOW_API_KEY: process.env.SILICONFLOW_API_KEY,
+      SILICON_FLOW_API_KEY: process.env.SILICON_FLOW_API_KEY,
+      LMSTUDIO_BASE_URL: process.env.LMSTUDIO_BASE_URL,
+      LM_STUDIO_BASE_URL: process.env.LM_STUDIO_BASE_URL,
+      LM_STUDIO_MODEL: process.env.LM_STUDIO_MODEL,
+    };
+    try {
+      process.env.MINIMAX_API_KEY = "test-minimax-key";
+      delete process.env.DEEPINFRA_API_KEY;
+      process.env.DEEPINFRA_TOKEN = "test-deepinfra-token";
+      process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
+      delete process.env.SILICONFLOW_API_KEY;
+      process.env.SILICON_FLOW_API_KEY = "test-siliconflow-key";
+      delete process.env.LMSTUDIO_BASE_URL;
+      process.env.LM_STUDIO_BASE_URL = "http://localhost:1234/v1";
+      process.env.LM_STUDIO_MODEL = "local-test-model";
+
+      const bridge = new HermesAgentBridge({
+        orchestrator: makeOrchestrator(),
+        enabled: true,
+        failover_order: ["minimax", "deepseek", "lm_studio"],
+      });
+      const providers = bridge._resolvedProviders();
+
+      assert.deepEqual(providers.map((provider) => provider.name), ["minimax", "deepseek", "lm_studio"]);
+      assert.equal(providers.find((provider) => provider.name === "lm_studio")?.endpoint, "http://localhost:1234/v1/chat/completions");
+      assert.equal(providers.find((provider) => provider.name === "lm_studio")?.model, "local-test-model");
+    } finally {
+      for (const [key, value] of Object.entries(old)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it("rejects missing configured scope before provider call", async () => {
     const orchestrator = makeOrchestrator();
     const bridge = new TestBridge({ orchestrator, scope: null });
@@ -172,7 +236,7 @@ describe("HermesAgentBridge USER session hardening", () => {
     assert.equal(providers[0].model, "synthetic-model");
   });
 
-  it("uses provider-performance ranking without changing the baseline provider list", async () => {
+  it("keeps the configured provider order despite performance scores", async () => {
     const providerPerformance = {
       async rankProviders({ task_type, candidates }) {
         assert.equal(task_type, "aice_live_controller");
@@ -218,7 +282,7 @@ describe("HermesAgentBridge USER session hardening", () => {
     });
 
     assert.deepEqual(bridge._resolvedProviders().map((p) => p.name), ["provider-a", "provider-b"]);
-    assert.deepEqual((await bridge._providersForTask("aice_live_controller")).map((p) => p.name), ["provider-b", "provider-a"]);
+    assert.deepEqual((await bridge._providersForTask("aice_live_controller")).map((p) => p.name), ["provider-a", "provider-b"]);
   });
 
   it("records provider success and failure from Hermes Agent decisions", async () => {

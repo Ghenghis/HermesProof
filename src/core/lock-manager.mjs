@@ -12,6 +12,7 @@ import {
   normalizeWorkspacePath,
   pathExists,
   readJson,
+  readEvidenceCheckpointManifest,
   safeWorkspaceRoot,
   shaId,
   statePaths,
@@ -582,7 +583,26 @@ export class HermesLockManager {
   }
 
   async verifyEvidence() {
-    return await verifyChainedLog(this.paths.evidenceFile);
+    const checkpointFile = path.join(this.workspaceRoot, "PROOF", "evidence-ledger-checkpoints.json");
+    const checkpoint = await readEvidenceCheckpointManifest(checkpointFile);
+    const result = await verifyChainedLog(this.paths.evidenceFile, {
+      acceptedBreaks: checkpoint?.ok ? checkpoint.accepted_breaks : []
+    });
+    return {
+      ...result,
+      checkpoint: checkpoint
+        ? {
+            ok: checkpoint.ok,
+            path: "PROOF/evidence-ledger-checkpoints.json",
+            reason: checkpoint.reason,
+            schema: checkpoint.schema,
+            kind: checkpoint.kind,
+            created_utc: checkpoint.created_utc,
+            incident_doc: checkpoint.incident_doc,
+            accepted_break_count: checkpoint.accepted_breaks.length
+          }
+        : null
+    };
   }
 
   async getStateSummary() {

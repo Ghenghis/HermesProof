@@ -1,0 +1,13 @@
+{
+  "schema": "hermesproof.hp_mha.task_set_manifest.v2",
+  "schema_version": 1,
+  "task_set_id": "ts_holdout_release_v1",
+  "description": "Reference task set used by the lock-manager queue-level HP-MHA-006 test. The `tags` array carries the holdout tag; an `optimizer` role calling hermes_lock_files with this manifest must be rejected with reason_codes HP-MHA-006.",
+  "tasks": [
+    { "id": "holdout-locked-1", "description": "task whose file lock must be blocked for optimizer role" },
+    { "id": "holdout-locked-2", "description": "task whose file lock must be blocked for optimizer role" }
+  ],
+  "tags": ["hp_mha.holdout"],
+  "visibility": "optimizer-blinded",
+  "recommended_size": "select in release-policy file"
+}

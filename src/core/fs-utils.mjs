@@ -114,6 +114,10 @@ export function canonicalJSON(obj) {
   return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJSON(obj[k])).join(",") + "}";
 }
 
+export function sha256Hex(input) {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
 // Append a hash-chained entry to an NDJSON log. Each entry includes
 // `prev_hash` (sha256 of the previous chained entry's `entry_hash`, or null
 // for the first chained entry) and `entry_hash` (sha256 of the canonical
@@ -154,7 +158,7 @@ export async function appendChainedJsonLine(file, value) {
       if (err.code !== "ENOENT") throw err;
     }
     const withChain = { ...value, prev_entry_id: prevId, prev_hash: prevHash };
-    const entryHash = crypto.createHash("sha256").update(canonicalJSON(withChain)).digest("hex");
+    const entryHash = sha256Hex(canonicalJSON(withChain));
     const final = { ...withChain, entry_hash: entryHash };
     await fs.appendFile(file, JSON.stringify(final) + "\n", "utf8");
     return final;
@@ -165,25 +169,42 @@ export async function appendChainedJsonLine(file, value) {
 // pre-image, and verify each `prev_hash` links to the previous chained
 // entry. Pre-chain entries (those lacking `entry_hash`) are tolerated and
 // counted as `unchained` — useful when migrating an existing ledger.
-export async function verifyChainedLog(file) {
+export async function verifyChainedLog(file, { acceptedBreaks = [] } = {}) {
   let raw;
   try {
     raw = await fs.readFile(file, "utf8");
   } catch (err) {
-    if (err.code === "ENOENT") return { ok: true, total: 0, chained: 0, unchained: 0, first_break: null };
+    if (err.code === "ENOENT") {
+      return {
+        ok: true,
+        strict_ok: true,
+        total: 0,
+        chained: 0,
+        unchained: 0,
+        accepted_break_count: 0,
+        accepted_breaks: [],
+        first_break: null,
+        breaks: []
+      };
+    }
     throw err;
   }
+  const accepted = normalizeAcceptedBreaks(acceptedBreaks);
   const lines = raw.split("\n").filter(Boolean);
   let chained = 0;
   let unchained = 0;
   let lastHash = null;
   let firstBreak = null;
+  const breaks = [];
+  const acceptedHits = [];
   for (let i = 0; i < lines.length; i++) {
     let entry;
     try {
       entry = JSON.parse(lines[i]);
     } catch (err) {
-      if (firstBreak === null) firstBreak = { index: i, reason: `parse error: ${err.message}` };
+      const item = { index: i, reason: `parse error: ${err.message}` };
+      breaks.push(item);
+      if (firstBreak === null) firstBreak = item;
       continue;
     }
     if (!entry || typeof entry.entry_hash !== "string" || !("prev_hash" in entry)) {
@@ -191,24 +212,105 @@ export async function verifyChainedLog(file) {
       continue;
     }
     const { entry_hash: stored, ...preimage } = entry;
-    const computed = crypto.createHash("sha256").update(canonicalJSON(preimage)).digest("hex");
+    const computed = sha256Hex(canonicalJSON(preimage));
     if (computed !== stored) {
-      if (firstBreak === null) firstBreak = { index: i, reason: "entry_hash mismatch", id: entry.id || null };
+      const item = { index: i, reason: "entry_hash mismatch", id: entry.id || null };
+      breaks.push(item);
+      if (firstBreak === null) firstBreak = item;
       continue;
     }
     if (lastHash !== null && entry.prev_hash !== lastHash) {
-      if (firstBreak === null) firstBreak = { index: i, reason: "prev_hash does not link to previous chained entry", id: entry.id || null };
-      continue;
+      const item = {
+        index: i,
+        reason: "prev_hash does not link to previous chained entry",
+        id: entry.id || null,
+        prev_entry_id: entry.prev_entry_id || null
+      };
+      const acceptedBreak = acceptedBreakFor(accepted, item, entry);
+      if (acceptedBreak) {
+        acceptedHits.push({
+          index: i,
+          id: entry.id || null,
+          reason: item.reason,
+          prev_entry_id: entry.prev_entry_id || null,
+          accepted_by: acceptedBreak.accepted_by || acceptedBreak.id || null
+        });
+      } else {
+        breaks.push(item);
+        if (firstBreak === null) firstBreak = item;
+      }
     }
     chained++;
     lastHash = stored;
   }
   return {
     ok: firstBreak === null,
+    strict_ok: breaks.length === 0 && acceptedHits.length === 0,
     total: lines.length,
     chained,
     unchained,
-    first_break: firstBreak
+    accepted_break_count: acceptedHits.length,
+    accepted_breaks: acceptedHits,
+    first_break: firstBreak,
+    breaks
+  };
+}
+
+function normalizeAcceptedBreaks(value) {
+  const items = Array.isArray(value) ? value : [];
+  return items
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : null,
+      index: Number.isInteger(item.index) ? item.index : null,
+      reason: typeof item.reason === "string" ? item.reason : "prev_hash",
+      prev_entry_id: typeof item.prev_entry_id === "string" ? item.prev_entry_id : null,
+      ts_utc: typeof item.ts_utc === "string" ? item.ts_utc : null,
+      accepted_by: typeof item.accepted_by === "string" ? item.accepted_by : null
+    }));
+}
+
+function acceptedBreakFor(accepted, item, entry) {
+  return accepted.find((candidate) => {
+    if (candidate.reason !== "prev_hash") return false;
+    if (candidate.id && candidate.id !== item.id) return false;
+    if (candidate.index !== null && candidate.index !== item.index) return false;
+    if (candidate.prev_entry_id && candidate.prev_entry_id !== item.prev_entry_id) return false;
+    if (candidate.ts_utc && candidate.ts_utc !== entry.ts_utc) return false;
+    return Boolean(candidate.id || candidate.index !== null);
+  });
+}
+
+export async function readEvidenceCheckpointManifest(file) {
+  let manifest;
+  try {
+    manifest = await readJson(file);
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    return {
+      ok: false,
+      path: file,
+      reason: "checkpoint manifest is not an object",
+      accepted_breaks: []
+    };
+  }
+  const { checkpoint_hash: checkpointHash, ...payload } = manifest;
+  const computed = sha256Hex(canonicalJSON(payload));
+  const hashOk = typeof checkpointHash === "string" && checkpointHash === computed;
+  return {
+    ok: hashOk,
+    path: file,
+    reason: hashOk ? null : "checkpoint_hash mismatch",
+    checkpoint_hash: checkpointHash || null,
+    computed_hash: computed,
+    schema: manifest.schema ?? null,
+    kind: manifest.kind ?? null,
+    created_utc: manifest.created_utc ?? null,
+    incident_doc: manifest.incident_doc ?? null,
+    accepted_breaks: hashOk && Array.isArray(manifest.accepted_breaks) ? manifest.accepted_breaks : []
   };
 }
 

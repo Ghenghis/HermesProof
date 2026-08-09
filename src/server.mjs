@@ -16,11 +16,18 @@ import { ProviderPerformanceTracker } from "./core/provider-performance.mjs";
 import { A2AStub } from "./core/a2a-stub.mjs";
 import { AnonymousOrchestrator, ROLES as ANON_ROLES } from "./core/anonymous-orchestrator.mjs";
 import { HermesAgentBridge } from "./core/hermes-agent-bridge.mjs";
+import { evaluateHelperRuntimeConsensus, evaluateHelperRuntimeEnvelope } from "./core/helper-runtime.mjs";
+import { evaluateStaleness } from "./core/staleness.mjs";
+import { evaluateStorageCensus } from "./core/storage-census.mjs";
+import { evaluateArchivePlan } from "./core/archive-plan.mjs";
+import { evaluateWorkspaceHygiene } from "./core/workspace-hygiene.mjs";
 import {
   KILOCODE_TASK_TYPE,
   evaluateKilocodeAgentBusEnvelope,
+  evaluateKilocodeInstalledVsixReleaseProof,
   evaluateKilocodeInfrastructureProof,
   evaluateKilocodePolicy,
+  evaluateKilocodeRoadmapCompletionProof,
   kilocodeStatusSnapshot,
   readKilocodeGuardrails,
   recordKilocodeAgentBusEvent,
@@ -31,6 +38,24 @@ import {
 } from "./core/kilocode-integration.mjs";
 import { createGitLabClient, resolveGitLabConfig } from "./core/gitlab-client.mjs";
 import { loadRegistryProviders } from "./core/registry-providers.mjs";
+import {
+  HP_HARNESS_ATTRIBUTION_GATE,
+  HP_MHA_CONTRACT_VERSION,
+  assertLockFilesRespectHoldoutIsolation,
+  attestBenchmarkRun,
+  computeTraceMetrics,
+  evaluateAndRecordPromotion,
+  evaluateHpMhaSubGate,
+  lockExperimentPlan,
+  pruneAndRecordRetention,
+  readExperimentReport,
+  readTraceIndex,
+  recordAttribution,
+  recordHarnessCard,
+  searchTraceIndex,
+  verifyAndRecordTraceBundle,
+  writeTraceIndex
+} from "./core/hp-mha.mjs";
 import {
   ensureDir,
   readJson,
@@ -134,6 +159,9 @@ async function buildRuntime(workspaceRoot) {
       ? process.env.HERMES_AGENT_SCOPE.split(",").map((s) => s.trim()).filter(Boolean)
       : null,
     projectGoals: process.env.HERMES_AGENT_PROJECT_GOALS || null,
+    failover_order: process.env.HERMES_AGENT_FAILOVER
+      ? process.env.HERMES_AGENT_FAILOVER.split(",").map((entry) => entry.trim()).filter(Boolean)
+      : undefined,
     registryProviders: registryLoad.providers || [],
     providerPerformance: nextProviderPerformance,
   });
@@ -252,6 +280,32 @@ const server = new McpServer({
   name: "hermes3d-lock-orchestrator",
   version: "0.7.0"
 });
+
+server.resource(
+  "hermesproof-status",
+  "hermesproof://status",
+  {
+    title: "HermesProof status",
+    description: "Read-only status for clients that probe MCP resources before calling tools.",
+    mimeType: "application/json"
+  },
+  async (uri) => ({
+    contents: [
+      {
+        uri: uri.href,
+        mimeType: "application/json",
+        text: JSON.stringify({
+          ok: true,
+          server: "hermes3d-lock-orchestrator",
+          workspace_root: runtime?.workspaceRoot || manager?.workspaceRoot || null,
+          state_dir: manager?.paths?.stateDir || null,
+          resources_supported: true,
+          secret_values_returned: false
+        })
+      }
+    ]
+  })
+);
 
 // Tightened owner regex: lowercase + digits + hyphen, must start with a letter,
 // 2-64 chars. Rejects whitespace, control chars, prompt-injection markers.
@@ -510,6 +564,64 @@ const KilocodeAgentBusEnvelope = z.object({
   skip: z.boolean().optional(),
   hardcoded_success: z.boolean().optional(),
   hardcodedSuccess: z.boolean().optional(),
+}).passthrough();
+const KilocodeInstalledVsixReleaseProof = z.object({
+  schema: z.string().max(120).optional(),
+  proof_schema: z.string().max(120).optional(),
+  proofSchema: z.string().max(120).optional(),
+  contractVersion: z.string().max(160).optional(),
+  contract_version: z.string().max(160).optional(),
+  vsixSha256: z.string().max(160).optional(),
+  vsix_sha256: z.string().max(160).optional(),
+  vsix_hash: z.string().max(160).optional(),
+  resultFileExists: z.boolean().optional(),
+  outputRoot: z.string().max(1000).optional(),
+  output_root: z.string().max(1000).optional(),
+  startedAt: z.string().max(120).optional(),
+  started_at: z.string().max(120).optional(),
+  finishedAt: z.string().max(120).optional(),
+  finished_at: z.string().max(120).optional(),
+  windowOpenedAt: z.string().max(120).optional(),
+  window_opened_at: z.string().max(120).optional(),
+  windowClosedAt: z.string().max(120).optional(),
+  window_closed_at: z.string().max(120).optional(),
+  gates: z.any().optional(),
+  gateResults: z.any().optional(),
+  gate_results: z.any().optional(),
+  heartbeat: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  heartbeats: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  heartbeatLines: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  heartbeat_lines: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(5000)]).optional(),
+  visibleSidecarToolSmokes: z.any().optional(),
+  visible_sidecar_tool_smokes: z.any().optional(),
+  preflightResults: z.any().optional(),
+  preflights: z.any().optional(),
+  preflight_runners: z.any().optional(),
+  error: z.any().optional(),
+  mock: z.boolean().optional(),
+  mocked: z.boolean().optional(),
+  fake: z.boolean().optional(),
+  stub: z.boolean().optional(),
+  stubbed: z.boolean().optional(),
+  ui_only: z.boolean().optional(),
+  uiOnly: z.boolean().optional(),
+  skipped: z.boolean().optional(),
+  skip: z.boolean().optional(),
+}).passthrough();
+const KilocodeRoadmapCompletionProof = z.object({
+  schema: z.string().max(120).optional(),
+  proof_schema: z.string().max(120).optional(),
+  proofSchema: z.string().max(120).optional(),
+  docs: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(200)]).optional(),
+  updatedDocs: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(200)]).optional(),
+  updated_docs: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(200)]).optional(),
+  requiredDocs: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(200)]).optional(),
+  required_docs: z.union([z.string().max(200000), z.array(z.string().max(1000)).max(200)]).optional(),
+  items: z.array(z.any()).max(500).optional(),
+  roadmapItems: z.array(z.any()).max(500).optional(),
+  roadmap_items: z.array(z.any()).max(500).optional(),
+  actionItems: z.array(z.any()).max(500).optional(),
+  action_items: z.array(z.any()).max(500).optional(),
 }).passthrough();
 const KilocodeGuardrailsPatch = z.object({
   mvp_first: z.boolean().optional(),
@@ -5288,22 +5400,49 @@ registerTool(
   }
 );
 
+const TaskSetHoldoutGuardInput = z.object({
+  tags: z.array(z.string()).default([]),
+  task_set_id: z.string().optional()
+}).passthrough();
+
 registerTool(
   "hermes_lock_files",
   {
     title: "Lock files atomically",
-    description: "Atomically lock files before editing. If any file is locked by another owner, the whole request is rolled back; the caller should request a handoff instead.",
+    description: "Atomically lock files before editing. If any file is locked by another owner, the whole request is rolled back; the caller should request a handoff instead. Optional `task_set_manifest` carries holdout/optimization tags; roles outside the HP-MHA-006 allow-list (agent/auditor/reviewer/human/system) cannot lock files tagged `hp_mha.holdout`.",
     inputSchema: {
       owner: Owner,
       role: z.string().default("agent"),
       taskId: OptionalTaskId,
       files: Files,
       reason: z.string().default(""),
-      ttlMinutes: z.number().int().min(5).max(720).default(90)
+      ttlMinutes: z.number().int().min(5).max(720).default(90),
+      task_set_manifest: TaskSetHoldoutGuardInput.optional()
     },
     annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }
   },
   async (args) => {
+    if (args.task_set_manifest) {
+      try {
+        const guard = assertLockFilesRespectHoldoutIsolation({
+          files: args.files,
+          role: args.role,
+          task_set_manifest: args.task_set_manifest
+        });
+        if (!guard.ok) {
+          return toolResult({
+            ok: false,
+            status: "blocked_hp_mha_006",
+            reason_codes: guard.reason_codes,
+            reason: guard.reason,
+            blocked_files: guard.blocked_files || args.files,
+            next_tool: "hermes_request_unlock"
+          });
+        }
+      } catch (err) {
+        return toolError(err);
+      }
+    }
     try { return toolResult(await manager.lockFiles(args)); } catch (err) { return toolError(err); }
   }
 );
@@ -6313,6 +6452,89 @@ registerTool(
 );
 
 registerTool(
+  "hermes_workspace_hygiene",
+  {
+    title: "Workspace release hygiene",
+    description: "Read-only dirty-to-clean inspection. A hash-bound recovery manifest can permit focused recovery work but never a release claim; only a zero-dirty tree is clean. This tool never cleans, resets, stashes, deletes, stages, commits, or checks out files.",
+    inputSchema: {
+      expectedManifestPath: z.string().max(500).default(""),
+      allowExpectedDirty: z.boolean().default(false).describe("Compatibility input only. Expected dirty work never becomes release-ready.")
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    try {
+      return toolResult(await evaluateWorkspaceHygiene({
+        workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || process.cwd(),
+        stateDirName: runtime?.stateDirName || ".hermes3d_orchestrator",
+        expectedManifestPath: args?.expectedManifestPath || "",
+        allowExpectedDirty: args?.allowExpectedDirty === true
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_storage_census",
+  {
+    title: "Inventory build and temporary storage without cleanup",
+    description: "Read-only bounded storage census for approved roots. It classifies proof, protected, dependency, temporary, quarantine, and unknown artifacts by metadata only. Unknown or partial results are blocked; this tool never deletes or moves data.",
+    inputSchema: {
+      roots: z.array(z.string().max(500)).max(16).default([]),
+      maxFiles: z.number().int().min(1).max(100000).default(10000),
+      maxDepth: z.number().int().min(0).max(32).default(8),
+      groupDepth: z.number().int().min(1).max(8).default(1),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    const root = manager?.workspaceRoot || runtime?.workspaceRoot || process.cwd();
+    const external = String(process.env.HERMESPROOF_STORAGE_ROOTS || "").split(path.delimiter).map((item) => item.trim()).filter(Boolean);
+    const allowedRoots = [root, ...external];
+    const roots = args?.roots?.length ? args.roots : [root];
+    return toolResult(await evaluateStorageCensus({
+      schema: "hermesproof.storage-census.v1",
+      contractVersion: "hermesproof.storage-census.2026-07-10",
+      allowedRoots,
+      roots,
+      maxFiles: args?.maxFiles,
+      maxDepth: args?.maxDepth,
+      groupDepth: args?.groupDepth,
+    }));
+  }
+);
+
+registerTool(
+  "hermes_archive_plan",
+  {
+    title: "Create a hash-bound archive proposal without moving data",
+    description: "Read-only archive planner for reviewed recovery artifacts. It verifies a v2 expected-diff manifest against current source hashes and proposes separate archive paths. It never copies, moves, deletes, or purges source data; a later human-approved operator must re-verify hashes before any move.",
+    inputSchema: {
+      sourceRoot: z.string().min(1).max(500),
+      archiveRoot: z.string().min(1).max(500),
+      archiveId: z.string().min(3).max(80),
+      manifest: z.record(z.unknown()),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true }
+  },
+  async (args) => {
+    const root = manager?.workspaceRoot || runtime?.workspaceRoot || process.cwd();
+    const external = String(process.env.HERMESPROOF_STORAGE_ROOTS || "").split(path.delimiter).map((item) => item.trim()).filter(Boolean);
+    const archives = String(process.env.HERMESPROOF_ARCHIVE_ROOTS || "").split(path.delimiter).map((item) => item.trim()).filter(Boolean);
+    return toolResult(await evaluateArchivePlan({
+      schema: "hermesproof.archive-plan.v1",
+      contractVersion: "hermesproof.archive-plan.2026-07-10",
+      sourceRoot: args?.sourceRoot,
+      archiveRoot: args?.archiveRoot,
+      archiveId: args?.archiveId,
+      manifest: args?.manifest,
+      allowedSourceRoots: [root, ...external],
+      allowedArchiveRoots: archives,
+    }));
+  }
+);
+
+registerTool(
   "hermes_kilocode_status",
   {
     title: "KiloCode/OpenHands integration status",
@@ -6511,6 +6733,47 @@ registerTool(
 );
 
 registerTool(
+  "hermes_kilocode_evaluate_installed_vsix_release_proof",
+  {
+    title: "Evaluate KiloCode installed VSIX release proof",
+    description: "Evaluate the versioned KiloCode strict installed-VSIX contract without writing evidence. Requires every Kilo preflight, state-gated vscode-extension-tester UI proof, installed VSIX hashes, gate snapshots, heartbeats, real sidecar evidence, and recursive anti-fake metadata checks.",
+    inputSchema: {
+      proof: KilocodeInstalledVsixReleaseProof,
+      required_gate_count: z.number().int().min(1).max(21).default(10),
+      required_gates: z.array(z.string().min(1).max(160)).max(21).default([]),
+      max_heartbeat_age_ms: z.number().int().min(1000).max(900000).default(150000),
+      max_runtime_ms: z.number().int().min(60000).max(7200000).default(1800000),
+      now_ms: z.number().int().positive().optional()
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(evaluateKilocodeInstalledVsixReleaseProof((args || {}).proof || {}, args || {}));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_kilocode_evaluate_roadmap_completion_proof",
+  {
+    title: "Evaluate KiloCode roadmap completion proof",
+    description: "Evaluate roadmap/action-plan completion claims without writing evidence. Completed items require real HermesProof evidence ids, runner attestation, hashed artifacts, and updated truth docs; fake, stubbed, simulated, skipped, or prose-only completion is rejected.",
+    inputSchema: {
+      proof: KilocodeRoadmapCompletionProof,
+      required_docs: z.array(z.string().min(1).max(1000)).max(200).default([]),
+      require_all_complete: z.boolean().default(false)
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult(evaluateKilocodeRoadmapCompletionProof((args || {}).proof || {}, args || {}));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
   "hermes_kilocode_record_agent_bus_event",
   {
     title: "Record KiloCode agent-bus event",
@@ -6676,10 +6939,50 @@ registerTool(
 );
 
 registerTool(
+  "hermes_staleness_evaluate",
+  {
+    title: "Evaluate code, proof, document, and runner staleness",
+    description: "Read-only staleness evaluation for current commit/VSIX/contract lineage. Rejects expired records, future clocks, superseded current claims, stale hashes, fake metadata, secret signals, missing evidence, and mixed-run artifacts.",
+    inputSchema: {
+      report: z.record(z.unknown()),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async ({ report }) => toolResult(evaluateStaleness(report))
+);
+
+registerTool(
+  "hermes_helper_runtime_evaluate",
+  {
+    title: "Evaluate one HermesAgent or ZeroClaw worker result",
+    description: "Read-only evaluation of a redacted local or VPS helper worker envelope. Requires worker identity, run/commit/VSIX lineage, terminal runner result, artifact hashes, and real HermesProof evidence before a completed result can be accepted.",
+    inputSchema: {
+      envelope: z.record(z.unknown()),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async ({ envelope }) => toolResult(evaluateHelperRuntimeEnvelope(envelope))
+);
+
+registerTool(
+  "hermes_helper_runtime_evaluate_consensus",
+  {
+    title: "Evaluate local and VPS helper evidence consensus",
+    description: "Read-only evaluation of required local/VPS helper results. Both sides must use the same run id, commit, VSIX hash, and return independently identified real evidence. A mismatch blocks the gate.",
+    inputSchema: {
+      required_locations: z.array(z.enum(["local", "vps"])).min(1),
+      envelopes: z.array(z.record(z.unknown())).min(1),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async ({ required_locations, envelopes }) => toolResult(evaluateHelperRuntimeConsensus({ requiredLocations: required_locations, runs: envelopes }))
+);
+
+registerTool(
   "hermes_agent_health",
   {
     title: "Hermes Agent bridge health probe",
-    description: "Probes the configured DeepSeek/MiniMax/SiliconFlow/LM-Studio providers in failover order. Returns the first healthy provider + model. Bridge is disabled by default (set HERMES_AGENT_ENABLED=1).",
+    description: "Probes the configured HermesAgent providers in deterministic order. Default: MiniMax M3, then DeepSeek. Bridge is disabled by default (set HERMES_AGENT_ENABLED=1).",
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
@@ -6754,6 +7057,363 @@ registerTool(
   },
   async () => {
     try { return toolResult(await hermesAgent.revokeOwnSession()); } catch (err) { return toolError(err); }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// HP-MHA: HermesProof Model-Harness Attribution protocol
+// ---------------------------------------------------------------------------
+// Implements the HP-MHA-001..010 contract requirements from
+// docs/48-Point Lever.md. Each tool emits an immutable ev_* entry into the
+// HP-MHA ledger; the final promotion_evaluate verdict is the canonical
+// machine-readable result for HP-HARNESS-ATTRIBUTION.
+
+const HarnessCardInput = z.object({
+  card_id: z.string().min(1),
+  layers: z.object({}).passthrough()
+}).passthrough();
+
+const ExperimentPlanInput = z.object({
+  experiment_id: z.string().min(1),
+  design: z.enum(["locked_harness", "factorial_2x2", "factorial_NxN"]).default("factorial_2x2"),
+  locked_harness_sha256: z.string().optional(),
+  held_constant: z.object({}).passthrough().default({}),
+  model_manifest: z.object({}).passthrough(),
+  harness_card: z.object({}).passthrough(),
+  task_set_manifest: z.object({}).passthrough(),
+  evaluator_manifest: z.object({}).passthrough(),
+  environment_manifest: z.object({}).passthrough()
+}).passthrough();
+
+const BenchmarkRunInput = z.object({
+  run_id: z.string().min(1),
+  experiment_id: z.string().min(1),
+  model_manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  harness_manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  task_set_manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  evaluator_manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  environment_manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  trace_root_sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  outcome: z.enum(["passed", "failed", "cancelled", "crashed", "timed_out"]),
+  latency_ms: z.number().int().nonnegative().optional(),
+  tokens: z.number().int().nonnegative().optional(),
+  cost_usd: z.number().nonnegative().optional()
+}).passthrough();
+
+const TraceBundleInput = z.object({
+  bundle_id: z.string().min(1),
+  retention: z.enum(["release_pinned", "failure_diagnostic", "routine_run", "duplicate_chunk"]),
+  chunks: z.array(z.object({ sha256: z.string().regex(/^[a-f0-9]{64}$/i) }).passthrough()).min(1),
+  root_sha256: z.string().regex(/^[a-f0-9]{64}$/i)
+}).passthrough();
+
+const AttributionInput = z.object({
+  experiment_id: z.string().min(1),
+  matrix: z.object({
+    s11: z.number(),
+    s12: z.number(),
+    s21: z.number(),
+    s22: z.number()
+  }).strict(),
+  uncertainty: z.object({}).passthrough().optional()
+}).passthrough();
+
+const PromotionDecisionInput = z.object({
+  kind: z.string().min(1),
+  evidence_ids: z.array(z.string().regex(/^ev_[a-z0-9]{8,}$/i)).min(1),
+  run_attestations: z.array(z.object({}).passthrough()),
+  plan: z.object({}).passthrough(),
+  attribution: z.object({
+    harness_effect_pp: z.number(),
+    model_effect_pp: z.number(),
+    interaction_pp: z.number()
+  }).passthrough(),
+  contested: z.object({}).passthrough().optional(),
+  execution_real: z.boolean().optional()
+}).passthrough();
+
+const SubGateInput = z.object({
+  harness_card: z.object({}).passthrough(),
+  experiment_plan: z.object({}).passthrough(),
+  run_attestations: z.array(z.object({}).passthrough()),
+  matrix: AttributionInput.shape.matrix,
+  holdout_visible_to_optimizer: z.boolean().default(false),
+  execution_real: z.boolean().default(false),
+  fake_signals: z.array(z.any()).default([]),
+  evidence_ids: z.array(z.string().regex(/^ev_[a-z0-9]{8,}$/i)).default([])
+}).passthrough();
+
+function hpMhaContext() {
+  return {
+    workspaceRoot: manager?.workspaceRoot || runtime?.workspaceRoot || process.cwd(),
+    stateDirName: configuredStateDirName
+  };
+}
+
+registerTool(
+  "hermes_hp_mha_harness_card_record",
+  {
+    title: "HP-MHA record a harness card",
+    description: "Canonicalize and hash a complete harness configuration across the seven HP-MHA layers (execution, model, tools, context, scheduling, observability, governance). Emits ev_harness_*.",
+    inputSchema: HarnessCardInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await recordHarnessCard({ ...ctx, harness_card: args }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_experiment_plan_lock",
+  {
+    title: "HP-MHA lock an experiment plan",
+    description: "Lock the task set, model cells, harness cells, budgets and evaluator before execution. Enforces HP-MHA-002 (model comparison design) and HP-MHA-003 (held-constant harness claim). Emits ev_experiment_*.",
+    inputSchema: ExperimentPlanInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await lockExperimentPlan({ ...ctx, plan: args }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_benchmark_run_attest",
+  {
+    title: "HP-MHA attest a benchmark run",
+    description: "Bind each completed run to the locked plan and its artifacts. Implements HP-MHA-001 binding, HP-MHA-004 contamination classification, and HP-MHA-005 denominator accounting. Emits ev_run_*.",
+    inputSchema: BenchmarkRunInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await attestBenchmarkRun({ ...ctx, run: args }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_trace_bundle_verify",
+  {
+    title: "HP-MHA verify a trace bundle",
+    description: "Verify trace chunk hashes, recompute Merkle root, classify retention. Emits ev_trace_*.",
+    inputSchema: TraceBundleInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await verifyAndRecordTraceBundle({ ...ctx, bundle: args }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_model_harness_attribution",
+  {
+    title: "HP-MHA compute model/harness attribution",
+    description: "Calculate harness effect, model effect, and model-by-harness interaction from a 2x2 factorial. Implements HP-MHA-007 multi-dimensional reporting. Emits ev_attribution_*.",
+    inputSchema: AttributionInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await recordAttribution({
+        ...ctx,
+        experiment_id: args.experiment_id,
+        matrix: args.matrix,
+        uncertainty: args.uncertainty
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_promotion_evaluate",
+  {
+    title: "HP-MHA evaluate promotion verdict",
+    description: "Return PASS, FAIL, or INCONCLUSIVE under the HP-MHA contract (HP-MHA-001..010). Emits ev_promotion_* with chained ev_* evidence references.",
+    inputSchema: PromotionDecisionInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await evaluateAndRecordPromotion({ ...ctx, decision: args }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_sub_gate",
+  {
+    title: `HP-MHA evaluate ${HP_HARNESS_ATTRIBUTION_GATE} sub-gate`,
+    description: "Run the full HP-MHA contract against a complete input bundle and return the machine-readable verdict used by the HP-HARNESS-ATTRIBUTION release sub-gate. Read-only with respect to the candidate harness (HP-MHA-009).",
+    inputSchema: SubGateInput,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult({
+        schema: "hermesproof.hp_mha.sub_gate.v1",
+        contract_version: HP_MHA_CONTRACT_VERSION,
+        gate: HP_HARNESS_ATTRIBUTION_GATE,
+        ...evaluateHpMhaSubGate({
+          harness_card: args.harness_card,
+          experiment_plan: args.experiment_plan,
+          run_attestations: args.run_attestations,
+          matrix: args.matrix,
+          holdout_visible_to_optimizer: args.holdout_visible_to_optimizer,
+          execution_real: args.execution_real,
+          fake_signals: args.fake_signals,
+          evidence_ids: args.evidence_ids
+        })
+      });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+const TraceMetricsInput = z.object({
+  bundle: z.object({}).passthrough(),
+  required_signals: z.array(z.string()).default([]),
+  lookback: z.number().int().min(1).max(1000).default(5)
+}).passthrough();
+
+const TracePruneOptionsInput = z.object({
+  routine_retention_ms: z.number().int().nonnegative().optional(),
+  failures_required: z.boolean().default(false),
+  now_ms: z.number().int().nonnegative().optional()
+}).passthrough();
+
+registerTool(
+  "hermes_hp_mha_trace_metrics",
+  {
+    title: "HP-MHA compute trace-level metrics",
+    description: "Derives recovery rate (at 1/3/5/10 steps), average control lag, and context-retention ratio from a trace bundle whose chunks carry `kind` and (optionally) `signals`. Implements HP-MHA spec §6.",
+    inputSchema: TraceMetricsInput,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      return toolResult({
+        schema: "hermesproof.hp_mha.trace_metrics.v1",
+        contract_version: HP_MHA_CONTRACT_VERSION,
+        ...computeTraceMetrics({
+          bundle: args.bundle,
+          required_signals: args.required_signals,
+          lookback: args.lookback
+        })
+      });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+const ExperimentReportInput = z.object({
+  experiment_id: z.string().min(1),
+  harness_card_id: z.string().optional()
+}).passthrough();
+
+registerTool(
+  "hermes_hp_mha_experiment_report",
+  {
+    title: "HP-MHA compile a per-experiment evidence report",
+    description: "Reads the HP-MHA evidence ledger and aggregates every ev_* entry that shares the given experiment_id (and optionally a harness_card_id) into a structured report. Returns match_count, breakdown by kind, denominator summary, last attribution triple and last promotion verdict. Read-only; mutates nothing.",
+    inputSchema: ExperimentReportInput,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await readExperimentReport({
+        ...ctx,
+        experiment_id: args.experiment_id,
+        harness_card_id: args.harness_card_id
+      }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_trace_prune",
+  {
+    title: "HP-MHA prune HP-MHA ledger by retention class",
+    description: "Walks the HP-MHA evidence ledger and classifies each entry by retention. release_pinned entries are always kept; failure_diagnostic entries require explicit failures_required=true; routine_run entries older than `routine_retention_ms` (default 7 days) are pruned; duplicate_chunk entries with the same root hash collapse. Appends an `ev_prune` summary without breaking the hash chain.",
+    inputSchema: TracePruneOptionsInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      return toolResult(await pruneAndRecordRetention({ ...ctx, options: args }));
+    } catch (err) { return toolError(err); }
+  }
+);
+
+const TraceIndexInput = TraceBundleInput;
+
+const TraceSearchInput = z.object({
+  bundle_id: z.string().min(1),
+  byte_start: z.number().int().nonnegative().optional(),
+  byte_end: z.number().int().nonnegative().optional(),
+  kind: z.string().optional(),
+  signals: z.array(z.string()).default([]),
+  limit: z.number().int().min(1).max(10000).default(200)
+}).passthrough();
+
+registerTool(
+  "hermes_hp_mha_trace_index_record",
+  {
+    title: "HP-MHA ingest a trace bundle into the searchable index",
+    description: "Reads a trace bundle (same shape as `hermes_hp_mha_trace_bundle_verify`) and writes one content-addressed index row per chunk to <workspace>/.hermes3d_orchestrator/evidence/hp_mha_trace_index.ndjson. Range queries over millions of tokens never re-scan the ledger; the index is sorted by (bundle_id, byte_start).",
+    inputSchema: TraceIndexInput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      const result = await writeTraceIndex({ ...ctx, bundle: args });
+      const verified = await verifyAndRecordTraceBundle({ ...ctx, bundle: args });
+      return toolResult({ ...result, merkle_ok: verified.verification_ok, evidence_id: verified.evidence_id, prev_entry_id: verified.prev_entry_id });
+    } catch (err) { return toolError(err); }
+  }
+);
+
+registerTool(
+  "hermes_hp_mha_trace_search",
+  {
+    title: "HP-MHA range-search the trace index",
+    description: "Returns index rows whose byte window intersects [byte_start, byte_end] (open-ended if omitted), optionally filtered by `kind` and `signals`. Read-only; never touches the ledger. For the millions-of-tokens case this is the only path that does not require scanning `hp_mha.ndjson`.",
+    inputSchema: TraceSearchInput,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  },
+  async (args) => {
+    try {
+      const ctx = hpMhaContext();
+      const rows = await readTraceIndex({ ...ctx, bundle_id: args.bundle_id });
+      const matches = searchTraceIndex(rows, {
+        byte_start: args.byte_start,
+        byte_end: args.byte_end,
+        kind: args.kind,
+        signals: args.signals,
+        limit: args.limit
+      });
+      return toolResult({
+        schema: "hermesproof.hp_mha.trace_search.v2",
+        contract_version: HP_MHA_CONTRACT_VERSION,
+        bundle_id: args.bundle_id,
+        requested_window: { byte_start: args.byte_start ?? null, byte_end: args.byte_end ?? null },
+        filters: { kind: args.kind || null, signals: args.signals || [] },
+        match_count: matches.length,
+        matches
+      });
+    } catch (err) { return toolError(err); }
   }
 );
 

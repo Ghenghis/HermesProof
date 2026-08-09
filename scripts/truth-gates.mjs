@@ -58,6 +58,8 @@ import { loadOrRunPerfReport } from "./perf-budget.mjs";
 import { runDocsChangesReflectedGate } from "./docs-changes-reflected.mjs";
 import { runReleaseChecksumGate } from "./release-checksum.mjs";
 import { runCoderabbitReviewGate, parseRemoteUrl } from "./coderabbit-review.mjs";
+import { evaluateWorkspaceHygiene } from "../src/core/workspace-hygiene.mjs";
+import { HP_HARNESS_ATTRIBUTION_GATE, evaluateHpMhaSubGate, evaluateHarnessCardFromManifest, assertLockFilesRespectHoldoutIsolation, writeTraceIndex, readTraceIndex, searchTraceIndex } from "../src/core/hp-mha.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -318,6 +320,23 @@ const expectedTools = [
   "hermes_a2a_update_task",
   "hermes_ack_message",
   "hermes_agent_health",
+  "hermes_helper_runtime_evaluate",
+  "hermes_helper_runtime_evaluate_consensus",
+  "hermes_hp_mha_benchmark_run_attest",
+  "hermes_hp_mha_experiment_plan_lock",
+  "hermes_hp_mha_experiment_report",
+  "hermes_hp_mha_harness_card_record",
+  "hermes_hp_mha_model_harness_attribution",
+  "hermes_hp_mha_promotion_evaluate",
+  "hermes_hp_mha_sub_gate",
+  "hermes_hp_mha_trace_bundle_verify",
+  "hermes_hp_mha_trace_index_record",
+  "hermes_hp_mha_trace_metrics",
+  "hermes_hp_mha_trace_prune",
+  "hermes_hp_mha_trace_search",
+  "hermes_staleness_evaluate",
+  "hermes_storage_census",
+  "hermes_archive_plan",
   "hermes_agent_watchdog",
   "hermes_agentic_tick",
   "hermes_agent_request_user_session",
@@ -352,10 +371,13 @@ const expectedTools = [
   "hermes_get_state",
   "hermes_get_test_mode",
   "hermes_get_workspace",
+  "hermes_workspace_hygiene",
   "hermes_heartbeat",
   "hermes_join_project",
   "hermes_kilocode_checkpoint_progress",
   "hermes_kilocode_evaluate_agent_bus_event",
+  "hermes_kilocode_evaluate_installed_vsix_release_proof",
+  "hermes_kilocode_evaluate_roadmap_completion_proof",
   "hermes_kilocode_evaluate_infrastructure_proof",
   "hermes_kilocode_policy_check",
   "hermes_kilocode_record_agent_bus_event",
@@ -760,88 +782,20 @@ if (!shouldSkip("e2e.multi_agent_flow")) {
 if (!shouldSkip("workspace.integrity")) {
   const { result, error, durationMs } = await timed(async () => {
     const stateDirName = process.env.MCP_LOCK_STATE_DIR || ".hermes3d_orchestrator";
-    let stateDirPresent = false;
-    try {
-      const s = await fs.stat(path.join(hermes3dWorkspace, stateDirName));
-      stateDirPresent = s.isDirectory();
-    } catch { /* fine */ }
-
-    let probeFiles = 0;
-    try {
-      const entries = await fs.readdir(hermes3dWorkspace);
-      probeFiles = entries.filter((e) => e.startsWith(".mcp-lock-write-probe-")).length;
-    } catch {}
-
-    // `git status --porcelain` gives stable XY-prefixed lines.
-    const gitStatus = spawnSync("git", ["-C", hermes3dWorkspace, "status", "--porcelain"], { encoding: "utf8" });
-    const lines = (gitStatus.stdout || "").split("\n").filter(Boolean);
-    const tracked_modifications = [];
-    const untracked = [];
-    for (const line of lines) {
-      const xy = line.slice(0, 2);
-      const filePath = line.slice(3);
-      if (xy === "??") untracked.push(filePath);
-      else tracked_modifications.push({ status: xy, path: filePath });
-    }
-    const allowedUntrackedPrefixes = [
-      `${stateDirName}/`,
-      `${stateDirName}`
-    ];
-    const unexpected_untracked = untracked.filter(
-      (p) => !allowedUntrackedPrefixes.some((prefix) => p === prefix || p.startsWith(prefix))
-    );
-
-    // Classify each tracked modification: an install-related .gitignore tweak
-    // is expected; anything else is a genuine workspace mutation.
-    const install_related_modifications = [];
-    const unexpected_modifications = [];
-    for (const mod of tracked_modifications) {
-      if (mod.path === ".gitignore") {
-        const diff = spawnSync(
-          "git",
-          ["-C", hermes3dWorkspace, "diff", "--unified=0", "--", ".gitignore"],
-          { encoding: "utf8" }
-        );
-        const added = (diff.stdout || "")
-          .split("\n")
-          .filter((l) => l.startsWith("+") && !l.startsWith("+++"));
-        const installMarkers = [
-          /Added by MCP Lock Orchestrator init/i,
-          new RegExp(`^\\+\\s*${stateDirName.replace(/[.\\]/g, "\\$&")}/?\\s*$`),
-          /tools\/hermes3d-mcp-lock-orchestrator\/node_modules\//
-        ];
-        const allAddedAreOurs = added.every((line) =>
-          installMarkers.some((re) => re.test(line)) || line === "+"
-        );
-        if (allAddedAreOurs && added.length > 0) {
-          install_related_modifications.push({ ...mod, kind: "install_marker", added_lines: added.length });
-          continue;
-        }
-      }
-      unexpected_modifications.push(mod);
-    }
-
-    return {
-      state_dir_name: stateDirName,
-      hermes3d_state_dir_present: stateDirPresent,
-      probe_files_left: probeFiles,
-      tracked_modifications,
-      install_related_modifications,
-      unexpected_modifications,
-      untracked_paths: untracked,
-      unexpected_untracked
-    };
+    return evaluateWorkspaceHygiene({
+      workspaceRoot: hermes3dWorkspace,
+      stateDirName,
+      expectedManifestPath: process.env.HERMESPROOF_EXPECTED_DIFF_MANIFEST || "",
+      allowExpectedDirty: process.env.HERMESPROOF_ALLOW_EXPECTED_DIRTY === "1"
+    });
   });
   if (error) {
     record("workspace.integrity", "required", false, {}, error.message, durationMs);
   } else {
-    const ok =
-      result.probe_files_left === 0 &&
-      result.unexpected_modifications.length === 0 &&
-      result.unexpected_untracked.length === 0;
-    record("workspace.integrity", "required", ok, result,
+    record("workspace.integrity", "required", result.release_ready === true, result,
       `probes=${result.probe_files_left}, ` +
       `install_mods=${result.install_related_modifications.length}, ` +
+      `expected_mods=${result.expected_modifications.length}, ` +
       `unexpected_mods=${result.unexpected_modifications.length}, ` +
       `unexpected_untracked=${result.unexpected_untracked.length}`, durationMs);
   }
@@ -1612,6 +1566,203 @@ if (!shouldSkip("quality.coderabbit_reviewed")) {
     record("quality.coderabbit_reviewed", "skipped", true, result.evidence, result.details, durationMs);
   } else {
     record("quality.coderabbit_reviewed", "warn", result.ok === true, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Sub-gate: HP-HARNESS-ATTRIBUTION — HP-MHA Model–Harness Attribution contract.
+//
+// Implements the HP-MHA-001..010 requirements from docs/48-Point Lever.md.
+// Reads every real harness card under examples/hp-mha/harness-cards/ and runs
+// evaluateHpMhaSubGate against each. Asserts:
+//   1. Adversarial missing-input bundle returns FAIL with HP-MHA-missing-input.
+//   2. Every real card PASSES all 10 contract requirements (verifies HP-MHA-001
+//      binding, HP-MHA-002 factorial design, HP-MHA-003 held-constant, etc.).
+//   3. A non-NaN attribution triple is reported (HP-MHA-007).
+//
+// HermesProof MUST NOT modify a candidate harness or certify its own change
+// (HP-MHA-009); this gate uses the real cards on the workspace side. It is
+// promoted to `required` now that two real cards are committed.
+//
+// This is added as a sub-gate rather than renumbering the existing gates.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("harness_attribution.contract")) {
+  const { result, error, durationMs } = await timed(async () => {
+    // 1. Adversarial missing-input bundle must return FAIL HP-MHA-missing-input.
+    const adversarial = evaluateHpMhaSubGate({});
+    if (adversarial.ok || !adversarial.reason_codes.includes("HP-MHA-missing-input")) {
+      return {
+        ok: false,
+        details: `adversarial missing-input fixture did not return HP-MHA-missing-input FAIL (got ${adversarial.verdict})`,
+        result: adversarial
+      };
+    }
+    // 2. Load every committed harness card and run the full HP-MHA contract.
+    //    Templates under examples/hp-mha/harness-cards/templates/ are loaded
+    //    too — they validate the schema but their hashes are placeholders that
+    //    must be replaced once the upstream harness is installed.
+    const cardsDir = path.join(repoRoot, "examples", "hp-mha", "harness-cards");
+    let cardFiles = [];
+    async function collectJson(dir) {
+      const out = [];
+      let entries = [];
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return out; }
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          out.push(...(await collectJson(full)));
+        } else if (e.name.endsWith(".json")) {
+          out.push(full);
+        }
+      }
+      return out;
+    }
+    try {
+      cardFiles = (await collectJson(cardsDir)).sort();
+    } catch (err) {
+      return {
+        ok: false,
+        details: `failed to read ${path.relative(repoRoot, cardsDir)}: ${err.message}`,
+        result: null
+      };
+    }
+    if (cardFiles.length === 0) {
+      return {
+        ok: false,
+        details: `no harness cards committed under ${path.relative(repoRoot, cardsDir)}`,
+        result: null
+      };
+    }
+    // Shared smoke helper from hp-mha.mjs computes manifests + smoke plan +
+    // attribution triple and runs the sub-gate, so load-card.mjs and this gate
+    // can never drift apart.
+    const cardResults = [];
+    for (const file of cardFiles) {
+      const cardPath = path.isAbsolute(file) ? file : path.join(cardsDir, file);
+      try {
+        const cardRaw = JSON.parse(await fs.readFile(cardPath, "utf8"));
+        const ev = evaluateHarnessCardFromManifest(cardRaw);
+        cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: cardRaw.card_id, verdict: ev.verdict, ok: ev.ok });
+      } catch (err) {
+        cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: file.replace(/\.json$/, ""), verdict: "FAIL", ok: false, error: err.message });
+      }
+    }
+    const allOk = cardResults.every((r) => r.ok);
+    return {
+      ok: allOk,
+      details: `cards=${cardResults.length} (${cardResults.map((r) => `${r.card_id}=${r.verdict}`).join(", ")}) | ` +
+        `adversarial=${adversarial.verdict}(${adversarial.reason_codes.join(",")})`,
+      result: { adversarial, cardResults }
+    };
+  });
+  if (error) {
+    record("harness_attribution.contract", "required", false, {}, error.message, durationMs);
+  } else {
+    record("harness_attribution.contract", "required", result.ok === true, { gate: HP_HARNESS_ATTRIBUTION_GATE }, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Sub-gate: holdout_isolation_at_queue — HP-MHA-006 lock-time enforcement.
+//
+// Asserts that the standalone helper assertLockFilesRespectHoldoutIsolation
+// behaves correctly: optimizer role on hp_mha.holdout is rejected; allow-listed
+// roles pass; mixed tag bundles are rejected; non-holdout task sets pass.
+// Also exercises the trailing path of
+// `hermes_hp_mha_trace_index_record + trace_search` to confirm the v4 index
+// surface round-trips through a real ledger on disk.
+//
+// HermesProof MUST NOT modify a candidate harness or certify its own change
+// (HP-MHA-009). This gate is promoted to `required` because (a) the v3 change
+// already binds the rule into the hermes_lock_files MCP tool and (b) every
+// real harness card set the gate iterates must move through this helper
+// without regressing.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("harness_attribution.holdout_isolation_at_queue")) {
+  const { result, error, durationMs } = await timed(async () => {
+    // 1. Run the four core cases through the standalone helper.
+    const optimizerOnHoldout = assertLockFilesRespectHoldoutIsolation({
+      files: ["hp-mha-holdout/run-001.json"],
+      role: "optimizer",
+      task_set_manifest: { tags: ["hp_mha.holdout"] }
+    });
+    const agentOnHoldout = assertLockFilesRespectHoldoutIsolation({
+      files: ["hp-mha-holdout/run-001.json"],
+      role: "agent",
+      task_set_manifest: { tags: ["hp_mha.holdout"] }
+    });
+    const optimizerOnOptimization = assertLockFilesRespectHoldoutIsolation({
+      files: ["hp-mha-optimization/run-001.json"],
+      role: "optimizer",
+      task_set_manifest: { tags: ["hp_mha.optimization"] }
+    });
+    const optimizerOnMixed = assertLockFilesRespectHoldoutIsolation({
+      files: ["x.ts"],
+      role: "optimizer",
+      task_set_manifest: { tags: ["hp_mha.holdout", "hp_mha.optimization"] }
+    });
+
+    const cases = {
+      optimizer_on_holdout: { expect_ok: false, actual: optimizerOnHoldout.ok, codes: optimizerOnHoldout.reason_codes },
+      agent_on_holdout: { expect_ok: true, actual: agentOnHoldout.ok, codes: agentOnHoldout.reason_codes },
+      optimizer_on_optimization: { expect_ok: true, actual: optimizerOnOptimization.ok, codes: optimizerOnOptimization.reason_codes },
+      optimizer_on_mixed: { expect_ok: false, actual: optimizerOnMixed.ok, codes: optimizerOnMixed.reason_codes }
+    };
+    const mismatches = [];
+    for (const [name, c] of Object.entries(cases)) {
+      if (c.actual !== c.expect_ok) {
+        mismatches.push({ name, expect_ok: c.expect_ok, actual_ok: c.actual, codes: c.codes });
+      }
+    }
+    if (mismatches.length > 0) {
+      return {
+        ok: false,
+        details: `holdout_isolation_at_queue assertion mismatches: ${JSON.stringify(mismatches)}`,
+        cases
+      };
+    }
+
+    // 2. Round-trip the v4 trace index end-to-end through the disk ledger.
+    const os = await import("node:os");
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "holdout-gate-"));
+    try {
+      const hashA = "a".repeat(64);
+      const hashB = "b".repeat(64);
+      const indexWrite = await writeTraceIndex({
+        workspaceRoot: tmp, stateDirName: ".hermes3d_orchestrator",
+        bundle: {
+          bundle_id: "tb_holdout_smoke",
+          retention: "release_pinned",
+          chunks: [
+            { sha256: hashA, bytes: 100, kind: "tool_ok", signals: ["artifact_path"] },
+            { sha256: hashB, bytes: 200, kind: "test_passed" }
+          ]
+        }
+      });
+      const rows = await readTraceIndex({ workspaceRoot: tmp, stateDirName: ".hermes3d_orchestrator", bundle_id: "tb_holdout_smoke" });
+      const range = searchTraceIndex(rows, { byte_start: 80, byte_end: 220, signals: ["artifact_path"] });
+      const index_ok = indexWrite.row_count === 2 && rows.length === 2 && range.length === 1;
+      if (!index_ok) {
+        return {
+          ok: false,
+          details: `trace index round-trip failed: write=${JSON.stringify(indexWrite)} read=${rows.length} range=${range.length}`,
+          cases
+        };
+      }
+      return {
+        ok: true,
+        details: `cases=ok|4/4 (optimizer_on_holdout=FAIL, agent_on_holdout=PASS, optimizer_on_optimization=PASS, optimizer_on_mixed=FAIL) | index rows=${rows.length} range-match=${range.length}`,
+        cases,
+        index: { row_count: indexWrite.row_count, read_count: rows.length, range_count: range.length }
+      };
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+  if (error) {
+    record("harness_attribution.holdout_isolation_at_queue", "required", false, {}, error.message, durationMs);
+  } else {
+    record("harness_attribution.holdout_isolation_at_queue", "required", result.ok === true, { gate: "HP-HARNESS-ATTRIBUTION" }, result.details, durationMs);
   }
 }
 

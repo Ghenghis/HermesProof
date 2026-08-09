@@ -14,7 +14,7 @@ HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
 | Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
-| Server | 101 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails/checkpoints, KiloCode agent-bus proof enforcement, A2A task exchange, Hermes Agent bridging, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Server | 116 MCP tools across coordination, workspace switching, workspace release hygiene, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails/checkpoints, KiloCode agent-bus proof enforcement, A2A task exchange, Hermes Agent bridging, HP-MHA Model–Harness Attribution, diagnostics | [`src/server.mjs`](../src/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
 | Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
 | Queue manager | passive task queue, priority pickup, stale-task recovery | `src/core/queue-manager.mjs` |
@@ -164,7 +164,7 @@ Evidence ledger verification is checkpoint-aware. `hermes_verify_evidence` still
 | 01 | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02 | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03 | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 101 MCP tools |
+| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 102 MCP tools |
 | 05 | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06 | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07 | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -249,6 +249,47 @@ HermesProof solves **one** problem: file-level coordination and evidence. It is 
 
 What HermesProof deliberately does not provide: spawning, model selection, prompt routing, or non-file artifacts (e.g. cloud documents). Those are different problem spaces.
 
+## 7.1 HP-MHA Model–Harness Attribution
+
+The HP-MHA protocol (full specification in [`docs/48-Point Lever.md`](./48-Point%20Lever.md)) gives HermesProof an independent way to prove whether a measured performance change came from the **model**, the **harness**, the **runtime configuration**, or an **interaction among them**. Without it, every "Model B is better" or "Harness 2 helped" claim has to be taken on faith.
+
+Nine MCP tools (see [`docs/TOOL_REFERENCE.md`](./TOOL_REFERENCE.md#hp-mha-modelharness-attribution)) cover the canonical experiment bundle plus the trace-level metrics that turn the bundle into a verdict:
+
+```
+harness_card_record      →  ev_harness_*
+      │
+      ▼
+experiment_plan_lock     →  ev_experiment_*       (enforces HP-MHA-002 / 003)
+      │
+      ▼
+benchmark_run_attest     →  ev_run_*              (enforces HP-MHA-001 / 004 / 005)
+      │
+      ▼
+trace_bundle_verify      →  ev_trace_*            (Merkle root + retention class)
+      │                  ───────────────────────────────
+      ▼                  ╎ trace_metrics          (read-only, §6 metrics) ╎
+trace_prune              →  ev_prune_*           (retention policy advisory) ╎
+      │                  ───────────────────────────────
+      ▼
+model_harness_attribution →  ev_attribution_*    (HP-MHA-007 multi-dim report)
+      │
+      ▼
+promotion_evaluate       →  ev_promotion_*        (PASS / FAIL / INCONCLUSIVE)
+```
+
+HermesProof remains the **independent authority**. The heavy benchmark execution stays outside the proof boundary (`KiloCode` / `HermesAgent` / `HarnessLab` → GitLab or VPS runners → content-addressed artifact store). The MCP server only ever:
+
+1. verifies the experiment plan,
+2. verifies model, harness, and trace identities by SHA-256,
+3. recomputes the 2×2 factorial attribution triple,
+4. derives trace-level recovery / control-lag / context-retention metrics,
+5. emits an immutable `ev_*` entry into `<workspace>/.hermes3d_orchestrator/evidence/hp_mha.ndjson`,
+6. returns a verdict that downstream release gates can read.
+
+The candidate optimizer **never** lives inside HermesProof (HP-MHA-009). HermesProof refuses to modify, select, or certify changes it itself performed. Synthetic or mock execution is also rejected (HP-MHA-010) — only real installed runtimes and real tool chains count toward the verdict.
+
+The `HP-HARNESS-ATTRIBUTION` release sub-gate (`scripts/truth-gates.mjs`) now runs at `required` level. Two real harness cards (`examples/hp-mha/harness-cards/hermesproof.json`, `hermesagent.json`) must each pass the full HP-MHA contract on every release run. Real 2×2 attribution matrices replace the placeholder once a benchmark pipeline is wired in; until then the sub-gate is asserting the contract plumbing, not the measured harness leverage.
+
 ## 8. Threat model & safety guarantees
 
 | Threat | Mitigation |
@@ -258,6 +299,7 @@ What HermesProof deliberately does not provide: spawning, model selection, promp
 | Race between two agents acquiring the same lock | `fs.mkdir(... recursive:false)` — EEXIST is the conflict signal |
 | Silent ownership changes | every transfer goes through `request_handoff` → `approve_handoff`, both written to event log |
 | Unproven completion claims | `hermes_anti_slop_review` checks project contracts, proof gates, protected paths, and auto-ticket thresholds |
+| Bare model/harness claims accepted at face value | `HP-MHA-001..010` contract + `HP-HARNESS-ATTRIBUTION` sub-gate require six manifest bindings, declared comparison design, held-constant harness claims, contamination classification, real-execution proof, and chained `ev_*` evidence before any verdict |
 | Stale locks blocking forever | TTL on metadata, recovery requires explicit `hermes_recover_stale_locks` call (which itself appends evidence) |
 | Source tampering | SHA-256 manifest gate (`source.integrity_manifest`) on every CI run |
 | Workspace contamination | `workspace.integrity` gate scans `git status --porcelain` and fails on unexpected entries |
@@ -270,7 +312,7 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (101 MCP tools)
+│   ├── server.mjs                 # MCP entrypoint (102 MCP tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
 │       ├── event-manager.mjs      # event_schema_version=1 outbox bridge

@@ -310,7 +310,14 @@ test("HermesAgentBridge healthCheck reports no providers when env absent", async
   const { orch } = await makeWorkspace();
   // Save and clear all relevant env vars
   const saved = {};
-  for (const v of ["DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "SILICONFLOW_API_KEY"]) {
+  for (const v of [
+    "MINIMAX_API_KEY",
+    "DEEPINFRA_API_KEY",
+    "DEEPINFRA_TOKEN",
+    "DEEPSEEK_API_KEY",
+    "SILICONFLOW_API_KEY",
+    "SILICON_FLOW_API_KEY",
+  ]) {
     saved[v] = process.env[v];
     delete process.env[v];
   }
@@ -318,10 +325,10 @@ test("HermesAgentBridge healthCheck reports no providers when env absent", async
   const bridge = new HermesAgentBridge({
     orchestrator: orch,
     enabled: true,
-    failover_order: ["deepseek", "minimax", "siliconflow"],
+    failover_order: ["minimax", "deepinfra", "deepseek", "siliconflow"],
   });
   // Clear endpoint env so local providers also can't be reached
-  for (const v of ["LMSTUDIO_BASE_URL", "OLLAMA_BASE_URL", "HIPFIRE_BASE_URL"]) {
+  for (const v of ["LMSTUDIO_BASE_URL", "LM_STUDIO_BASE_URL", "OLLAMA_BASE_URL", "HIPFIRE_BASE_URL"]) {
     saved[v] = process.env[v];
     delete process.env[v];
   }
@@ -334,15 +341,14 @@ test("HermesAgentBridge healthCheck reports no providers when env absent", async
 });
 
 test("PROVIDERS exports the six expected providers in DEFAULT_FAILOVER", () => {
-  // Cloud first (DeepSeek/MiniMax/SiliconFlow per user's stated preference),
-  // then local fallbacks (LM Studio / Ollama / Hipfire).
+  // User-approved provider set: paid cloud first, then local fallbacks.
   assert.deepEqual(DEFAULT_FAILOVER, [
-    "deepseek",
     "minimax",
+    "deepinfra",
+    "deepseek",
     "siliconflow",
     "lm_studio",
     "ollama",
-    "hipfire",
   ]);
   for (const name of DEFAULT_FAILOVER) assert.ok(PROVIDERS[name]);
 });

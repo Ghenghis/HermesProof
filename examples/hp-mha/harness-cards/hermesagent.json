@@ -1,0 +1,102 @@
+{
+  "$schema": "hermesproof.hp_mha.harness_card.v1",
+  "schema_version": 1,
+  "card_id": "hermesagent_bridge_2026-08-05",
+  "description": "Real harness card for the HermesAgent bridge that ships in src/core/hermes-agent-bridge.mjs. The bridge mediates between HermesProof and a configured Hermes Agent reasoning loop (provider failover DeepSeek → MiniMax → SiliconFlow → LM Studio → Ollama). A 2x2 A/B with hermesproof_v0.7.0_hp_mha_real would surface the harness effect measured by HP-MHA-007.",
+  "layers": {
+    "execution": {
+      "installed_commit": "fae63a403501727aa1484a681a00d070fd9117d5",
+      "package_sha256": "6f2fe0169d08ed13fe9b94c5d054f63c82ed92dc14d50cab4283b8e7c10d15c5",
+      "dependency_lock_sha256": "22d5c7c543c34c769b6048bb226ec9ce825ae8e56333ef56293d913dd7952f26",
+      "container_digest": null,
+      "runner_identity": "hermes-agent-bridge-process",
+      "os_arch": "win32-x64",
+      "repo_commit": "fae63a403501727aa1484a681a00d070fd9117d5",
+      "repo_dirty": true,
+      "per_step_timeout_s": 25,
+      "task_timeout_s": 60,
+      "max_steps": 12,
+      "token_budget": 8000,
+      "cost_budget_usd": 0.10,
+      "wall_clock_budget_s": 60,
+      "network_policy": "provider-allowlist-only",
+      "sandbox_policy": "no-workspace-write"
+    },
+    "model": {
+      "provider": "hermes-agent",
+      "model_id": "deepseek/deepseek-chat"
+    },
+    "tools": {
+      "tool_inventory": [
+        "hermes_agent_health",
+        "hermes_agent_request_user_session",
+        "hermes_agent_resolve_blocked",
+        "hermes_agent_revoke_session",
+        "hermes_user_grant_session",
+        "hermes_user_check_authorization",
+        "hermes_user_revoke_session"
+      ],
+      "tool_schema_hashes": [],
+      "mcp_servers": ["hermes3d-locks"],
+      "allowlist_sha256": null,
+      "denylist_sha256": null,
+      "tool_descriptions_sha256": null,
+      "tool_result_format": "json",
+      "error_response_contract": "code+message",
+      "shell_restrictions": "no-shell",
+      "write_boundaries": "none",
+      "destructive_op_policy": "deny"
+    },
+    "context": {
+      "system_prompt_sha256": null,
+      "project_contract_sha256": null,
+      "context_construction_rules": "single-shot",
+      "file_discovery": "none",
+      "retrieval_policy": "full_thread",
+      "summarization_policy": "discard-old",
+      "persistent_memory_policy": "session-only",
+      "max_retained_history": 6,
+      "constraint_reminder_behavior": "first-message-only",
+      "failed_outputs_visible": true,
+      "test_output_injection": "none"
+    },
+    "scheduling": {
+      "controller": "single-shot",
+      "planning_stage": false,
+      "retry_count": 0,
+      "backoff": "none",
+      "escalation_rules": "human-immediately",
+      "subagent_delegation": false,
+      "model_selection_policy": "failover-order",
+      "stop_conditions": ["decision_returned", "all_providers_unhealthy"],
+      "checkpoint_rollback": false,
+      "doom_loop_threshold": 1,
+      "per_file_edit_limit": 0,
+      "pre_completion_checklist": false
+    },
+    "observability": {
+      "tool_call_sequence_capture": false,
+      "test_command_outcomes_capture": false,
+      "failed_validation_capture": false,
+      "patch_hashes": false,
+      "changed_file_inventory": false,
+      "timeout_cancellation_capture": true,
+      "verification_commands_capture": false,
+      "final_contract_check": false,
+      "rerere_check": false,
+      "trace_completeness_check": false,
+      "missing_event_count": null
+    },
+    "governance": {
+      "workspace_scope": "session-scoped",
+      "side_effect_boundaries": "no-write",
+      "secret_access_policy": "deny",
+      "human_approval_points": ["all-writes"],
+      "destructive_action_policy": "deny",
+      "redaction_policy": "redact-tokens",
+      "secret_values_returned": false,
+      "denied_action_attempts": [],
+      "candidate_agent_proof_only": true
+    }
+  }
+}

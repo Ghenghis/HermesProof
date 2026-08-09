@@ -7,6 +7,7 @@ stages:
   - validate
   - test
   - proof
+  - report
 
 variables:
   NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
@@ -71,3 +72,19 @@ truth-gates:
       - PERF/latest.json
     reports:
       cyclonedx: PROOF/sbom.json
+
+report:blockers:
+  extends: .node-job
+  stage: report
+  when: always
+  script:
+    - mkdir -p reports
+    - node ci/blocker-report.mjs --in . --out ci-blockers.json --markdown reports/blockers.md --fail-on-release-blocker
+    - node ci/release-truth.mjs --blockers ci-blockers.json --out release-truth.json --fail-on-release-blocker
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - ci-blockers.json
+      - release-truth.json
+      - reports/blockers.md

@@ -1,0 +1,14 @@
+{
+  "$schema": "hermesproof.hp_mha.task_set_manifest.v1",
+  "schema_version": 1,
+  "task_set_id": "ts_optimization_v1",
+  "description": "Optimization task set: visible to the candidate optimizer by design (HP-MHA-006). Placeholder tasks — populate per release per project rules.",
+  "tasks": [
+    { "id": "opt-t1", "description": "reserved optimization task slot 1" },
+    { "id": "opt-t2", "description": "reserved optimization task slot 2" },
+    { "id": "opt-t3", "description": "reserved optimization task slot 3" }
+  ],
+  "tags": ["hp_mha.optimization"],
+  "visibility": "optimizer-visible",
+  "recommended_size": "select in release-policy file"
+}

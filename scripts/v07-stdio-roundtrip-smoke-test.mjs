@@ -65,6 +65,7 @@ const WORKSPACE_TOOLS = Object.freeze([
   "hermes_get_workspace",
   "hermes_set_workspace",
   "hermes_connect_project",
+  "hermes_workspace_hygiene",
 ]);
 
 const REALTIME_TOOLS = Object.freeze([
@@ -290,6 +291,11 @@ test("workspace stdio round-trip: runtime workspace can switch safely", async ()
     assert.equal(switched.ok, true, `switch failed: ${JSON.stringify(switched)}`);
     assert.equal(path.resolve(switched.workspace_root), path.resolve(tmpB));
     assert.ok(switched.evidence?.entry_hash, "workspace switch should append proof evidence");
+
+    const hygiene = parseToolResult(await s.call("hermes_workspace_hygiene", {}));
+    assert.equal(hygiene.ok, false);
+    assert.equal(hygiene.status, "not_git_workspace");
+    assert.deepEqual(hygiene.destructive_actions_performed, []);
 
     const state = parseToolResult(await s.call("hermes_get_state", {}));
     assert.equal(path.resolve(state.workspace_root), path.resolve(tmpB));
@@ -1314,7 +1320,10 @@ test("provider-performance stdio round-trip: record, rank, and live status expos
 
 test("KiloCode/OpenHands stdio round-trip: status, policy, and redacted delegation proof", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-kilo-openhands-"));
-  const s = await startServer(tmp);
+  // Explicitly disable the Hermes Agent bridge so the status tool reports
+  // `hermes_agent_enabled: false` regardless of any HERMES_AGENT_ENABLED set
+  // in the parent process environment.
+  const s = await startServer(tmp, { HERMES_AGENT_ENABLED: "" });
   const fakeSecret = "sk-cp-abcdefghijklmnop123456";
   try {
     const list = await s.request("tools/list", {});

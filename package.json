@@ -35,7 +35,7 @@
     "start:supervised": "node scripts/mcp-supervisor.mjs",
     "mcp:dev": "node src/server.mjs",
     "mcp:supervised": "node scripts/mcp-supervisor.mjs",
-    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/registry-validate-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs scripts/workflow-pinning-gate.test.mjs scripts/accessibility-wcag-gate.test.mjs scripts/perf-budget-test.mjs scripts/docs-changes-reflected-test.mjs scripts/release-checksum-test.mjs scripts/coderabbit-review-test.mjs scripts/v07-stdio-roundtrip-smoke-test.mjs scripts/mutex-concurrency-smoke-test.mjs src/core/mutex.test.mjs src/core/lock-manager.test.mjs src/core/skill-rotation.test.mjs src/core/reputation.test.mjs src/core/provider-performance.test.mjs src/core/a2a-stub.test.mjs src/core/capability-dispatch.test.mjs src/core/hermes-agent-bridge.test.mjs src/core/gitlab-client.test.mjs scripts/anonymous-orchestrator-smoke-test.mjs scripts/mcp-supervisor-smoke-test.mjs scripts/secret-rotation-smoke-test.mjs",
+    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/registry-validate-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs scripts/workflow-pinning-gate.test.mjs scripts/accessibility-wcag-gate.test.mjs scripts/perf-budget-test.mjs scripts/docs-changes-reflected-test.mjs scripts/release-checksum-test.mjs scripts/coderabbit-review-test.mjs scripts/v07-stdio-roundtrip-smoke-test.mjs scripts/hybrid-helper-stdio.test.mjs scripts/anti-slop-realness-gate.test.mjs scripts/mutex-concurrency-smoke-test.mjs src/core/mutex.test.mjs src/core/lock-manager.test.mjs src/core/skill-rotation.test.mjs src/core/reputation.test.mjs src/core/provider-performance.test.mjs src/core/kilocode-integration.test.mjs src/core/workspace-hygiene.test.mjs src/core/storage-census.test.mjs src/core/archive-plan.test.mjs src/core/evidence-checkpoints.test.mjs src/core/a2a-stub.test.mjs src/core/capability-dispatch.test.mjs src/core/hermes-agent-bridge.test.mjs src/core/helper-runtime.test.mjs src/core/staleness.test.mjs src/core/gitlab-client.test.mjs src/core/hp-mha.test.mjs scripts/anonymous-orchestrator-smoke-test.mjs scripts/mcp-supervisor-smoke-test.mjs scripts/secret-rotation-smoke-test.mjs",
     "smoke:supervisor": "node --test scripts/mcp-supervisor-smoke-test.mjs",
     "smoke": "node --test scripts/coordination-smoke-test.mjs",
     "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
@@ -55,7 +55,11 @@
     "proof": "node scripts/truth-gates.mjs",
     "print-configs": "node scripts/print-configs.mjs",
     "doctor": "node scripts/doctor.mjs",
-    "reset-demo-state": "node scripts/reset-demo-state.mjs"
+    "reset-demo-state": "node scripts/reset-demo-state.mjs",
+    "hp-mha:status": "node examples/hp-mha/status.mjs",
+    "hp-mha:load-all": "node examples/hp-mha/load-card.mjs --all",
+    "hp-mha:task-sets": "node examples/hp-mha/load-card.mjs --task-sets",
+    "hp-mha:smoke-e2e": "node examples/hp-mha/smoke-e2e.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

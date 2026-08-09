@@ -11,9 +11,8 @@
 
 ```bash
 # 1. Put your API keys in G:\private\.env (NEVER inside any repo)
-#    Required (one or more): DEEPSEEK_API_KEY, MINIMAX_API_KEY, SILICONFLOW_API_KEY
-#    Optional cloud: any of the 62 Continue LLM provider API keys
-#    Optional local: LMSTUDIO_BASE_URL, OLLAMA_BASE_URL, HIPFIRE_BASE_URL
+#    Required: MINIMAX_API_KEY. Optional automatic fallback: DEEPSEEK_API_KEY.
+#    Keep all values in the private store; this repository receives names only.
 
 # 2. Tell HermesProof where the env file lives (already convention; verify it):
 #    HERMES3D_ENV_FILE=G:\private\.env
@@ -21,19 +20,20 @@
 # 3. Enable the bridge + scope it
 export HERMES_AGENT_ENABLED=1
 export HERMES_AGENT_PROJECT_GOALS="<one-paragraph project description>"
-export HERMES_AGENT_SCOPE="merge_pr,close_blocked,grant_minor_enhancement"
+export HERMES_AGENT_SCOPE="resolve_blocked,post_stream_message"
+export HERMES_AGENT_FAILOVER="minimax,deepseek"
 # Optional: pick routing mode
 export HERMES3D_ROUTING_MODE=hybrid    # or local_private (cloud forbidden)
 
 # 4. From any MCP client (Claude Code, Codex CLI, KiloCode, Cursor, Windsurf,
 #    VSCode+Copilot), call:
 hermes_agent_health
-# → { ok: true, healthy_provider: "deepseek", model: "deepseek-chat" }
+# -> { ok: true, healthy_provider: "minimax", model: "MiniMax-M3" }
 
 hermes_agent_request_user_session
   requested_scope=["merge_pr","close_blocked"]
   ttl_hours=8
-# → { ok: true, session: {...}, rationale: "...", provider_used: "deepseek", model_used: "deepseek-chat" }
+# -> { ok: true, session: {...}, rationale: "...", provider_used: "minimax", model_used: "MiniMax-M3" }
 ```
 
 That's it. From this point, any caller of `hermes_user_check_authorization` against an action in scope will get `{allowed: true, granted_by: "hermes-agent"}` and the Hermes Agent's rationale is recorded in the evidence ledger.
@@ -46,31 +46,27 @@ When the bridge is on:
 
 - **The user can sleep.** Hermes Agent acts as the USER role on STREAM/ messages tagged `BLOCKED`, calling `hermes_agent_resolve_blocked` to emit approve/decline/defer verdicts that close blocking handoffs without waking you.
 - **Auto-approval of pre-authorized scope.** Actions in the granted scope (`merge_pr`, `close_blocked`, etc.) pass `hermes_user_check_authorization` immediately; out-of-scope actions still require the human.
-- **Provider failover.** DeepSeek → MiniMax → SiliconFlow → LM Studio → Ollama → Hipfire → any of the **62 Continue LLM classes** registered in `policies/provider-registry/registry.yaml` for which you've supplied an API key.
+- **Provider failover.** MiniMax M3 is always first. DeepSeek is the default fallback. Any additional provider must be explicitly named in `HERMES_AGENT_FAILOVER` and be separately proven for its task.
 - **Cross-client.** Same MCP tools work from every client; no special Claude or Codex glue.
 
 ---
 
-## All providers supported (62 classes via registry)
+## Provider Set
 
-The Hermes Agent bridge accepts ANY of the 62 Continue LLM provider classes from `policies/provider-registry/registry.yaml`. Per the user's directive: don't exclude any provider.
+The KiloCode integration is intentionally wired to the user's approved provider set: MiniMax M3, DeepInfra, DeepSeek, SiliconFlow, LM Studio, and Ollama. Keep other providers out of defaults unless the user explicitly asks for them in a later project.
 
-**Built-in (preferred order, hardcoded for fast-path):**
+**Default path:**
 
-| # | Provider | env var | endpoint |
-|---|---|---|---|
-| 1 | DeepSeek (v4) | `DEEPSEEK_API_KEY` | api.deepseek.com |
-| 2 | MiniMax highspeed 2.1-2.7 | `MINIMAX_API_KEY` | api.minimaxi.com |
-| 3 | SiliconFlow | `SILICONFLOW_API_KEY` | api.siliconflow.cn |
-| 4 | LM Studio | `LMSTUDIO_BASE_URL` | localhost:1234 |
-| 5 | Ollama | `OLLAMA_BASE_URL` | localhost:11434 |
-| 6 | Hipfire (AMD) | `HIPFIRE_BASE_URL` | user-supplied |
+| Order | Provider | Private configuration |
+|---|---|---|
+| 1 | MiniMax M3 | `MINIMAX_API_KEY` |
+| 2 | DeepSeek | `DEEPSEEK_API_KEY` |
 
-**Registry-loaded (the other 56):**
+**Provider roles in KiloCode:**
 
-Anthropic, Cohere, OpenAI, Mistral, Groq, Fireworks, Together, OpenRouter, Cerebras, NVidia, Cloudflare, DeepInfra, SambaNova, Nebius, Novita, OVHcloud, Moonshot, Kindo, Venice, xAI, Voyage, Relace, Inception, AskSage, Scaleway, Tensorix, NCompass, zAI, Nous, Gemini, Bedrock, Azure, VertexAI, WatsonX, Replicate, TextGenWebUI, HuggingFaceTGI, HuggingFaceTEI, HuggingFaceInferenceAPI, Llamafile, LlamaCpp, Lemonade, Mimo, BedrockImport, SageMaker, Flowise, ContinueProxy, Docker, Msty, ClawRouter, Vllm, CometAPI, FunctionNetwork, LlamaStack, TARS, MockLLM, TestLLM.
-
-To activate any of them: set the corresponding `*_API_KEY` env var (the bridge derives the name as `<PROVIDER>_API_KEY` upper-snake by default; override via the registry entry's `api_key_env` field).
+- MiniMax M3: normal coding/agent model.
+- DeepSeek: automatic fallback when MiniMax M3 is unavailable or fails the bounded request.
+- DeepInfra, SiliconFlow, LM Studio, and Ollama: optional, named only through `HERMES_AGENT_FAILOVER`; not an implicit fallback chain.
 
 ---
 
@@ -84,10 +80,10 @@ Two modes documented in `policies/provider-registry/routing.yaml`:
 - `cloud_allowed: false` — bridge will refuse cloud providers in this mode
 
 **`hybrid` (default):**
-- architect: `anthropic/claude` (or whichever you set)
-- implementation: `minimax`
-- budget_implementation: `deepseek`
-- fallback: `siliconflow`
+- primary implementation: `minimax`
+- authorized reverse-engineering / OpenHands fallback: `deepinfra`
+- planning / enhanced prompt: `deepseek`
+- indexing / batch fallback: `siliconflow`
 - local_default: `lmstudio`
 - local_fallback: `ollama`
 

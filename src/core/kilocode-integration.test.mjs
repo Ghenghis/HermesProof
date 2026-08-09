@@ -7,10 +7,16 @@ import { HermesLockManager } from "./lock-manager.mjs";
 import { ProviderPerformanceTracker } from "./provider-performance.mjs";
 import {
   KILOCODE_AGENT_BUS_TASK_TYPE,
+  KILOCODE_E2E_CONTRACT_VERSION,
+  KILOCODE_INSTALLED_VSIX_TASK_TYPE,
+  KILOCODE_REQUIRED_PREFLIGHTS,
+  KILOCODE_ROADMAP_TASK_TYPE,
   KILOCODE_TASK_TYPE,
   evaluateKilocodeAgentBusEnvelope,
+  evaluateKilocodeInstalledVsixReleaseProof,
   evaluateKilocodeInfrastructureProof,
   evaluateKilocodePolicy,
+  evaluateKilocodeRoadmapCompletionProof,
   readKilocodeGuardrails,
   recordKilocodeAgentBusEvent,
   recordKilocodeInfrastructureProof,
@@ -21,6 +27,42 @@ import {
 } from "./kilocode-integration.mjs";
 
 let tmpDir;
+
+function releasePreflights(hash) {
+  const records = Object.fromEntries(KILOCODE_REQUIRED_PREFLIGHTS.map((key) => [key, { ok: true }]));
+  const shots = [
+    { path: "artifacts/before.png", sha256: "a".repeat(64) },
+    { path: "artifacts/after.png", sha256: "b".repeat(64) },
+  ];
+  records["visible-ui-driver"] = {
+    ok: true,
+    uiDriver: "vscode-extension-tester",
+    vsixSha256: hash,
+    stages: ["activityBar", "view", "webview", "prompt", "backendReady", "focus"].map((name) => ({ name, status: "passed" })),
+    screenshots: shots,
+  };
+  records["settings-ui-driver"] = {
+    ok: true,
+    scenario: "settings-navigation",
+    uiDriver: "vscode-extension-tester",
+    vsixSha256: hash,
+    stages: ["activityBar", "view", "settingsAction", "settingsEditor", "settingsFrame", "settingsRoot"].map((name) => ({ name, status: "passed" })),
+    screenshots: shots,
+    settings: { visits: [{ tab: "speech", content: "speech", renderErrors: [] }] },
+  };
+  records["chat-task"] = {
+    ok: true,
+    scenario: "sidebar-submit",
+    uiDriver: "vscode-extension-tester",
+    vsixSha256: hash,
+    stages: ["activityBar", "view", "webview", "prompt", "backendReady", "focus", "sendButton", "submit", "message", "routing"].map((name) => ({ name, status: "passed" })),
+    screenshots: shots,
+    submission: { clicked: true },
+    message: { optimisticUserRow: true, promptCleared: true },
+    routing: { worker: "kilo", source: "backend", phase: "running", voiceIndependent: true },
+  };
+  return records;
+}
 
 describe("KiloCode/OpenHands HermesProof integration", () => {
   beforeEach(async () => {
@@ -270,6 +312,272 @@ describe("KiloCode/OpenHands HermesProof integration", () => {
     assert.equal(accepted.secret_values_returned, false);
   });
 
+  it("rejects installed VSIX release proof when VS Code exits before writing gate results", () => {
+    const result = evaluateKilocodeInstalledVsixReleaseProof({
+      schema: "kilocode.installed_vsix.release.v1",
+      vsixSha256: "61B35F00ABE48E6536CF64AFC4A48F065E7DBB52213631B07905578DD305E1C1",
+      resultFileExists: false,
+      error: { message: "VS Code extension test exited before writing a result file" },
+      heartbeat: [
+        "2026-07-09T14:16:02.547Z pre-readiness",
+        "2026-07-09T14:16:03.012Z pre-gate-gate6-sidecar-probes",
+      ],
+    }, { now_ms: Date.parse("2026-07-09T14:20:00.000Z") });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.release_ready, false);
+    assert.equal(result.task_type, KILOCODE_INSTALLED_VSIX_TASK_TYPE);
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.result_file_missing"));
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.gate_started_without_finish"));
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.visible_sidecar_proof_missing"));
+  });
+
+  it("accepts installed VSIX proof only with timestamps, snapshots, sidecar tool calls, and ev evidence", () => {
+    const hash = "61B35F00ABE48E6536CF64AFC4A48F065E7DBB52213631B07905578DD305E1C1";
+    const gates = {};
+    const names = [
+      "gate1-supervisor-recording",
+      "gate2-closed-loop-auto",
+      "gate3-daveai-indexed-repair",
+      "gate4-speech-safe-narration",
+      "gate5-installed-indexing",
+      "gate6-sidecar-probes",
+      "gate7-settings-panel-rendered",
+      "gate8-cli-bundled",
+      "gate9-extension-activation",
+      "gate10-required-commands",
+    ];
+    for (const [idx, name] of names.entries()) {
+      gates[name] = {
+        ok: true,
+        snapshotPath: `artifacts/${String(idx + 1).padStart(2, "0")}-${name}/snapshot.json`,
+        gateArtifactsDir: `artifacts/${String(idx + 1).padStart(2, "0")}-${name}`,
+      };
+    }
+    gates["gate7-settings-panel-rendered"].visibleWindowProof = {
+      ok: true,
+      settingsCommandSent: true,
+      settingsCommandChangedWindow: true,
+      settingsPanelVisible: true,
+      screenshotHashChanged: true,
+      foregroundBelongsToVsCode: true,
+      before: { ok: true, sha256: "before-settings", foregroundBelongsToTarget: true },
+      after: { ok: true, sha256: "after-settings", foregroundBelongsToTarget: true },
+    };
+    gates["gate7-settings-panel-rendered"].visibleSettingsWebviewProof = {
+      ok: true,
+      settingsRootPresent: true,
+      missingStableTabs: [],
+      missingRequiredTabs: [],
+      forbiddenTabsLeaked: false,
+    };
+    gates["gate9-extension-activation"].kiloActivityBarClicked = true;
+    gates["gate9-extension-activation"].visibleWindowProof = {
+      ok: true,
+      activityBarClicked: true,
+      closeEditorsCommandSent: true,
+      closeAfterMigrationCommandSent: true,
+      activityBarClickChangedWindow: true,
+      activityBarClickRecorded: true,
+      migrationDismissalProofOk: true,
+      loadWaitMs: 30000,
+      focusCommandSent: true,
+      notificationsDismissedCommandSent: true,
+      newTaskCommandSent: true,
+      markerTabActive: false,
+      webviewChatSmokeCommandSent: true,
+      webviewChatSmokeAccepted: true,
+      webviewChatSmoke: { ok: true, marker: "KILO_VISIBLE_CHAT_SMOKE_TEST", sessionID: "ses_test" },
+      screenshotHashChanged: true,
+      foregroundBelongsToVsCode: true,
+      before: { ok: true, sha256: "before-chat", foregroundBelongsToTarget: true },
+      after: { ok: true, sha256: "after-chat", foregroundBelongsToTarget: true },
+    };
+    gates["gate6-sidecar-probes"].visibleSidecarToolSmokes = {
+      openhands: {
+        ok: true,
+        expectedToolMatched: true,
+        evidenceId: "ev_openhands123",
+        toolCalls: [{ tool: "openhands", statusOk: true }],
+      },
+      aider: {
+        ok: true,
+        expectedToolMatched: true,
+        evidenceId: "ev_aider123456",
+        toolCalls: [{ tool: "aider", statusOk: true }],
+      },
+      goose: {
+        ok: true,
+        expectedToolMatched: true,
+        evidenceId: "ev_goose123456",
+        toolCalls: [{ tool: "goose", statusOk: true }],
+      },
+    };
+
+    const heartbeat = names.flatMap((name, idx) => {
+      const start = new Date(Date.parse("2026-07-09T14:16:00.000Z") + idx * 2000).toISOString();
+      const end = new Date(Date.parse("2026-07-09T14:16:01.000Z") + idx * 2000).toISOString();
+      return [`${start} pre-gate-${name}`, `${end} post-gate-${name}`];
+    });
+
+    const result = evaluateKilocodeInstalledVsixReleaseProof({
+      schema: "kilocode.installed_vsix.release.v1",
+      contractVersion: KILOCODE_E2E_CONTRACT_VERSION,
+      vsixSha256: hash,
+      startedAt: "2026-07-09T14:16:00.000Z",
+      finishedAt: "2026-07-09T14:17:00.000Z",
+      gates,
+      heartbeat,
+      preflightResults: releasePreflights(hash),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.release_ready, true);
+    assert.equal(result.status, "accepted");
+    assert.equal(result.heartbeat_count, 20);
+    assert.deepEqual(result.missing, []);
+  });
+
+  it("rejects missing, failed, stale-contract, or fake KiloCode preflights", () => {
+    const hash = "61B35F00ABE48E6536CF64AFC4A48F065E7DBB52213631B07905578DD305E1C1";
+    const preflights = releasePreflights(hash);
+    delete preflights["speech-playback"];
+    preflights["lanes-tab"] = { ok: false, blockedReason: "lanes DOM did not mount" };
+    preflights["chat-routing-surface"] = { ok: true, nested: { simulated: true } };
+    const result = evaluateKilocodeInstalledVsixReleaseProof({
+      schema: "kilocode.installed_vsix.release.v1",
+      contractVersion: "kilocode.e2e-proof-contract.stale",
+      vsixSha256: hash,
+      preflightResults: preflights,
+    });
+
+    assert.equal(result.ok, false);
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.contract_version_mismatch"));
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.preflight_missing" && finding.evidence?.preflight === "speech-playback"));
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.preflight_not_ok" && finding.evidence?.preflight === "lanes-tab"));
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.preflight_fake_metadata" && finding.evidence?.preflight === "chat-routing-surface"));
+  });
+
+  it("rejects installed VSIX proof when visible VS Code settings or chat proof is missing", () => {
+    const gates = {};
+    const names = [
+      "gate1-supervisor-recording",
+      "gate2-closed-loop-auto",
+      "gate3-daveai-indexed-repair",
+      "gate4-speech-safe-narration",
+      "gate5-installed-indexing",
+      "gate6-sidecar-probes",
+      "gate7-settings-panel-rendered",
+      "gate8-cli-bundled",
+      "gate9-extension-activation",
+      "gate10-required-commands",
+    ];
+    for (const [idx, name] of names.entries()) {
+      gates[name] = {
+        ok: true,
+        snapshotPath: `artifacts/${String(idx + 1).padStart(2, "0")}-${name}/snapshot.json`,
+      };
+    }
+    gates["gate6-sidecar-probes"].visibleSidecarToolSmokes = {
+      openhands: { ok: true, expectedToolMatched: true, evidenceId: "ev_openhands123", toolCalls: [{ statusOk: true }] },
+      aider: { ok: true, expectedToolMatched: true, evidenceId: "ev_aider123456", toolCalls: [{ statusOk: true }] },
+      goose: { ok: true, expectedToolMatched: true, evidenceId: "ev_goose123456", toolCalls: [{ statusOk: true }] },
+    };
+    const heartbeat = names.flatMap((name, idx) => {
+      const start = new Date(Date.parse("2026-07-09T14:16:00.000Z") + idx * 2000).toISOString();
+      const end = new Date(Date.parse("2026-07-09T14:16:01.000Z") + idx * 2000).toISOString();
+      return [`${start} pre-gate-${name}`, `${end} post-gate-${name}`];
+    });
+
+    const result = evaluateKilocodeInstalledVsixReleaseProof({
+      schema: "kilocode.installed_vsix.release.v1",
+      vsixSha256: "61B35F00ABE48E6536CF64AFC4A48F065E7DBB52213631B07905578DD305E1C1",
+      finishedAt: "2026-07-09T14:17:00.000Z",
+      gates,
+      heartbeat,
+    });
+
+    assert.equal(result.ok, false);
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.visible_settings_window_proof_missing"));
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.visible_chat_window_proof_missing"));
+  });
+
+  it("requires all 21 installed gates when all-21 release proof is requested", () => {
+    const gates = {};
+    for (let idx = 0; idx < 10; idx++) {
+      const name = [
+        "gate1-supervisor-recording",
+        "gate2-closed-loop-auto",
+        "gate3-daveai-indexed-repair",
+        "gate4-speech-safe-narration",
+        "gate5-installed-indexing",
+        "gate6-sidecar-probes",
+        "gate7-settings-panel-rendered",
+        "gate8-cli-bundled",
+        "gate9-extension-activation",
+        "gate10-required-commands",
+      ][idx];
+      gates[name] = { ok: true, snapshotPath: `artifacts/${idx + 1}/snapshot.json` };
+    }
+    gates["gate6-sidecar-probes"].visibleSidecarToolSmokes = {
+      openhands: { ok: true, expectedToolMatched: true, evidenceId: "ev_openhands123", toolCalls: [{ statusOk: true }] },
+      aider: { ok: true, expectedToolMatched: true, evidenceId: "ev_aider123456", toolCalls: [{ statusOk: true }] },
+      goose: { ok: true, expectedToolMatched: true, evidenceId: "ev_goose123456", toolCalls: [{ statusOk: true }] },
+    };
+
+    const result = evaluateKilocodeInstalledVsixReleaseProof({
+      schema: "kilocode.installed_vsix.release.v1",
+      vsixSha256: "61B35F00ABE48E6536CF64AFC4A48F065E7DBB52213631B07905578DD305E1C1",
+      finishedAt: "2026-07-09T14:17:00.000Z",
+      gates,
+      heartbeat: ["2026-07-09T14:16:00.000Z pre-gate-gate1-supervisor-recording"],
+    }, { required_gate_count: 21 });
+
+    assert.equal(result.ok, false);
+    assert.ok(result.findings.some((finding) => finding.code === "installed_vsix.required_gates_missing"));
+    assert.ok(result.findings.some((finding) => finding.evidence?.missing?.includes("gate21-evolve-lane")));
+  });
+
+  it("rejects roadmap completion claims without real proof and accepts hashed runner-backed items", () => {
+    const rejected = evaluateKilocodeRoadmapCompletionProof({
+      schema: "kilocode.roadmap_completion.v1",
+      docs: ["ROADMAP.md"],
+      items: [{ id: "action-plan-rest", status: "done", fake: true }],
+    });
+
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.task_type, KILOCODE_ROADMAP_TASK_TYPE);
+    assert.ok(rejected.findings.some((finding) => finding.code === "roadmap.fake_or_stubbed_item"));
+    assert.ok(rejected.findings.some((finding) => finding.code === "roadmap.completed_item_missing_evidence"));
+    assert.ok(rejected.findings.some((finding) => finding.code === "roadmap.required_docs_missing"));
+
+    const accepted = evaluateKilocodeRoadmapCompletionProof({
+      schema: "kilocode.roadmap_completion.v1",
+      docs: [
+        "ROADMAP.md",
+        "ACTION_PLAN.md",
+        "HANDOFF.md",
+        "docs/current-e2e-recovery-contract-2026-07-10.md",
+        "docs/real-e2e-proof-governance.md",
+        "ci/e2e-gate-proof-policy.json",
+      ],
+      items: [{
+        id: "gates-1-10",
+        status: "done",
+        evidenceId: "ev_roadmap1234",
+        runner: { command: "bun script/installed-vsix-smoke.ts", status: "pass", durationMs: 120000 },
+        artifacts: [{
+          path: "test-results/installed-vsix-smoke.json",
+          sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        }],
+      }],
+    }, { require_all_complete: true });
+
+    assert.equal(accepted.ok, true);
+    assert.equal(accepted.status, "accepted");
+    assert.deepEqual(accepted.completed_items, ["gates-1-10"]);
+  });
+
   it("records accepted agent-bus events but refuses fake or UI-only proof", async () => {
     const manager = new HermesLockManager({ workspaceRoot: tmpDir });
     await manager.init();
@@ -366,6 +674,41 @@ describe("KiloCode/OpenHands HermesProof integration", () => {
       "gitlab.pipeline_smoke_passed",
       "gitlab.runner_secret_scope_checked",
     ]);
+  });
+
+  it("does not report partial infrastructure proof as ok but still allows recording follow-up evidence", async () => {
+    const partial = evaluateKilocodeInfrastructureProof({
+      resource: "cloudflare_edge",
+      checks: [
+        { id: "cloudflare.waf_rules_enabled", status: "pass", rule_count: 1, observed_utc: "2026-07-05T12:00:00Z" },
+      ],
+    });
+
+    assert.equal(partial.ok, false);
+    assert.equal(partial.accepted_for_recording, true);
+    assert.equal(partial.gate_status, "fail");
+    assert.equal(partial.release_ready, false);
+    assert.ok(partial.missing_required_checks.includes("cloudflare.secret_probe_blocked"));
+
+    const manager = new HermesLockManager({ workspaceRoot: tmpDir });
+    await manager.init();
+    const recorded = await recordKilocodeInfrastructureProof({
+      manager,
+      workspaceRoot: tmpDir,
+      owner: "codex-kilo",
+      task_id: "partial-cloudflare-proof",
+      resource: "cloudflare_edge",
+      summary: "Partial Cloudflare proof should be recorded as follow-up, not release-ready.",
+      checks: [
+        { id: "cloudflare.waf_rules_enabled", status: "pass", rule_count: 1, observed_utc: "2026-07-05T12:00:00Z" },
+      ],
+    });
+
+    assert.equal(recorded.ok, false);
+    assert.equal(recorded.recorded, true);
+    assert.equal(recorded.status, "recorded_needs_followup");
+    assert.equal(recorded.release_ready, false);
+    assert.equal(recorded.evidence.kind, "kilocode.infrastructure.proof");
   });
 
   it("records Cloudflare/VPS proof but rejects fake or UI-only infrastructure gates", async () => {

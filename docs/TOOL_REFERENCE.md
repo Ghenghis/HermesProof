@@ -1,6 +1,6 @@
 # HermesProof — Tool Reference
 
-The server exposes 101 MCP tools across coordination, workspace switching, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails, KiloCode agent-bus proof enforcement, A2A task exchange, Hermes Agent bridging, and diagnostics.
+The server exposes 119 MCP tools across coordination, workspace switching, workspace release hygiene, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails, KiloCode agent-bus proof enforcement, A2A task exchange, Hermes Agent bridging, HP-MHA Model–Harness Attribution, and diagnostics.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>
@@ -15,7 +15,7 @@ The server exposes 101 MCP tools across coordination, workspace switching, proje
 | Evidence        | `hermes_append_evidence`, `hermes_verify_evidence`                                                                                          |
 | Events          | `hermes_list_events`, `hermes_emit_event`, `hermes_mark_event_handled`                                                                      |
 | Queue           | `hermes_enqueue_task`, `hermes_list_pending_tasks`, `hermes_pick_task`, `hermes_recover_stale_tasks`                                        |
-| Workspace       | `hermes_get_workspace`, `hermes_set_workspace`, `hermes_connect_project`                                                                    |
+| Workspace       | `hermes_get_workspace`, `hermes_set_workspace`, `hermes_connect_project`, `hermes_workspace_hygiene`                                        |
 | Test / Tickets  | `hermes_get_test_mode`, `hermes_set_test_mode`, `hermes_report_bug`, `hermes_list_bug_tickets`, `hermes_update_bug_ticket`, `hermes_submit_bug_fix` |
 | Contracts       | `hermes_upsert_project_contract`, `hermes_list_project_contracts`, `hermes_read_project_contract`, `hermes_anti_slop_review`, `hermes_list_contract_reviews` |
 | Claim Audit     | `hermes_decompose_claims`, `hermes_audit_claims`, `hermes_list_claim_audits`, `hermes_agentic_tick`                                 |
@@ -33,10 +33,12 @@ The server exposes 101 MCP tools across coordination, workspace switching, proje
 | Anonymous       | `hermes_list_agents`, `hermes_anonymous_claim`, `hermes_anonymous_release`, `hermes_anonymous_state`, `hermes_record_outcome`, `hermes_record_task` |
 | Dispatch        | `hermes_dispatch_recommend`                                                                                                                 |
 | Providers       | `hermes_provider_record_outcome`, `hermes_provider_stats`, `hermes_provider_rank`                                                           |
-| KiloCode        | `hermes_kilocode_status`, `hermes_kilocode_set_guardrails`, `hermes_kilocode_policy_check`, `hermes_kilocode_checkpoint_progress`, `hermes_kilocode_record_delegation`, `hermes_kilocode_evaluate_agent_bus_event`, `hermes_kilocode_record_agent_bus_event`, `hermes_kilocode_evaluate_infrastructure_proof`, `hermes_kilocode_record_infrastructure_proof` |
+| KiloCode        | `hermes_kilocode_status`, `hermes_kilocode_set_guardrails`, `hermes_kilocode_policy_check`, `hermes_kilocode_checkpoint_progress`, `hermes_kilocode_evaluate_installed_vsix_release_proof`, `hermes_kilocode_evaluate_roadmap_completion_proof`, `hermes_kilocode_record_delegation`, `hermes_kilocode_evaluate_agent_bus_event`, `hermes_kilocode_record_agent_bus_event`, `hermes_kilocode_evaluate_infrastructure_proof`, `hermes_kilocode_record_infrastructure_proof` |
 | USER session    | `hermes_user_grant_session`, `hermes_user_revoke_session`, `hermes_user_check_authorization`                                                |
 | A2A             | `hermes_a2a_create_task`, `hermes_a2a_get_task`, `hermes_a2a_update_task`, `hermes_a2a_list_tasks`                                          |
-| Hermes Agent    | `hermes_agent_health`, `hermes_agent_request_user_session`, `hermes_agent_resolve_blocked`, `hermes_agent_revoke_session`                   |
+| Hermes Agent | `hermes_agent_health`, `hermes_agent_request_user_session`, `hermes_agent_resolve_blocked`, `hermes_agent_revoke_session` |
+| Hybrid helpers | `hermes_helper_runtime_evaluate`, `hermes_helper_runtime_evaluate_consensus`, `hermes_staleness_evaluate` |
+| HP-MHA          | `hermes_hp_mha_harness_card_record`, `hermes_hp_mha_experiment_plan_lock`, `hermes_hp_mha_benchmark_run_attest`, `hermes_hp_mha_trace_bundle_verify`, `hermes_hp_mha_trace_index_record`, `hermes_hp_mha_trace_search`, `hermes_hp_mha_trace_metrics`, `hermes_hp_mha_trace_prune`, `hermes_hp_mha_model_harness_attribution`, `hermes_hp_mha_promotion_evaluate`, `hermes_hp_mha_experiment_report`, `hermes_hp_mha_sub_gate` |
 
 ---
 
@@ -83,6 +85,34 @@ Switches to a workspace, optionally finds/creates the GitLab project, optionally
   "taskTypes": ["release", "repair"]
 }
 ```
+
+## hermes_workspace_hygiene
+
+Read-only dirty-to-clean inspection for the active workspace. It uses real `git status --porcelain=v1`, classifies tracked modifications, unexpected untracked files, leaked MCP probe files, install-related `.gitignore` changes, and reviewed expected-diff manifests. A current hash-bound manifest can make a recovery batch eligible for focused work, but never makes it release-ready. Only a zero-dirty tree returns `pass` / `clean`. It never runs `git reset`, `git clean`, `git stash`, checkout, delete, move, stage, or commit commands.
+
+```json
+{
+  "expectedManifestPath": ".hermes3d_orchestrator/expected-diff.json",
+  "allowExpectedDirty": false
+}
+```
+
+`allowExpectedDirty` is retained for caller compatibility and cannot bypass the clean-release rule. The result contains a factual `verdict`: `pass`/`proven`, `blocked`/`insufficient`, or `fail`/`rejected`, alongside a non-destructive recovery plan.
+
+## hermes_storage_census
+
+Read-only bounded storage census for approved project, temporary, build, and artifact roots. It reports aggregate file count, bytes, age bands, and metadata-only retention classes. An unknown group, unreadable directory, or file-limit cutoff returns `blocked`; the tool does not read content, delete files, or label anything safe to delete.
+
+```json
+{
+  "roots": ["G:\\Github\\kilocode-2026-openhands\\test-results"],
+  "maxFiles": 10000,
+  "maxDepth": 8,
+  "groupDepth": 1
+}
+```
+
+The requested roots must be inside the active workspace or an explicit `HERMESPROOF_STORAGE_ROOTS` allowlist. Use the report to preserve, quarantine, or review data before any separately approved cleanup.
 
 ## hermes_set_test_mode
 
@@ -410,6 +440,50 @@ Records a real KiloCode milestone checkpoint with optional visual proof paths, g
   "gates": [{ "gate": "manual visual proof", "status": "pass", "evidence": "proof/first-screen.png exists" }],
   "next_action": "Run OpenHands delegation smoke",
   "current_milestone_usable": true
+}
+```
+
+## hermes_kilocode_evaluate_installed_vsix_release_proof
+
+Evaluates KiloCode's strict installed-VSIX release contract without writing evidence. The proof must use contract version `kilocode.e2e-proof-contract.2026-07-10`, bind to an installed VSIX SHA-256, include every required gate snapshot and heartbeat, prove real OpenHands/Aider/Goose results where claimed, and include all required `preflightResults`.
+
+HermesProof applies the same special checks as KiloCode for `visible-ui-driver`, `settings-ui-driver`, and `chat-task`. It recursively rejects mock, fake, stub, simulated, skipped, or UI-only metadata. A focused artifact can diagnose a surface, but it is not a release pass.
+
+```json
+{
+  "proof": {
+    "schema": "kilocode.installed_vsix.release.v1",
+    "contractVersion": "kilocode.e2e-proof-contract.2026-07-10",
+    "vsixSha256": "<64-hex-sha256>",
+    "gates": {},
+    "heartbeat": [],
+    "preflightResults": {}
+  },
+  "required_gate_count": 21
+}
+```
+
+The authoritative KiloCode policy is `ci/e2e-gate-proof-policy.json`; the current operational explanation is `docs/current-e2e-recovery-contract-2026-07-10.md`. A change to either contract requires a matching HermesProof evaluator and test update.
+
+## hermes_kilocode_evaluate_roadmap_completion_proof
+
+Evaluates completion claims for KiloCode's roadmap and action plan without writing evidence. Completed items require a real `ev_*` id, runner command or API path, status and duration, and a hashed artifact. Required truth documents include `ROADMAP.md`, `ACTION_PLAN.md`, `HANDOFF.md`, the current E2E recovery contract, real-E2E governance, and the machine-readable policy.
+
+```json
+{
+  "proof": {
+    "schema": "kilocode.roadmap_completion.v1",
+    "docs": [
+      "ROADMAP.md",
+      "ACTION_PLAN.md",
+      "HANDOFF.md",
+      "docs/current-e2e-recovery-contract-2026-07-10.md",
+      "docs/real-e2e-proof-governance.md",
+      "ci/e2e-gate-proof-policy.json"
+    ],
+    "items": []
+  },
+  "require_all_complete": true
 }
 ```
 
@@ -1207,10 +1281,55 @@ Lists A2A tasks, optionally filtered by agent or status.
 
 ## hermes_agent_health
 
-Checks configured Hermes Agent providers in failover order and reports the first healthy provider.
+Checks configured HermesAgent providers in deterministic order and reports the first healthy provider. The default is MiniMax M3 first, then DeepSeek. Other providers must be explicitly listed in `HERMES_AGENT_FAILOVER`.
 
 ```json
 {}
+```
+
+## hermes_helper_runtime_evaluate
+
+Evaluates one redacted HermesAgent or ZeroClaw local/VPS worker envelope. A completed result needs a distinct worker identity, run/commit/VSIX lineage, terminal runner status, artifact hashes, `secretValuesReturned: false`, and a real HermesProof `ev_*` id. This tool is read-only and never turns an agent summary into evidence.
+
+```json
+{ "envelope": { "schema": "hermesproof.helper-runtime.v1" } }
+```
+
+## hermes_staleness_evaluate
+
+Evaluates whether a document, runner, artifact, installed-VSIX proof, config result, or evidence record is current for the stated commit, VSIX hash, and contract version. It rejects stale/future timestamps, stale current claims, mixed-run hashes, broken supersession, fake metadata, secret signals, and missing completed-proof evidence.
+
+```json
+{ "report": { "schema": "hermesproof.staleness.v1", "records": [] } }
+```
+
+## hermes_storage_census
+
+Reads metadata from explicitly approved storage roots and groups proof, protected, dependency, temporary, quarantine, and unknown material. Partial scans and unknown material are blocked. It never reads private file content, moves files, or deletes data.
+
+```json
+{ "roots": ["<approved-root>"], "maxFiles": 10000, "maxDepth": 8 }
+```
+
+## hermes_archive_plan
+
+Builds a read-only archive proposal from a hash-bound `hermesproof.expected-diff-manifest.v2`. It rechecks every source SHA-256, requires a separate approved archive root, and returns relative archive destinations. It never copies, moves, purges, or permits source deletion.
+
+```json
+{
+  "sourceRoot": "<approved-source-root>",
+  "archiveRoot": "<approved-separate-archive-root>",
+  "archiveId": "candidate-20260710",
+  "manifest": { "schema": "hermesproof.expected-diff-manifest.v2", "entries": [] }
+}
+```
+
+## hermes_helper_runtime_evaluate_consensus
+
+Evaluates the required local and VPS helper envelopes together. They must share a run id, commit, and VSIX SHA-256, while retaining separate worker identities. Any mismatch, timeout, nonzero exit, failed worker, missing artifact, or missing evidence blocks the result.
+
+```json
+{ "required_locations": ["local", "vps"], "envelopes": [] }
 ```
 
 ## hermes_agent_request_user_session
@@ -1235,4 +1354,296 @@ Revokes the Hermes Agent's own active USER session.
 
 ```json
 {}
+```
+
+---
+
+## HP-MHA Model–Harness Attribution
+
+The seven tools below implement the HP-MHA-001..010 contract from
+`docs/48-Point Lever.md`. They record a complete experiment bundle
+(harness card → locked plan → attested runs → verified trace → attribution
+→ promotion verdict) into a dedicated hash-chained ledger
+(`<workspace>/.hermes3d_orchestrator/evidence/hp_mha.ndjson`). Each entry
+chains to the previous one; the final `hermes_hp_mha_promotion_evaluate`
+verdict is the canonical machine-readable result consumed by the
+`HP-HARNESS-ATTRIBUTION` release sub-gate.
+
+The tools emit six `ev_*` evidence families:
+
+| Family                  | Tool                                  | Purpose                                                              |
+| ----------------------- | ------------------------------------- | -------------------------------------------------------------------- |
+| `ev_harness_*`          | `hermes_hp_mha_harness_card_record`   | Canonicalize and hash a complete seven-layer harness configuration    |
+| `ev_experiment_*`       | `hermes_hp_mha_experiment_plan_lock`  | Lock model cells, harness cells, task set, evaluator, environment    |
+| `ev_run_*`              | `hermes_hp_mha_benchmark_run_attest`  | Bind each completed run to the locked plan; classify contamination    |
+| `ev_trace_*`            | `hermes_hp_mha_trace_bundle_verify`   | Verify trace chunk hashes, recompute Merkle root, classify retention  |
+| `ev_attribution_*`      | `hermes_hp_mha_model_harness_attribution` | Compute harness effect, model effect, and interaction (HP-MHA-007) |
+| `ev_promotion_*`        | `hermes_hp_mha_promotion_evaluate`    | PASS / FAIL / INCONCLUSIVE with chained `ev_*` reason codes          |
+| (read-only, no ledger)  | `hermes_hp_mha_sub_gate`              | Same verdict path, but read-only and used by the release sub-gate    |
+
+HermesProof MUST NOT modify a candidate harness, run its own optimization
+loop, or generate synthetic evidence (HP-MHA-009, HP-MHA-010). These tools
+are therefore evaluators only — the optimizer lives outside the proof
+authority and the final candidate is independently re-evaluated here.
+
+## hermes_hp_mha_harness_card_record
+
+Canonicalizes a seven-layer harness card (Execution, Model & inference,
+Tools, Context, Scheduling, Observability, Governance) and writes
+`ev_harness_*`. Rejects unknown layers, unknown fields within a layer,
+and non-SHA-256 hash fields. The returned `harness_card_sha256` becomes
+the candidate identifier downstream tools bind against.
+
+```json
+{
+  "card_id": "kilocode_v0.7.0",
+  "layers": {
+    "execution": { "...": "see docs/48-Point Lever.md §4" },
+    "model":     { "provider": "anthropic", "model_id": "claude-opus-4-6" },
+    "tools":     { "...": "..." },
+    "context":   { "...": "..." },
+    "scheduling": { "controller": "loop", "retry_count": 2, "...": "..." },
+    "observability": { "...": "..." },
+    "governance": { "secret_values_returned": false, "...": "..." }
+  }
+}
+```
+
+## hermes_hp_mha_experiment_plan_lock
+
+Locks the experiment design and rejects both bare model comparisons
+(HP-MHA-002 requires `locked_harness` / `factorial_2x2` / `factorial_NxN`)
+and bare harness improvements (HP-MHA-003 requires all eight
+`held_constant` keys: `model`, `inference_settings`, `task_set`,
+`environment`, `evaluator`, `permissions`, `budgets`, `stopping_rules`).
+Writes `ev_experiment_*`.
+
+```json
+{
+  "experiment_id": "kilocode_vs_opus_4_6",
+  "design": "factorial_2x2",
+  "held_constant": {
+    "model": true, "inference_settings": true, "task_set": true,
+    "environment": true, "evaluator": true, "permissions": true,
+    "budgets": true, "stopping_rules": true
+  },
+  "model_manifest":        { "provider": "anthropic", "model_id": "claude-opus-4-6" },
+  "harness_card":          { "card_id": "kilocode_v0.7.0", "layers": { "...": "..." } },
+  "task_set_manifest":     { "task_set_id": "ts_v1", "tasks": [{ "id": "t1" }] },
+  "evaluator_manifest":    { "evaluator_id": "eval_main", "evaluator_commit": "...", "evaluator_sha256": "..." },
+  "environment_manifest":  { "environment_id": "ci", "os": "linux", "arch": "x64", "image_digest": "sha256:..." }
+}
+```
+
+## hermes_hp_mha_benchmark_run_attest
+
+Binds one completed run to the locked plan. The run MUST carry sha256
+bindings for all six manifests (model, harness, task set, evaluator,
+environment) plus a trace-root hash, and one of five outcomes:
+`passed` / `failed` / `cancelled` / `crashed` / `timed_out`. The tool
+also classifies HP-MHA-004 contamination (undeclared fallback, model
+substitution, changed reasoning / timeout / tool inventory). Writes
+`ev_run_*`.
+
+```json
+{
+  "run_id": "run_001",
+  "experiment_id": "kilocode_vs_opus_4_6",
+  "model_manifest_sha256":       "<64 hex>",
+  "harness_manifest_sha256":     "<64 hex>",
+  "task_set_manifest_sha256":    "<64 hex>",
+  "evaluator_manifest_sha256":   "<64 hex>",
+  "environment_manifest_sha256": "<64 hex>",
+  "trace_root_sha256":           "<64 hex>",
+  "outcome": "passed",
+  "latency_ms": 1234,
+  "tokens": 50000,
+  "cost_usd": 0.42
+}
+```
+
+## hermes_hp_mha_trace_bundle_verify
+
+Verifies a trace bundle. Each `chunks[i].sha256` must be a SHA-256 hex
+string; the recomputed left-fold Merkle root must equal `root_sha256`.
+`retention` must be one of `release_pinned` (never auto-purged),
+`failure_diagnostic` (retained through the active repair cycle),
+`routine_run` (short retention), or `duplicate_chunk` (deduplicated by
+hash). Writes `ev_trace_*` with the recomputed Merkle root and any
+findings.
+
+```json
+{
+  "bundle_id": "tb_run_001",
+  "retention": "release_pinned",
+  "chunks": [
+    { "sha256": "<64 hex>" },
+    { "sha256": "<64 hex>" }
+  ],
+  "root_sha256": "<64 hex>"
+}
+```
+
+## hermes_hp_mha_trace_index_record
+
+Ingests a trace bundle (same shape as `hermes_hp_mha_trace_bundle_verify`) and writes one content-addressed index row per chunk to `<workspace>/.hermes3d_orchestrator/evidence/hp_mha_trace_index.ndjson`. Each row carries `bundle_id`, `byte_start`, `byte_end`, `tokens`, `kind_hint`, and any `signal_tags`. The index is keyed on `(bundle_id, byte_start)` so range queries run O(log n) without scanning the main ledger.
+
+```json
+{
+  "bundle_id": "tb_run_001",
+  "retention": "release_pinned",
+  "chunks": [
+    { "sha256": "<64 hex>", "bytes": 100, "kind": "tool_ok", "signals": ["artifact_path"] },
+    { "sha256": "<64 hex>", "bytes": 200, "kind": "test_passed" }
+  ],
+  "root_sha256": "<64 hex>"
+}
+```
+
+## hermes_hp_mha_trace_search
+
+Range-searches the trace index for one `bundle_id`. Returns rows whose byte window intersects `[byte_start, byte_end]` (each open-ended if omitted), optionally filtered by `kind` and `signals`. For the millions-of-tokens case this is the only path that does not require scanning `hp_mha.ndjson`. Read-only.
+
+```json
+{
+  "bundle_id": "tb_run_001",
+  "byte_start": 80,
+  "byte_end": 250,
+  "kind": "tool_ok",
+  "signals": ["artifact_path"],
+  "limit": 200
+}
+```
+
+## hermes_hp_mha_trace_metrics
+
+Derives the §6 trace-level metrics from a bundle whose chunks carry
+`kind` and (optionally) `signals`. Reports:
+
+- `recovery_rate_at_{1,3,5,10}_steps` — fraction of error chunks that were
+  followed by productive work (`tool_ok`, `patch_accepted`, `test_passed`,
+  `corrective_action`) within the given step budget. Error chunks are
+  `tool_error`, `test_failure`, `patch_rejected`, or `malformed`.
+- `avg_control_lag_steps` — mean steps from each error to its
+  `corrective_action`, counting the first `instruction_issued` along the
+  way. Zero when no error had both an instruction and a correction
+  within 5 steps.
+- `context_retention` — fraction of `required_signals` still present in
+  the last `lookback` chunks (default 5). Tail-only check so a model that
+  drops constraints late is caught even when early chunks were correct.
+
+This tool is read-only and emits no evidence. Use the bundle your runner
+produced, not a summary exported by the candidate.
+
+```json
+{
+  "bundle": {
+    "chunks": [
+      { "kind": "tool_ok", "signals": ["artifact_path"] },
+      { "kind": "tool_error" },
+      { "kind": "instruction_issued" },
+      { "kind": "corrective_action" },
+      { "kind": "tool_ok", "signals": ["artifact_path"] }
+    ]
+  },
+  "required_signals": ["artifact_path", "acceptance_tests"],
+  "lookback": 5
+}
+```
+
+## hermes_hp_mha_trace_prune
+
+Walks the HP-MHA evidence ledger at `<workspace>/.hermes3d_orchestrator/evidence/hp_mha.ndjson`,
+classifies each `ev_trace` entry by `retention`, and:
+
+- **keeps** `release_pinned` entries forever;
+- **keeps** `failure_diagnostic` only when `failures_required=true`;
+- **prunes** `routine_run` entries older than `routine_retention_ms`
+  (default 7 days; pass `0` to disable the window);
+- **dedups** `duplicate_chunk` entries sharing the same `root_sha256`.
+
+The hash chain stays intact — pruning never edits prior entries. The
+tool appends a single `ev_prune` summary at the tail describing what
+disappeared. Callers must therefore preserve ledger files rather than
+mutating them in place.
+
+```json
+{
+  "routine_retention_ms": 604800000,
+  "failures_required": false,
+  "now_ms": 1754438400000
+}
+```
+
+## hermes_hp_mha_model_harness_attribution
+
+Computes the factorial attribution triple from a 2×2 matrix
+(`s11` = model 1 + harness 1, …, `s22` = model 2 + harness 2):
+
+```
+harness_effect = ((s12 − s11) + (s22 − s21)) / 2
+model_effect   = ((s21 − s11) + (s22 − s12)) / 2
+interaction    =  s22 − s21 − s12 + s11
+```
+
+Results are rounded to 12 decimal places (IEEE-754 noise floor). Writes
+`ev_attribution_*`. This is the only way HP-MHA-007 multi-dimensional
+reporting is satisfied; reporting only one aggregate success percentage
+is rejected.
+
+```json
+{
+  "experiment_id": "kilocode_vs_opus_4_6",
+  "matrix": { "s11": 0.50, "s12": 0.55, "s21": 0.60, "s22": 0.65 },
+  "uncertainty": { "ci_95_pp": 0.02 }
+}
+```
+
+## hermes_hp_mha_promotion_evaluate
+
+Returns the final verdict. Each contract requirement is enforced in
+order: HP-MHA-001 binding → HP-MHA-002/003 design → HP-MHA-004
+contamination → HP-MHA-005 denominator (failed/cancelled/crashed/
+timed_out must be in the denominator; "no failures" with >1 cell is
+rejected as impossible-clean) → HP-MHA-006 holdout isolation →
+HP-MHA-007 multi-dimensional report → HP-MHA-008 reason codes + chained
+`ev_*` evidence → HP-MHA-009 independence from candidate →
+HP-MHA-010 real execution (`execution_real: true` required, any fake /
+mock / synthetic signal rejected). Writes `ev_promotion_*`.
+
+```json
+{
+  "kind": "promotion",
+  "evidence_ids": ["ev_abcdef12345"],
+  "run_attestations": [{ "...": "see benchmark_run_attest shape" }],
+  "plan": { "...": "see experiment_plan_lock shape" },
+  "attribution": {
+    "harness_effect_pp": 0.05,
+    "model_effect_pp": 0.10,
+    "interaction_pp": 0
+  },
+  "execution_real": true
+}
+```
+
+## hermes_hp_mha_sub_gate
+
+Read-only convenience that returns the same verdict path
+`HP-HARNESS-ATTRIBUTION` uses from `scripts/truth-gates.mjs`. It does
+not write evidence. Use this when you want to dry-run a candidate
+experiment before paying for the real evidence append. Always returns
+the gate id and the full reason-codes list, never the binary verdict
+alone.
+
+```json
+{
+  "harness_card": { "card_id": "...", "layers": { "...": "..." } },
+  "experiment_plan": { "design": "factorial_2x2", "held_constant": { "...": "..." } },
+  "run_attestations": [{ "outcome": "passed" }, { "outcome": "failed" }],
+  "matrix": { "s11": 0.5, "s12": 0.6, "s21": 0.7, "s22": 0.8 },
+  "holdout_visible_to_optimizer": false,
+  "execution_real": true,
+  "fake_signals": [],
+  "evidence_ids": ["ev_abcdef12345"]
+}
 ```

@@ -1,0 +1,494 @@
+{
+  "schema": "hermesproof.source-recovery.public.v1",
+  "observed_utc": "2026-08-09T03:12:27.610Z",
+  "source_branch": "codex/hermesproof-workspace-realtime-unlocks",
+  "source_head": "fae63a403501727aa1484a681a00d070fd9117d5",
+  "source_root_sha256": "8a0d0ed7f3e03deda538e499f32a244d9f021ded2c5bb5571ba2cbf348c0d5f1",
+  "destination_root_sha256": "abadec6dcb92c7dd9a4ed2e017a22f0c83cb57223b10e006653cc226e3997171",
+  "selected_count": 68,
+  "excluded_count": 572,
+  "selected_bytes": 1392925,
+  "selected": [
+    {
+      "path": ".gitlab-ci.yml",
+      "status": "tracked-modified",
+      "reason": "root-file:.gitlab-ci.yml",
+      "bytes": 2177,
+      "sha256": "e4a6bd96689f9ebf7f5f714d36b1fee96c863f2aa294b2067f4d130231a3bc24"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "status": "tracked-modified",
+      "reason": "root-file:CHANGELOG.md",
+      "bytes": 17719,
+      "sha256": "fa03fb20fb9d3d3197b453b76aaec5b276de43b538f62453bd112ef0873dcd52"
+    },
+    {
+      "path": "ci/blocker-report.mjs",
+      "status": "untracked",
+      "reason": "product-root:ci",
+      "bytes": 5010,
+      "sha256": "65cb6af76d37d7b78d36458fbc397bc845e69ee8a44e8f1448acabb5c0a71c27"
+    },
+    {
+      "path": "ci/release-truth.mjs",
+      "status": "untracked",
+      "reason": "product-root:ci",
+      "bytes": 1011,
+      "sha256": "1ddbb21647503f2df8762213a27539f0df21cc84d84e2d9b7d7e28bd62c1e7a2"
+    },
+    {
+      "path": "CODEX_NEXT_PROMPTS.md",
+      "status": "untracked",
+      "reason": "root-file:CODEX_NEXT_PROMPTS.md",
+      "bytes": 33808,
+      "sha256": "06f492d23d4a7841deb8a9045edadc842bbfc914e35e749161112fb508df4eb5"
+    },
+    {
+      "path": "docs/48-Point Lever.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 18848,
+      "sha256": "39bee0178d637b275a454d5a96f7f05c9b52b6f7bba64508f5001fb2194cf604"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 24156,
+      "sha256": "9a9995d1a343693557ff4b59e6d0710f349464f64e461db5a223345939f77da2"
+    },
+    {
+      "path": "docs/audits/2026-08-06-hp-mha-phase3.codex.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 16143,
+      "sha256": "473c528a7eeed6244b8e7a469ccb30cc6e8d7c902d441ba9d4a1f86b1c092871"
+    },
+    {
+      "path": "docs/diagrams/architecture.svg",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 9324,
+      "sha256": "fde8f7b6a18c07410b9b7dc01666a2d94f77a7b469974f6c769420032c7984ad"
+    },
+    {
+      "path": "docs/diagrams/hero.svg",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 6782,
+      "sha256": "0a03a6f3506345517cb71dd257c81b3e31a7951328dca00aa2eb8084832e9d2a"
+    },
+    {
+      "path": "docs/diagrams/truth-gates-animated.svg",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 14471,
+      "sha256": "6bec9f86267e10dcd9a008614dcf09a884722edc22fc6232aab9e2814ae1ac4b"
+    },
+    {
+      "path": "docs/helper-runtime-activation-2026-07-10.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 5314,
+      "sha256": "985a9942be05a1a4ea2a17f5405e2992a7a26244fdb32c5da089d50fe24a6e27"
+    },
+    {
+      "path": "docs/HERMES_AGENT_ENABLE.md",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 7978,
+      "sha256": "122b751c70c09799187f64fa29da79068e550114102caf032ed1eaebc660225d"
+    },
+    {
+      "path": "docs/HP_MHA_V4_RELEASE_NOTES.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 12184,
+      "sha256": "03684aeef0f43810e8346be2ea9b6e86e29e5219f6905d9803069ace75fb54f8"
+    },
+    {
+      "path": "docs/HYBRID_HELPER_RUNTIME.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 8402,
+      "sha256": "54d9172fb65520a092230c04d8e511673443f69769effe7fe8329c0c6d07081f"
+    },
+    {
+      "path": "docs/incidents/2026-05-03-chain-break-ev_47347bd34f9a282d.md",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 4762,
+      "sha256": "77be8a5ba1f057a11211c7d0a4bf89d88ecd725fbd2bd675fc9127c3ca6226b5"
+    },
+    {
+      "path": "docs/KILOCODE_OPENHANDS_INTEGRATION.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 19955,
+      "sha256": "dcad1c2a787614e6daf538b35f071566235bef40c460222ad27c07117466a6a3"
+    },
+    {
+      "path": "docs/MAINTENANCE.md",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 11628,
+      "sha256": "045776626e82dc3ef8946a49851a4aa148fdddabd47f9dffb1617d21797c328e"
+    },
+    {
+      "path": "docs/Readme.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 54240,
+      "sha256": "14669a4400f9e850620114097b476a83df4b42dacd2be79df62f472fcd269a3f"
+    },
+    {
+      "path": "docs/STALENESS_AUDIT_2026-07-05.md",
+      "status": "untracked",
+      "reason": "product-root:docs",
+      "bytes": 5685,
+      "sha256": "89fcdf1fe8a162a12a7b5780b07f43932bca1ba32bffae264039e7d24c21b48a"
+    },
+    {
+      "path": "docs/TOOL_REFERENCE.md",
+      "status": "tracked-modified",
+      "reason": "product-root:docs",
+      "bytes": 61319,
+      "sha256": "a6b5cec736507bde387bbd626cd735d4113f9945e8586d4b48bd61a2a814468e"
+    },
+    {
+      "path": "examples/hp-mha/CONTRIBUTING.md",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 4241,
+      "sha256": "5d2134cb0907feda19eb9aa044c940382adcd5fca0f5c1345a34e024af183ac2"
+    },
+    {
+      "path": "examples/hp-mha/harness-cards/hermesagent.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 3931,
+      "sha256": "6d9d5123abb742f414bdb118fb751908a4fb762fb455e42bf3f238719c3a7fa3"
+    },
+    {
+      "path": "examples/hp-mha/harness-cards/hermesproof.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 4422,
+      "sha256": "d2202a4107060b1dfe61685ca85de4ed84b344e4de5025451855edaf5f069b47"
+    },
+    {
+      "path": "examples/hp-mha/harness-cards/templates/aider.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 3470,
+      "sha256": "7c8824996fe8701fbc7696e3f9b29ee6834107e5939949524c6df9f6d4e38390"
+    },
+    {
+      "path": "examples/hp-mha/harness-cards/templates/goose.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 3525,
+      "sha256": "824814aa84477625094c012df8d61353dd59a27cb7de87cee43a099c7c622a3a"
+    },
+    {
+      "path": "examples/hp-mha/harness-cards/templates/openhands.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 3648,
+      "sha256": "29e43ef46fb14bed4d6b89c6b222388a920ae2a86b125d963d5176ab5c3b9d4e"
+    },
+    {
+      "path": "examples/hp-mha/load-card.mjs",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 6435,
+      "sha256": "0768552551198045855125d42322aa569babe2a078acb22c281f4ac6678dd31e"
+    },
+    {
+      "path": "examples/hp-mha/lock-manager-holdout-fixture.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 724,
+      "sha256": "a0f82719de5255b7a4d88f6b2f2233470d521d3873f22abd82c02f0a55d4c470"
+    },
+    {
+      "path": "examples/hp-mha/smoke-e2e.mjs",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 15504,
+      "sha256": "a8c96c7753155792edaecdcb80ff071da58acb1138e6ad300f39b9dbba1f7669"
+    },
+    {
+      "path": "examples/hp-mha/status.mjs",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 5238,
+      "sha256": "6276babb5e21fee36dfc2a6f10c04230967993a8cd5ba1b504425a2ccd281f68"
+    },
+    {
+      "path": "examples/hp-mha/task-sets/holdout.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 710,
+      "sha256": "ba08ab3b4c88d28a70a7c58f6c352b8a169820ee983cf5965e679c159a0ed278"
+    },
+    {
+      "path": "examples/hp-mha/task-sets/optimization.json",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 657,
+      "sha256": "6a587736b13fe304bade7db5f8e999b137381a9e51dc96321ba5a0baeff0c0bd"
+    },
+    {
+      "path": "examples/kilocode/openhands-hermesproof/README.md",
+      "status": "untracked",
+      "reason": "product-root:examples",
+      "bytes": 1806,
+      "sha256": "7a884319a1588368767bb28fb8630e326dfec4862701c54c28cd2ab6146bca1b"
+    },
+    {
+      "path": "FINAL_EVIDENCE_REPORT.md",
+      "status": "tracked-modified",
+      "reason": "root-file:FINAL_EVIDENCE_REPORT.md",
+      "bytes": 11613,
+      "sha256": "f84ebac8450d9774794e7d2d4657cfbbc5d18d93e6379c72489dcedb89d615a5"
+    },
+    {
+      "path": "Missing-Features.md",
+      "status": "tracked-modified",
+      "reason": "root-file:Missing-Features.md",
+      "bytes": 12331,
+      "sha256": "24981fba609d241feb3f1b50cc3f745764e62d93c94dcdc40a45dc203709d58a"
+    },
+    {
+      "path": "package.json",
+      "status": "tracked-modified",
+      "reason": "root-file:package.json",
+      "bytes": 4139,
+      "sha256": "f51f7eb2f1b6672ea4b4285d56a6b281dbca9be49141d4cb1f323ece31f1f33c"
+    },
+    {
+      "path": "PROOF_E2E_REPORT.md",
+      "status": "tracked-modified",
+      "reason": "root-file:PROOF_E2E_REPORT.md",
+      "bytes": 4900,
+      "sha256": "aa235bd0d2821b1be93da390765c0908f32920f545e6f16be4914949edd37cb4"
+    },
+    {
+      "path": "PROOF/evidence-ledger-checkpoints.json",
+      "status": "untracked",
+      "reason": "product-root:PROOF",
+      "bytes": 1502,
+      "sha256": "039a5c60e87aa9876ee29d1f692648cad68f255ef0fe64d5da4dab8d00aa20b7"
+    },
+    {
+      "path": "PROOF/latest.json",
+      "status": "tracked-modified",
+      "reason": "product-root:PROOF",
+      "bytes": 53598,
+      "sha256": "d474fa4ea2acadbadba927aee5d5bb5865911f84c5155ae42274f93c0e3fa2ed"
+    },
+    {
+      "path": "README.md",
+      "status": "tracked-modified",
+      "reason": "root-file:README.md",
+      "bytes": 30529,
+      "sha256": "1c584286da829f4443c318fb01078440b1c184de0b36a0450244e0f984b9c8a4"
+    },
+    {
+      "path": "scripts/anonymous-orchestrator-smoke-test.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:scripts",
+      "bytes": 13134,
+      "sha256": "edcae0609469e00702e4a2cf78260f7af54150c6a9805ded5f54024fc7b84ced"
+    },
+    {
+      "path": "scripts/anti-slop-realness-gate.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:scripts",
+      "bytes": 4995,
+      "sha256": "c5e9046c9c19d8a25ec3b8a54b1b1ed3bd9de76c334de7d933c4bd99d314ceba"
+    },
+    {
+      "path": "scripts/hybrid-helper-stdio.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:scripts",
+      "bytes": 5864,
+      "sha256": "53af249518124e4c5d9ef24abb03b7b7c990957420ef6116ce40c954c9eea0d4"
+    },
+    {
+      "path": "scripts/truth-gates.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:scripts",
+      "bytes": 83999,
+      "sha256": "8c195690aa266ac2624ce2a2bebd0fa50362398af6dbde3224d9f48f93d1e993"
+    },
+    {
+      "path": "scripts/v07-stdio-roundtrip-smoke-test.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:scripts",
+      "bytes": 78710,
+      "sha256": "6dcb43774a18d59fe5e9dc8e392c1a119b7c78c75ea10167a7e39ee4b728f69a"
+    },
+    {
+      "path": "scripts/wire-supervisor.mjs",
+      "status": "untracked",
+      "reason": "product-root:scripts",
+      "bytes": 830,
+      "sha256": "6c57ec96bb917a88c1cf422c91f46e0adb823bf0faf87b897c980b3df14a1eca"
+    },
+    {
+      "path": "src/core/archive-plan.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 5189,
+      "sha256": "888cc92ea52564031ff8dd8cb403924e4888d90ee8fccdf12e391729316c2b00"
+    },
+    {
+      "path": "src/core/archive-plan.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 2789,
+      "sha256": "c060f6b35281c2d8aa2b00705a00d47aaaacf71e601a3537413c8c1cbb04dc45"
+    },
+    {
+      "path": "src/core/evidence-checkpoints.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 3851,
+      "sha256": "334a845f9750c873c50ce6d62f6861f013fb929ba73e5312da25141437b0648e"
+    },
+    {
+      "path": "src/core/fs-utils.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 16645,
+      "sha256": "be00bc3a2b5ba3413bb7219223e76ea53698e4fe7137f6bcb3ad52ba4036d3c1"
+    },
+    {
+      "path": "src/core/helper-runtime.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 6230,
+      "sha256": "79607ffe5b6332c3140834ab1a00503ec6a12e3297c000fe3a70d189731c20ef"
+    },
+    {
+      "path": "src/core/helper-runtime.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 3185,
+      "sha256": "d429965fc9e19ec660c4481709d08cae9df114a44c15dab64ff150621453772a"
+    },
+    {
+      "path": "src/core/hermes-agent-bridge.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 19787,
+      "sha256": "417f1d34c4d3f0dd2d4798249b56b63bebd5bf31fb48a18b5b96de25cf33a14b"
+    },
+    {
+      "path": "src/core/hermes-agent-bridge.test.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 16049,
+      "sha256": "58916c2c3f168ecb10d191dada42bafe22c77b8da0653766753492687b62ac36"
+    },
+    {
+      "path": "src/core/hp-mha.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 58358,
+      "sha256": "5ccb88f78c2d0ca813e3ac4d4477d85193a2bedfa9fbb48768e88cd1330e4b43"
+    },
+    {
+      "path": "src/core/hp-mha.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 52509,
+      "sha256": "601a9f6b30d3b0f7dc44e61c96e7f656cb5fb2c92e9764f65a37fec13d97b540"
+    },
+    {
+      "path": "src/core/kilocode-integration.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 83658,
+      "sha256": "3d8355998f243cb962a44cb8a20927237c721ea10d3d6ad617342bdde89fb294"
+    },
+    {
+      "path": "src/core/kilocode-integration.test.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 34248,
+      "sha256": "99da573c546c4c342b53edb84627cb81fee76f0577a6bee9fcc2ae031474629c"
+    },
+    {
+      "path": "src/core/lock-manager.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 33169,
+      "sha256": "2ba7b2ffd8b3021f629b3695c6475ecb7c05cc5bab122ba5ae6988a0cc9a5c27"
+    },
+    {
+      "path": "src/core/registry-providers.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 13455,
+      "sha256": "1c70b924f1d076524b9156d591ffe459f7122c30a15d0b74633224996332b93a"
+    },
+    {
+      "path": "src/core/staleness.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 8458,
+      "sha256": "05b46beeb4b610fb0b8f74b054cd1506200edd473a758e296b258bde0c07be28"
+    },
+    {
+      "path": "src/core/staleness.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 3545,
+      "sha256": "845056b867de13031b680c4fea8a6afa0afe67587b8bdf6258f32a6754da6bf1"
+    },
+    {
+      "path": "src/core/storage-census.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 7327,
+      "sha256": "bcd4dc843d847f46319cc93b4df23202ebc3fb36e5d7fb92fb440888705043f0"
+    },
+    {
+      "path": "src/core/storage-census.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 2355,
+      "sha256": "8c2c04f5ffb03a9d5eb6202a28452449bbd12d4b1f9472aa625988c6bcc07533"
+    },
+    {
+      "path": "src/core/workspace-hygiene.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 15545,
+      "sha256": "bf7ad54244bfbd05a9d31f1b9f9a686ea3b1dc9b96e22085fc5f346861c86c1c"
+    },
+    {
+      "path": "src/core/workspace-hygiene.test.mjs",
+      "status": "untracked",
+      "reason": "product-root:src",
+      "bytes": 5417,
+      "sha256": "f87a4ec8655c4d3b27368d863f7b283ece49d13aedb692f55710e5450b88ce48"
+    },
+    {
+      "path": "src/server.mjs",
+      "status": "tracked-modified",
+      "reason": "product-root:src",
+      "bytes": 299785,
+      "sha256": "e704d2c1c7e553e172830d2abea17b573cf2974eda160759bb13ad18ff6bee53"
+    }
+  ],
+  "excluded_summary": {
+    "blocked-root:tools": 568,
+    "unrecognized-root": 2,
+    "unrecognized-root-file": 2
+  }
+}
