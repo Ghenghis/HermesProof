@@ -18,6 +18,14 @@ import url from "node:url";
 export const LMSTUDIO_DEFAULT = "http://127.0.0.1:1234/v1/models";
 export const OLLAMA_DEFAULT = "http://localhost:11434/api/tags";
 
+export function normalizeLmStudioModelsUrl(target) {
+  const parsed = new url.URL(target);
+  const pathname = parsed.pathname.replace(/\/+$/, "");
+  if (!pathname) parsed.pathname = "/v1/models";
+  else if (pathname === "/v1") parsed.pathname = "/v1/models";
+  return parsed.toString();
+}
+
 function getTimeoutMs() {
   const n = Number(process.env.PROVIDER_HEALTH_TIMEOUT_MS || "5000");
   return Number.isFinite(n) && n > 0 ? n : 5000;
@@ -72,16 +80,48 @@ export function probeUrl(target, { timeoutMs = 5000 } = {}) {
 /** Returns gate-record for lmstudio.health.  WARN on offline. */
 export async function runLmstudioHealth({
   baseUrl = process.env.LMSTUDIO_BASE_URL || LMSTUDIO_DEFAULT,
+  fallbackBaseUrl = LMSTUDIO_DEFAULT,
   timeoutMs = getTimeoutMs()
 } = {}) {
-  const probe = await probeUrl(baseUrl, { timeoutMs });
+  const candidates = [];
+  for (const target of [baseUrl, fallbackBaseUrl]) {
+    let normalized;
+    try {
+      normalized = normalizeLmStudioModelsUrl(target);
+    } catch {
+      normalized = target;
+    }
+    if (!candidates.includes(normalized)) candidates.push(normalized);
+  }
+
+  const attempts = [];
+  let selected = null;
+  for (const target of candidates) {
+    const probe = await probeUrl(target, { timeoutMs });
+    attempts.push(probe);
+    if (probe.ok) {
+      selected = probe;
+      break;
+    }
+  }
+  const fallbackUsed = Boolean(selected && attempts.indexOf(selected) > 0);
+  const terminalProbe = selected || attempts.at(-1) || { ok: false, status: 0, error: "no_endpoint" };
   return {
-    ok: probe.ok,
-    level: probe.ok ? "warn" : "warn", // always warn-level — failing is not blocking
-    evidence: { base_url: baseUrl, ...probe, timeout_ms: timeoutMs },
-    details: probe.ok
-      ? `LM Studio reachable (${probe.status})`
-      : `LM Studio offline: ${probe.error || `HTTP ${probe.status}`}`
+    ok: terminalProbe.ok,
+    level: "warn", // local provider availability is advisory in CI
+    evidence: {
+      base_url: baseUrl,
+      selected_url: selected?.target || null,
+      fallback_used: fallbackUsed,
+      attempts,
+      ...terminalProbe,
+      timeout_ms: timeoutMs
+    },
+    details: terminalProbe.ok
+      ? fallbackUsed
+        ? `LM Studio reachable via local fallback (${terminalProbe.status})`
+        : `LM Studio reachable (${terminalProbe.status})`
+      : `LM Studio offline: ${terminalProbe.error || `HTTP ${terminalProbe.status}`}`
   };
 }
 

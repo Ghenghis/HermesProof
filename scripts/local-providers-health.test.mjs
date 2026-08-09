@@ -38,3 +38,27 @@ test("provider probe remains fail-closed when the endpoint is unreachable", asyn
   assert.equal(result.status, 0);
   assert.ok(result.error);
 });
+
+test("LM Studio health falls back locally when the configured LM Link host is offline", async (t) => {
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ data: [{ id: "linked-through-local-studio" }] }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+
+  const address = server.address();
+  const result = await runLmstudioHealth({
+    baseUrl: "http://127.0.0.1:1",
+    fallbackBaseUrl: `http://127.0.0.1:${address.port}`,
+    timeoutMs: 250
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.evidence.fallback_used, true);
+  assert.equal(result.evidence.attempts.length, 2);
+  assert.equal(result.evidence.attempts[0].ok, false);
+  assert.equal(result.evidence.attempts[1].status, 200);
+  assert.match(result.evidence.selected_url, /\/v1\/models$/);
+  assert.match(result.details, /local fallback/);
+});
