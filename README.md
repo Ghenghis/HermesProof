@@ -14,6 +14,7 @@
 
 [Live release site](https://ghenghis.gitlab.io/HermesProof) ·
 [Windows install](docs/WINDOWS_INSTALL.md) ·
+[Release verification](docs/WINDOWS_INSTALL.md#verify-before-extraction) ·
 [Updater runbook](docs/UPDATER_RUNBOOK.md) ·
 [Tool reference](docs/TOOL_REFERENCE.md) ·
 [Troubleshooting](docs/TROUBLESHOOTING_UPDATES.md)
@@ -42,6 +43,16 @@ Serena **1.6.2.dev0** is pinned by immutable commit and integrated using its cur
 ## Install on Windows 11
 
 The release ZIP is the recommended path for another PC. It is per-user, does not require administrator rights, verifies its manifest, probes both MCP servers, snapshots existing client configuration, and uses a stable launcher so later upgrades do not rewrite every client.
+
+![Offline release signing and verification](docs/diagrams/release-signing-flow.svg)
+
+Download the ZIP, its exact `.sha256` and `.sig` sidecars, `hermesproof-release-ed25519-public.pem`, and `verify-hermesproof-release.mjs` into one folder. Verify the download before extraction:
+
+```powershell
+node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-rc.1-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
+```
+
+The command must print `[PASS] HermesProof release verified`. Any checksum, filename, public-key fingerprint, envelope, or Ed25519 signature mismatch exits nonzero. From a source checkout, the equivalent command is `npm run release:verify -- --artifact <zip> --public-key config/hermesproof-release-ed25519-public.pem`.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -149,6 +160,8 @@ Generated current facts are in [docs/GENERATED_RELEASE_FACTS.md](docs/GENERATED_
 ## Architecture and security
 
 ![Windows install and recovery](docs/diagrams/windows-install-flow.svg)
+
+Official archives are signed offline. The Ed25519 private key stays outside the repository under `C:\private`; the reviewed public key is pinned in Git. The builder refuses an official filename without the matching private key, emits exact checksum/signature sidecars, and self-verifies them before returning success.
 
 HermesProof is local-first and workspace-scoped. It never stores GitLab credentials in repository files, release artifacts, updater evidence, or client configs. Process execution uses exact argument arrays with `shell: false`, an environment allowlist, bounded output, timeouts, and redaction. Root/home/repository/traversal/link targets are rejected for managed updates.
 

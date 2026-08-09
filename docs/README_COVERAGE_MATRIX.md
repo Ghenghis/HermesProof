@@ -19,7 +19,7 @@ This matrix maps the current v0.9.0-rc.1 README claims to executable evidence. G
 | Immutable updater with quarantine and rollback | managed-updater.mjs | updater activation, probe failure, crash journal, stale lock, cleanup tests |
 | Only allowlisted GitLab sources and refs | git-source.mjs / path-policy.mjs | real local bare-repository integration and rejection tests |
 | Nine production update groups, no skips | release-verifier.mjs / production-gates.mjs | verifier and production gate tests |
-| Windows release ZIP and checksums | build-windows-release.mjs | manifest tamper test, PowerShell parse test, install smoke |
+| Windows release ZIP, checksum, and cryptographic signature | build-windows-release.mjs / release-signing.mjs / verify-hermesproof-release.mjs | real Ed25519 key, archive/checksum/envelope/key tamper tests, standalone pre-extraction verifier, install smoke |
 | GitLab-only local-runner CI and Pages | .gitlab-ci.yml | gitlab-ci-policy.test.mjs |
 | Animated diagrams respect reduced motion | docs/diagrams and site/styles.css | release-docs-drift and site quality checks |
 

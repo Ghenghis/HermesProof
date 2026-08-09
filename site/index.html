@@ -98,11 +98,12 @@
     </section>
 
     <section class="section" id="install">
-      <div class="section-heading reveal"><p class="kicker">One installer, repeatable on every Windows 11 PC</p><h2>Install both servers everywhere you work</h2><p>The bundle verifies its manifest, stages immutably, probes 121 + 34 tools, snapshots existing configuration, wires a stable launcher, and optionally enables a limited per-user auto-update task. Uninstall is idempotent; purge preserves recovery data whenever safe restore cannot be proven.</p></div>
+      <div class="section-heading reveal"><p class="kicker">One installer, repeatable on every Windows 11 PC</p><h2>Verify first. Install both servers everywhere.</h2><p>The offline Ed25519 verifier authenticates the ZIP before extraction. The installer then validates its manifest, stages immutably, probes 121 + 34 tools, snapshots existing configuration, wires a stable launcher, and optionally enables a limited per-user auto-update task.</p></div>
+      <figure class="diagram reveal"><img src="diagrams/release-signing-flow.svg" alt="Offline Ed25519 release signing, GitLab assets, pre-extraction verification, and fail-closed rejection flow" loading="lazy"></figure>
       <figure class="diagram reveal"><img src="diagrams/windows-install-flow.svg" alt="Windows 11 installation, client wiring, backup, and recovery" loading="lazy"></figure>
       <div class="install-panel reveal">
-        <div><span class="step">1</span><h3>Download</h3><p>Get the Windows ZIP and SHA256SUMS from GitLab Releases.</p></div>
-        <div><span class="step">2</span><h3>Verify</h3><p>Confirm the archive SHA-256 and extract it locally.</p></div>
+        <div><span class="step">1</span><h3>Download</h3><p>Get the ZIP, .sha256, .sig, public PEM, and standalone verifier from GitLab Releases.</p></div>
+        <div><span class="step">2</span><h3>Verify</h3><p>Prove digest, filename, fingerprint, and Ed25519 signature before extraction.</p></div>
         <div><span class="step">3</span><h3>Install</h3><div class="command"><code>.\install-hermesproof.ps1 -AutoUpdate</code><button type="button" data-copy=".\install-hermesproof.ps1 -AutoUpdate">Copy</button></div></div>
       </div>
     </section>

@@ -54,3 +54,35 @@ test("operations docs match the shipped Serena, scheduler, backup, and Claude Co
   assert.match(reconnect, /~\/\.claude\.json/);
   assert.doesNotMatch(reconnect, /In `~\/\.claude\/settings\.json`/);
 });
+
+test("signed Windows release docs require pre-extraction Ed25519 verification", async () => {
+  const [readme, windowsInstall, runbook, security, coverage, diagram, page, pageDiagram] = await Promise.all([
+    readFile(path.join(root, "README.md"), "utf8"),
+    readFile(path.join(root, "docs", "WINDOWS_INSTALL.md"), "utf8"),
+    readFile(path.join(root, "docs", "GITLAB_RELEASE_RUNBOOK.md"), "utf8"),
+    readFile(path.join(root, "docs", "SECURITY_POLICY.md"), "utf8"),
+    readFile(path.join(root, "docs", "README_COVERAGE_MATRIX.md"), "utf8"),
+    readFile(path.join(root, "docs", "diagrams", "release-signing-flow.svg"), "utf8"),
+    readFile(path.join(root, "site", "index.html"), "utf8"),
+    readFile(path.join(root, "site", "diagrams", "release-signing-flow.svg"), "utf8")
+  ]);
+  assert.match(readme, /release-signing-flow\.svg/);
+  assert.match(readme, /release:verify/);
+  assert.match(windowsInstall, /\.zip\.sha256/);
+  assert.match(windowsInstall, /\.zip\.sig/);
+  assert.match(windowsInstall, /verify-hermesproof-release\.mjs/);
+  assert.match(windowsInstall, /before (extracting|extraction)/i);
+  assert.match(runbook, /HERMESPROOF_RELEASE_SIGNING_KEY_FILE/);
+  assert.match(runbook, /key fingerprint/i);
+  assert.match(runbook, /hermesproof-release-ed25519-public\.pem/);
+  assert.match(security, /C:\\private/);
+  assert.match(security, /Ed25519/);
+  assert.match(coverage, /cryptographic signature/i);
+  assert.match(diagram, /role="img"/);
+  assert.match(diagram, /aria-labelledby=/);
+  assert.match(diagram, /<title/);
+  assert.match(diagram, /<desc/);
+  assert.match(diagram, /Ed25519/);
+  assert.match(page, /release-signing-flow\.svg/);
+  assert.equal(pageDiagram, diagram);
+});

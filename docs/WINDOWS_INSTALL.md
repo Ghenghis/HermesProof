@@ -2,16 +2,37 @@
 
 The supported distribution is the GitLab release ZIP for `v0.9.0-rc.1`. Installation is per-user by default and requires Node.js 20 or newer. Administrator privileges are not required.
 
+## Verify before extraction
+
+Download these five sibling assets from the [GitLab release](https://gitlab.com/Ghenghis/HermesProof/-/releases):
+
+- `HermesProof-v0.9.0-rc.1-windows-x64.zip`
+- `HermesProof-v0.9.0-rc.1-windows-x64.zip.sha256`
+- `HermesProof-v0.9.0-rc.1-windows-x64.zip.sig`
+- `hermesproof-release-ed25519-public.pem`
+- `verify-hermesproof-release.mjs`
+
+Keep the filenames unchanged and run the standalone verifier before extracting the ZIP:
+
+```powershell
+node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-rc.1-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
+```
+
+Expected output:
+
+```text
+[PASS] HermesProof release verified
+SHA-256: <64 lowercase hexadecimal characters>
+Key: sha256:9b1fb58db81fd4dceaef5b78a4aa83db6c57d70dbabddf2b4c1b12abcf1a92da
+```
+
+The verifier recomputes the archive digest, binds the exact filename, validates the strict signature envelope and public-key fingerprint, then verifies the Ed25519 signature. Any mismatch exits nonzero. `Get-FileHash` alone is not sufficient because it cannot prove who signed the supplied checksum.
+
+![Offline release signing and verification](diagrams/release-signing-flow.svg)
+
 ## Fresh install
 
-1. Download the ZIP and `SHA256SUMS.txt` from the [GitLab release](https://gitlab.com/Ghenghis/HermesProof/-/releases).
-2. Verify the ZIP:
-
-   ```powershell
-   Get-FileHash .\HermesProof-v0.9.0-rc.1-windows-x64.zip -Algorithm SHA256
-   ```
-
-3. Extract it, open PowerShell inside the folder, and run:
+After verification passes, extract the ZIP, open PowerShell inside the folder, and run:
 
    ```powershell
    Set-ExecutionPolicy -Scope Process Bypass
