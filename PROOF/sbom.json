@@ -1,7 +1,7 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:b6e9b93e-b463-5cd1-b9e0-de563281719e",
+  "serialNumber": "urn:uuid:ce8fb7b7-ee44-5e3c-9992-0705cab52407",
   "version": 1,
   "metadata": {
     "timestamp": "1970-01-01T00:00:00.000Z",
@@ -15,8 +15,8 @@
     "component": {
       "type": "application",
       "name": "hermesproof",
-      "version": "0.8.0",
-      "purl": "pkg:npm/hermesproof@0.8.0"
+      "version": "0.9.0-rc.1",
+      "purl": "pkg:npm/hermesproof@0.9.0-rc.1"
     }
   },
   "components": [
