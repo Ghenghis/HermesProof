@@ -93,6 +93,7 @@ function parseActiveTools(configText) {
 export class SerenaAdapter {
   constructor({
     workspaceRoot,
+    serenaHome = process.env.SERENA_HOME || "",
     uvxCommand = process.env.HERMES_SERENA_UVX || "uvx",
     clientFactory = defaultClientFactory
   } = {}) {
@@ -103,6 +104,9 @@ export class SerenaAdapter {
       throw new TypeError("clientFactory must be a function");
     }
     this.workspaceRoot = path.resolve(workspaceRoot);
+    this.serenaHome = typeof serenaHome === "string" && serenaHome.trim()
+      ? path.resolve(serenaHome)
+      : "";
     this.uvxCommand = uvxCommand;
     this.clientFactory = clientFactory;
     this.client = null;
@@ -137,6 +141,7 @@ export class SerenaAdapter {
       cwd: this.workspaceRoot,
       env: {
         ...process.env,
+        ...(this.serenaHome ? { SERENA_HOME: this.serenaHome } : {}),
         SERENA_USAGE_REPORTING: "false",
         PYTHONUTF8: "1"
       }

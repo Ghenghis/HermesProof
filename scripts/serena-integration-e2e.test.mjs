@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,7 +13,8 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("pinned Serena indexes HermesProof TypeScript and exposes no direct mutation tools", async () => {
-  const adapter = new SerenaAdapter({ workspaceRoot: repoRoot });
+  const serenaHome = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-serena-home-"));
+  const adapter = new SerenaAdapter({ workspaceRoot: repoRoot, serenaHome });
   try {
     const health = await adapter.connect();
     assert.equal(health.ok, true);
@@ -53,5 +56,6 @@ test("pinned Serena indexes HermesProof TypeScript and exposes no direct mutatio
     assert.equal(diagnostics.ok, true);
   } finally {
     await adapter.close();
+    await fs.rm(serenaHome, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });

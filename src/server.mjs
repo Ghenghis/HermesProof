@@ -5997,9 +5997,10 @@ registerTool(
   "hermes_pick_task",
   {
     title: "Pick task",
-    description: "Atomically claim the highest-priority pending task matching the owner pattern.",
+    description: "Atomically claim the highest-priority eligible task matching the owner pattern. HP-MHA holdout tasks require an explicit holdout-aware role and are rejected before the queue move.",
     inputSchema: {
       owner: Owner,
+      role: z.string().min(1).max(80).optional(),
       prefer_task_id: TaskId.optional()
     },
     annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }

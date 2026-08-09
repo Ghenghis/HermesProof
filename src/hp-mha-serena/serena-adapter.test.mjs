@@ -60,6 +60,7 @@ test("Serena runtime is immutable and semantic calls use the configured project"
   let launch;
   const adapter = new SerenaAdapter({
     workspaceRoot: path.resolve("fixture"),
+    serenaHome: path.resolve("fixture-serena-home"),
     clientFactory: async (options) => {
       launch = options;
       return client;
@@ -74,6 +75,7 @@ test("Serena runtime is immutable and semantic calls use the configured project"
   assert.equal(health.mutation_tools_active.length, 0);
   assert.ok(launch.args.includes(path.resolve("fixture")));
   assert.ok(launch.args.includes(SERENA_SOURCE));
+  assert.equal(launch.env.SERENA_HOME, path.resolve("fixture-serena-home"));
   assert.ok(launch.args.includes(path.join(
     path.resolve("fixture"),
     ".serena",
