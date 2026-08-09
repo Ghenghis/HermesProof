@@ -1,6 +1,6 @@
 {
   "name": "hermesproof",
-  "version": "0.8.0",
+  "version": "0.9.0-rc.1",
   "private": true,
   "type": "module",
   "description": "HermesProof — verifiable multi-agent coordination over MCP. Per-file locks, atomic handoffs, allowlisted gates, evidence ledger, and truth-gate proof bundle.",
@@ -16,20 +16,22 @@
     "truth-gates",
     "attestation"
   ],
-  "homepage": "https://github.com/Ghenghis/HermesProof",
+  "homepage": "https://gitlab.com/Ghenghis/HermesProof",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Ghenghis/HermesProof.git"
+    "url": "https://gitlab.com/Ghenghis/HermesProof.git"
   },
   "bugs": {
-    "url": "https://github.com/Ghenghis/HermesProof/issues"
+    "url": "https://gitlab.com/Ghenghis/HermesProof/-/issues"
   },
   "license": "MIT",
   "bin": {
     "hermesproof": "src/server.mjs",
     "hermesproof-supervised": "scripts/mcp-supervisor.mjs",
     "hermesproof-wizard": "scripts/wizard.mjs",
-    "hp-mha-serena": "src/hp-mha-serena/server.mjs"
+    "hp-mha-serena": "src/hp-mha-serena/server.mjs",
+    "hermesproof-update": "scripts/hermesproof-update.mjs",
+    "hermesproof-launch": "scripts/hermesproof-launch.mjs"
   },
   "scripts": {
     "start": "node src/server.mjs",
@@ -42,7 +44,7 @@
     "serena:contexts:check": "node scripts/install-serena-contexts.mjs --check",
     "serena:test": "node --test src/hp-mha-serena/serena-catalog.test.mjs src/hp-mha-serena/serena-adapter.test.mjs src/hp-mha-serena/context-installer.test.mjs scripts/serena-integration-e2e.test.mjs",
     "mcp:supervised": "node scripts/mcp-supervisor.mjs",
-    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/registry-validate-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs scripts/workflow-pinning-gate.test.mjs scripts/accessibility-wcag-gate.test.mjs scripts/perf-budget-test.mjs scripts/docs-changes-reflected-test.mjs scripts/release-checksum-test.mjs scripts/coderabbit-review-test.mjs scripts/v07-stdio-roundtrip-smoke-test.mjs scripts/hybrid-helper-stdio.test.mjs scripts/anti-slop-realness-gate.test.mjs scripts/mutex-concurrency-smoke-test.mjs src/core/mutex.test.mjs src/core/lock-manager.test.mjs src/core/queue-manager.test.mjs src/core/skill-rotation.test.mjs src/core/reputation.test.mjs src/core/provider-performance.test.mjs src/core/kilocode-integration.test.mjs src/core/workspace-hygiene.test.mjs src/core/storage-census.test.mjs src/core/archive-plan.test.mjs src/core/evidence-checkpoints.test.mjs src/core/a2a-stub.test.mjs src/core/capability-dispatch.test.mjs src/core/hermes-agent-bridge.test.mjs src/core/helper-runtime.test.mjs src/core/staleness.test.mjs src/core/gitlab-client.test.mjs src/core/hp-mha.test.mjs src/core/hp-mha-benchmark.test.mjs scripts/hp-mha-smoke-failclosed.test.mjs scripts/anonymous-orchestrator-smoke-test.mjs scripts/mcp-supervisor-smoke-test.mjs scripts/secret-rotation-smoke-test.mjs src/core/runtime-lifecycle-manager.test.mjs src/core/local-process-adapter.test.mjs src/core/capability-packs.test.mjs src/core/local-capability-installer.test.mjs src/core/automation-manager.test.mjs src/core/system-scheduler-adapter.test.mjs src/core/kilo-backend-kit.test.mjs src/core/workspace-binding.test.mjs src/hp-mha-serena/serena-catalog.test.mjs src/hp-mha-serena/serena-adapter.test.mjs src/hp-mha-serena/context-installer.test.mjs src/hp-mha-serena/service.test.mjs scripts/serena-integration-e2e.test.mjs scripts/hp-mha-serena-stdio.test.mjs",
+    "test": "node --test scripts/coordination-smoke-test.mjs scripts/hardening-smoke-test.mjs scripts/perf-v0.5.1-smoke-test.mjs scripts/registry-validate-smoke-test.mjs scripts/mcp-scan-static-gate.test.mjs scripts/workflow-pinning-gate.test.mjs scripts/accessibility-wcag-gate.test.mjs scripts/perf-budget-test.mjs scripts/docs-changes-reflected-test.mjs scripts/release-checksum-test.mjs scripts/coderabbit-review-test.mjs scripts/v07-stdio-roundtrip-smoke-test.mjs scripts/hybrid-helper-stdio.test.mjs scripts/anti-slop-realness-gate.test.mjs scripts/mutex-concurrency-smoke-test.mjs src/core/mutex.test.mjs src/core/lock-manager.test.mjs src/core/queue-manager.test.mjs src/core/skill-rotation.test.mjs src/core/reputation.test.mjs src/core/provider-performance.test.mjs src/core/kilocode-integration.test.mjs src/core/workspace-hygiene.test.mjs src/core/storage-census.test.mjs src/core/archive-plan.test.mjs src/core/evidence-checkpoints.test.mjs src/core/a2a-stub.test.mjs src/core/capability-dispatch.test.mjs src/core/hermes-agent-bridge.test.mjs src/core/helper-runtime.test.mjs src/core/staleness.test.mjs src/core/gitlab-client.test.mjs src/core/hp-mha.test.mjs src/core/hp-mha-benchmark.test.mjs scripts/hp-mha-smoke-failclosed.test.mjs scripts/anonymous-orchestrator-smoke-test.mjs scripts/mcp-supervisor-smoke-test.mjs scripts/secret-rotation-smoke-test.mjs src/core/runtime-lifecycle-manager.test.mjs src/core/local-process-adapter.test.mjs src/core/capability-packs.test.mjs src/core/local-capability-installer.test.mjs src/core/automation-manager.test.mjs src/core/system-scheduler-adapter.test.mjs src/core/kilo-backend-kit.test.mjs src/core/workspace-binding.test.mjs src/hp-mha-serena/serena-catalog.test.mjs src/hp-mha-serena/serena-adapter.test.mjs src/hp-mha-serena/context-installer.test.mjs src/hp-mha-serena/service.test.mjs scripts/serena-integration-e2e.test.mjs scripts/hp-mha-serena-stdio.test.mjs && npm run test:release-hardening",
     "smoke:supervisor": "node --test scripts/mcp-supervisor-smoke-test.mjs",
     "smoke": "node --test scripts/coordination-smoke-test.mjs",
     "smoke:hardening": "node --test scripts/hardening-smoke-test.mjs",
@@ -70,7 +72,17 @@
     "hp-mha:measure-2x2": "node scripts/hp-mha-measure-2x2.mjs",
     "managers:test": "node --test src/core/runtime-lifecycle-manager.test.mjs src/core/local-process-adapter.test.mjs src/core/capability-packs.test.mjs src/core/local-capability-installer.test.mjs src/core/automation-manager.test.mjs src/core/system-scheduler-adapter.test.mjs src/core/kilo-backend-kit.test.mjs",
     "kilo:backend:doctor": "node scripts/kilo-backend-doctor.mjs",
-    "automation:run": "node scripts/automation-runner.mjs"
+    "automation:run": "node scripts/automation-runner.mjs",
+    "update": "node scripts/hermesproof-update.mjs",
+    "update:status": "node scripts/hermesproof-update.mjs status",
+    "update:check": "node scripts/hermesproof-update.mjs check",
+    "test:updater": "node --test src/updater/*.test.mjs scripts/hermesproof-update.test.mjs scripts/hermesproof-launch.test.mjs scripts/updater-candidate-probe.test.mjs scripts/install-clients.test.mjs scripts/serena-project-config.test.mjs",
+    "docs:generate": "node scripts/generate-release-docs.mjs",
+    "docs:check": "node scripts/generate-release-docs.mjs --check",
+    "test:release-docs": "node --test scripts/release-docs-drift.test.mjs",
+    "build:windows-release": "node scripts/build-windows-release.mjs",
+    "test:windows-release": "node --test scripts/build-windows-release.test.mjs",
+    "test:release-hardening": "node --test src/updater/*.test.mjs src/core/client-config-snapshot.test.mjs src/core/release-facts.test.mjs src/core/reverse-engineering-kit.test.mjs scripts/build-windows-release.test.mjs scripts/gitlab-ci-policy.test.mjs scripts/hermesproof-launch.test.mjs scripts/hermesproof-update-launch.test.mjs scripts/hermesproof-update.test.mjs scripts/install-clients.test.mjs scripts/release-docs-drift.test.mjs scripts/serena-project-config.test.mjs scripts/updater-candidate-probe.test.mjs scripts/windows-installer.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.0.0",
