@@ -96,8 +96,8 @@ const PROVIDERS = {
   },
   lm_studio: {
     name: "lm_studio",
-    endpoint_envs: ["LMSTUDIO_BASE_URL", "LM_STUDIO_BASE_URL"], // e.g. http://localhost:1234/v1
-    endpoint_default: "http://localhost:1234/v1/chat/completions",
+    endpoint_envs: ["LMSTUDIO_BASE_URL", "LM_STUDIO_BASE_URL"], // e.g. http://127.0.0.1:1234/v1
+    endpoint_default: "http://127.0.0.1:1234/v1/chat/completions",
     endpoint_suffix: "/chat/completions", // appended if env URL doesn't already include it
     model_envs: ["LMSTUDIO_MODEL", "LM_STUDIO_MODEL"],
     model_default: "local-model",

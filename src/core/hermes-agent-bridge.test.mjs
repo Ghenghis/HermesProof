@@ -113,7 +113,7 @@ describe("HermesAgentBridge USER session hardening", () => {
       delete process.env.SILICONFLOW_API_KEY;
       process.env.SILICON_FLOW_API_KEY = "test-siliconflow-key";
       delete process.env.LMSTUDIO_BASE_URL;
-      process.env.LM_STUDIO_BASE_URL = "http://localhost:1234/v1";
+      process.env.LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1";
       process.env.LM_STUDIO_MODEL = "local-test-model";
 
       const bridge = new HermesAgentBridge({
@@ -124,7 +124,7 @@ describe("HermesAgentBridge USER session hardening", () => {
       const providers = bridge._resolvedProviders();
 
       assert.deepEqual(providers.map((provider) => provider.name), ["minimax", "deepseek", "lm_studio"]);
-      assert.equal(providers.find((provider) => provider.name === "lm_studio")?.endpoint, "http://localhost:1234/v1/chat/completions");
+      assert.equal(providers.find((provider) => provider.name === "lm_studio")?.endpoint, "http://127.0.0.1:1234/v1/chat/completions");
       assert.equal(providers.find((provider) => provider.name === "lm_studio")?.model, "local-test-model");
     } finally {
       for (const [key, value] of Object.entries(old)) {

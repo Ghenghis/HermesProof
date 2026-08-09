@@ -7,7 +7,7 @@
  * developer-machine-only, so they cannot be required to be up everywhere.
  *
  * Env overrides:
- *   LMSTUDIO_BASE_URL  default: http://localhost:1234/v1/models
+ *   LMSTUDIO_BASE_URL  default: http://127.0.0.1:1234/v1/models
  *   OLLAMA_BASE_URL    default: http://localhost:11434/api/tags
  *   PROVIDER_HEALTH_TIMEOUT_MS  default: 5000
  */
@@ -15,7 +15,7 @@ import http from "node:http";
 import https from "node:https";
 import url from "node:url";
 
-export const LMSTUDIO_DEFAULT = "http://localhost:1234/v1/models";
+export const LMSTUDIO_DEFAULT = "http://127.0.0.1:1234/v1/models";
 export const OLLAMA_DEFAULT = "http://localhost:11434/api/tags";
 
 function getTimeoutMs() {
