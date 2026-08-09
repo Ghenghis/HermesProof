@@ -297,7 +297,7 @@ Targets include Claude Desktop, Claude Code, Codex, Windsurf, Kilo Code, Cursor,
 Every staged release will:
 
 - Confirm Serena 1.6.2.dev0.
-- Validate `.serena/project.yml` against the current schema, including `languages`.
+- Validate `.serena/project.yml` against the pinned Serena commit's schema, including `language_servers`.
 - Regenerate or validate contexts for Codex, Kilo Code, Windsurf, Devin, LM Studio, and Ollama.
 - Verify context hashes against the shipped manifest.
 - Run isolated onboarding when policy requires it.

@@ -25,7 +25,7 @@ HermesProof turns a requested outcome into an acceptance graph, gives every agen
 - `hermes3d-locks` — **121 tools** for tasks, file locks, handoffs, gates, evidence, releases, clients, GitLab, diagnostics, queues, agent communication, and project hygiene.
 - `hp-mha-serena` — **34 governed tools** for HP-MHA harness execution, Serena semantic intelligence, capability packs, backend recovery, automation, MCP lifecycle management, and safe updates.
 
-Serena **1.6.2.dev0** is pinned and integrated using its current `languages:` project schema. Its 52-tool catalog is policy-filtered: 29 are available in the desktop context, 15 semantic/LSP operations are exposed behind Hermes claims and locks, and **zero raw mutation tools** bypass coordination.
+Serena **1.6.2.dev0** is pinned by immutable commit and integrated using its current `language_servers:` project schema. Its 52-tool catalog is policy-filtered: 29 are available in the desktop context, 15 semantic/LSP operations are exposed behind Hermes claims and locks, and **zero raw mutation tools** bypass coordination.
 
 ![HermesProof ecosystem architecture](docs/diagrams/ecosystem-e2e.svg)
 

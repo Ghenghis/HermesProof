@@ -4,7 +4,7 @@ HermesProof pins Serena 1.6.2.dev0 and treats it as semantic intelligence behind
 
 ## Current schema
 
-The tracked project file is .serena/project.yml and uses the current languages key with TypeScript enabled. The obsolete language_servers form is not accepted. A regression test loads the shipped configuration and prevents the original KeyError: languages startup failure.
+The tracked project file is `.serena/project.yml` and uses the pinned commit's current `language_servers` key with TypeScript enabled. The older `languages` form is rejected by HermesProof's regression gate because Serena 1.6.2.dev0 migrates it on load. The immutable Serena commit is the schema source of truth; this avoids both the original stale-package `KeyError: languages` failure and later schema drift.
 
 ## Tool-count explanation
 
@@ -27,6 +27,6 @@ Read-only semantic discovery can be used while planning. Rename, replacement, in
 
 ## Onboarding and health
 
-The installer and deep doctor validate the pinned version, current languages schema, project activation, symbol extraction for JavaScript/TypeScript modules, governed catalog, zero unrestricted mutations, and real composite MCP startup.
+The installer and deep doctor validate the pinned version and commit, current `language_servers` schema, project activation, symbol extraction for JavaScript/TypeScript modules, governed catalog, zero unrestricted mutations, and real composite MCP startup.
 
 The desktop dashboard may still show 29 active tools when no project is active. That is expected for the desktop context and is not the composite server total.
