@@ -41,17 +41,23 @@ export function clientPaths({ workspaceRoot, homeDir = resolveHome(), env = proc
     claudeHooksSidecar: path.join(homeDir, ".claude", "settings.hermesproof.hooks.json"),
     codex: path.join(homeDir, ".codex", "config.toml"),
     windsurf: path.join(homeDir, ".codeium", "windsurf", "mcp_config.json"),
+    windsurfRules: workspaceRoot ? path.join(workspaceRoot, ".windsurfrules") : path.join(homeDir, ".windsurfrules"),
     kilocodeDir: workspaceRoot ? path.join(workspaceRoot, ".kilo") : path.join(homeDir, ".config", "kilo"),
     kilocodeMcp: workspaceRoot ? path.join(workspaceRoot, ".kilo", "kilo.json") : path.join(homeDir, ".config", "kilo", "kilo.json"),
     kilocodeRules: workspaceRoot ? path.join(workspaceRoot, ".kilo", "hermesproof", "rules.toml") : path.join(homeDir, ".config", "kilo", "hermesproof", "rules.toml"),
+    kilocodePrompt: workspaceRoot ? path.join(workspaceRoot, ".kilo", "hermesproof", "system-prompt-snippet.md") : path.join(homeDir, ".config", "kilo", "hermesproof", "system-prompt-snippet.md"),
     lmStudioMcp: path.join(homeDir, ".lmstudio", "mcp.json"),
     localModelProviders: workspaceRoot ? path.join(workspaceRoot, ".hermesproof", "local-models.json") : path.join(homeDir, ".hermesproof", "local-models.json"),
     devinExport: workspaceRoot ? path.join(workspaceRoot, ".hermesproof", "devin", "mcp-install.json") : path.join(homeDir, ".hermesproof", "devin", "mcp-install.json"),
     cursorDir: workspaceRoot ? path.join(workspaceRoot, ".cursor") : path.join(homeDir, ".cursor"),
     cursorMcp: workspaceRoot ? path.join(workspaceRoot, ".cursor", "mcp.json") : path.join(homeDir, ".cursor", "mcp.json"),
     cursorRulesDir: workspaceRoot ? path.join(workspaceRoot, ".cursor", "rules") : path.join(homeDir, ".cursor", "rules"),
+    cursorHermesRule: workspaceRoot ? path.join(workspaceRoot, ".cursor", "rules", "hermesproof.mdc") : path.join(homeDir, ".cursor", "rules", "hermesproof.mdc"),
+    cursorQueueRule: workspaceRoot ? path.join(workspaceRoot, ".cursor", "rules", "hermesproof-queue-discipline.mdc") : path.join(homeDir, ".cursor", "rules", "hermesproof-queue-discipline.mdc"),
+    cursorStreamRule: workspaceRoot ? path.join(workspaceRoot, ".cursor", "rules", "stream.mdc") : path.join(homeDir, ".cursor", "rules", "stream.mdc"),
     vscodeDir: workspaceRoot ? path.join(workspaceRoot, ".vscode") : path.join(homeDir, ".vscode"),
     vscodeMcp: workspaceRoot ? path.join(workspaceRoot, ".vscode", "mcp.json") : path.join(homeDir, ".vscode", "mcp.json"),
+    vscodeInstructions: workspaceRoot ? path.join(workspaceRoot, ".github", "copilot-instructions.md") : path.join(homeDir, ".github", "copilot-instructions.md"),
     anthropicDir: workspaceRoot ? path.join(workspaceRoot, ".hermesproof") : path.join(homeDir, ".hermesproof")
   };
 }

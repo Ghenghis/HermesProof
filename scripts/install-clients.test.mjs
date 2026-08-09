@@ -37,6 +37,15 @@ test("Windows-first install writes both HermesProof servers to the supported cli
   assert.match(result.snapshot.manifestFile, /backups[\\/]clients/);
   for (const target of targets) assert.equal(result.results[target].ok, true, target);
   assert.equal(result.rollback, null);
+  const writtenFiles = targets.flatMap((target) => {
+    const value = result.results[target];
+    return value.files || (value.file ? [value.file] : []);
+  }).map((file) => path.resolve(file));
+  assert.deepEqual(
+    [...result.snapshot.allowedFiles].sort(),
+    [...new Set(writtenFiles)].sort(),
+    "every client file must be covered by the transactional snapshot"
+  );
 
   const kilo = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".kilo", "kilo.json"), "utf8"));
   assert.deepEqual(Object.keys(kilo.mcp).sort(), ["hermes3d-locks", "hp-mha-serena"]);
@@ -88,6 +97,30 @@ test("installer preserves unrelated client configuration and is idempotent", asy
   assert.equal(parsed.theme, "dark");
   assert.equal(parsed.mcpServers.existing.command, "safe-existing");
   assert.equal(Object.keys(parsed.mcpServers).length, 3);
+});
+
+test("Codex TOML is byte-idempotent across repair-style rewrites", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-codex-idempotent-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const homeDir = path.join(root, "home");
+  const workspaceRoot = path.join(root, "workspace");
+  await fs.mkdir(workspaceRoot, { recursive: true });
+  const env = {
+    ...process.env,
+    HOME: homeDir,
+    USERPROFILE: homeDir,
+    APPDATA: path.join(homeDir, "AppData", "Roaming"),
+    HERMESPROOF_TEST_HOME: homeDir
+  };
+  const options = { clients: ["codex"], workspaceRoot, repoRoot, env, homeDir };
+  await writeClients(options);
+  const file = path.join(homeDir, ".codex", "config.toml");
+  const first = await fs.readFile(file, "utf8");
+  const secondResult = await writeClients(options);
+  const second = await fs.readFile(file, "utf8");
+
+  assert.equal(second, first);
+  assert.equal(secondResult.results.codex.status, "skipped");
 });
 
 test("managed install pins every client entry to the stable launcher and returns a restorable allowlist", async (t) => {

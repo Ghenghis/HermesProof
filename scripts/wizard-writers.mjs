@@ -93,14 +93,15 @@ function selectedConfigFiles(selected, paths) {
     "claude-desktop": [paths.claudeDesktop],
     "claude-code": [paths.claudeUserSettings],
     codex: [paths.codex],
-    windsurf: [paths.windsurf],
-    kilocode: [paths.kilocodeMcp],
+    windsurf: [paths.windsurf, paths.windsurfRules],
+    kilocode: [paths.kilocodeMcp, paths.kilocodeRules, paths.kilocodePrompt],
     "lm-studio": [paths.lmStudioMcp, paths.localModelProviders],
     ollama: [paths.localModelProviders],
     devin: [paths.devinExport],
-    cursor: [paths.cursorMcp],
-    "vscode-copilot": [paths.vscodeMcp],
-    vscode: [paths.vscodeMcp],
+    cursor: [paths.cursorMcp, paths.cursorHermesRule, paths.cursorQueueRule, paths.cursorStreamRule],
+    "vscode-copilot": [paths.vscodeMcp, paths.vscodeInstructions],
+    vscode: [paths.vscodeMcp, paths.vscodeInstructions],
+    "claude-code-hooks": [paths.claudeHooksSidecar],
     "anthropic-sdk": [path.join(paths.anthropicDir, "anthropic-sdk-example.mjs")]
   };
   return [...new Set(selected.flatMap((client) => byClient[client] || []).map((file) => path.resolve(file)))];
@@ -266,7 +267,7 @@ async function upsertCodexToml(file, { servers, dryRun }) {
 function upsertTomlSection(raw, section, block) {
   const escaped = section.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
   const pattern = new RegExp("(^|\\n)\\[" + escaped + "\\][\\s\\S]*?(?=\\n\\[[^\\n]+\\]|$)");
-  if (pattern.test(raw)) return raw.replace(pattern, (match, prefix) => prefix + block);
+  if (pattern.test(raw)) return raw.replace(pattern, (match, prefix) => prefix + block + "\n");
   const separator = raw && !raw.endsWith("\n") ? "\n\n" : raw ? "\n" : "";
   return raw + separator + block + "\n";
 }
@@ -274,9 +275,9 @@ function upsertTomlSection(raw, section, block) {
 async function writeCursor({ servers, paths, repoRoot, dryRun }) {
   const files = [
     { path: paths.cursorMcp, kind: "json" },
-    { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof.mdc"), path: path.join(paths.cursorRulesDir, "hermesproof.mdc"), kind: "copy" },
-    { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof-queue-discipline.mdc"), path: path.join(paths.cursorRulesDir, "hermesproof-queue-discipline.mdc"), kind: "copy" },
-    { src: path.join(repoRoot, "examples", "cursor", "streamhooks", ".cursor", "rules", "stream.mdc"), path: path.join(paths.cursorRulesDir, "stream.mdc"), kind: "copy" }
+    { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof.mdc"), path: paths.cursorHermesRule, kind: "copy" },
+    { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof-queue-discipline.mdc"), path: paths.cursorQueueRule, kind: "copy" },
+    { src: path.join(repoRoot, "examples", "cursor", "streamhooks", ".cursor", "rules", "stream.mdc"), path: paths.cursorStreamRule, kind: "copy" }
   ];
   if (dryRun) return { ok: true, status: "planned", files: files.map((f) => f.path) };
   const backups = [];
@@ -294,7 +295,7 @@ async function writeKiloCode({ paths, repoRoot, servers, dryRun }) {
   const files = [
     { path: paths.kilocodeMcp, kind: "mcp" },
     { src: path.join(repoRoot, "examples", "kilocode", "streamhooks", "rules.toml"), path: paths.kilocodeRules },
-    { src: path.join(repoRoot, "examples", "kilocode", "streamhooks", "system-prompt-snippet.md"), path: path.join(paths.kilocodeDir, "hermesproof", "system-prompt-snippet.md") }
+    { src: path.join(repoRoot, "examples", "kilocode", "streamhooks", "system-prompt-snippet.md"), path: paths.kilocodePrompt }
   ];
   if (dryRun) return { ok: true, status: "planned", files: files.map((f) => f.path) };
   const backups = [];
@@ -326,7 +327,7 @@ async function writeKiloCode({ paths, repoRoot, servers, dryRun }) {
 async function writeWindsurf(opts) {
   const mcp = await upsertJsonMcp(opts.paths.windsurf, opts);
   const rulesSrc = path.join(opts.repoRoot, "examples", "windsurf", "streamhooks", ".windsurfrules");
-  const rulesDest = path.join(opts.workspaceRoot, ".windsurfrules");
+  const rulesDest = opts.paths.windsurfRules;
   if (opts.dryRun) return { ok: true, status: "planned", files: [opts.paths.windsurf, rulesDest] };
   await ensureParent(rulesDest);
   const rulesBak = await backup(rulesDest);
@@ -337,7 +338,7 @@ async function writeWindsurf(opts) {
 async function writeVscode({ workspaceRoot, paths, repoRoot, servers, dryRun }) {
   const files = [
     paths.vscodeMcp,
-    path.join(workspaceRoot, ".github", "copilot-instructions.md")
+    paths.vscodeInstructions
   ];
   if (dryRun) return { ok: true, status: "planned", files };
   await ensureParent(paths.vscodeMcp);
