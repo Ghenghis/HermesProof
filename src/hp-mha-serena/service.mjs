@@ -7,12 +7,39 @@ import {
   normalizeWorkspacePath,
   sha256Hex
 } from "../core/fs-utils.mjs";
+import { AutomationManager } from "../core/automation-manager.mjs";
+import { CapabilityPackManager } from "../core/capability-packs.mjs";
+import { createLocalCapabilityInstaller } from "../core/local-capability-installer.mjs";
+import { createLocalProcessAdapter } from "../core/local-process-adapter.mjs";
+import { createSystemSchedulerAdapter } from "../core/system-scheduler-adapter.mjs";
+import {
+  KILO_BACKEND_CAPABILITY_PACK,
+  createKiloBackendInstallPlan,
+  probeKiloBackend
+} from "../core/kilo-backend-kit.mjs";
 import { HermesLockManager } from "../core/lock-manager.mjs";
+import { RuntimeLifecycleManager } from "../core/runtime-lifecycle-manager.mjs";
 import {
   WorkspaceBindingManager,
   loadOrCreateWorkspaceBindingSecret
 } from "../core/workspace-binding.mjs";
 import { SerenaAdapter } from "./serena-adapter.mjs";
+import {
+  SERENA_CATALOG,
+  SERENA_COMMIT,
+  SERENA_DEFAULT_DIRECT_TOOLS,
+  SERENA_DEFAULT_GUARDED_TOOLS,
+  SERENA_JETBRAINS_DIRECT_TOOLS,
+  SERENA_JETBRAINS_GUARDED_TOOLS,
+  SERENA_OPTIONAL_DIRECT_TOOLS,
+  SERENA_OPTIONAL_GUARDED_TOOLS,
+  SERENA_QUERY_GUARDED_TOOLS,
+  SERENA_SELECTED_LSP_TOOLS,
+  SERENA_SOURCE,
+  SERENA_TOOL_ROUTES,
+  SERENA_VERSION
+} from "./serena-catalog.mjs";
+import { SERENA_CONTEXT_NAMES } from "./context-installer.mjs";
 
 export class HpMhaSerenaError extends Error {
   constructor(code, message, details = undefined) {
@@ -28,6 +55,17 @@ export class HpMhaSerenaService {
     workspaceRoot,
     stateDirName,
     serenaAdapterFactory = (options) => new SerenaAdapter(options),
+    runtimeManagerFactory = (options) => new RuntimeLifecycleManager({
+      ...options,
+      processAdapter: createLocalProcessAdapter(options)
+    }),
+    capabilityManagerFactory = (options) => new CapabilityPackManager(options),
+    automationManagerFactory = (options) => new AutomationManager({
+      ...options,
+      schedulerAdapter: createSystemSchedulerAdapter()
+    }),
+    capabilityInstaller,
+    kiloProbe = probeKiloBackend,
     receiptTtlMs = 300_000,
     now = () => Date.now()
   } = {}) {
@@ -43,12 +81,20 @@ export class HpMhaSerenaService {
     this.requestedWorkspaceRoot = path.resolve(workspaceRoot);
     this.stateDirName = stateDirName;
     this.serenaAdapterFactory = serenaAdapterFactory;
+    this.runtimeManagerFactory = runtimeManagerFactory;
+    this.capabilityManagerFactory = capabilityManagerFactory;
+    this.automationManagerFactory = automationManagerFactory;
+    this.capabilityInstaller = capabilityInstaller;
+    this.kiloProbe = kiloProbe;
     this.receiptTtlMs = receiptTtlMs;
     this.now = now;
     this.workspaceRoot = null;
     this.manager = null;
     this.bindingManager = null;
     this.serenaAdapter = null;
+    this.runtimeManager = null;
+    this.capabilityManager = null;
+    this.automationManager = null;
     this.receipts = new Map();
     this.initialized = false;
   }
@@ -65,6 +111,59 @@ export class HpMhaSerenaService {
     await this.manager.init();
     const secret = await loadOrCreateWorkspaceBindingSecret(this.manager.paths.stateDir);
     this.bindingManager = new WorkspaceBindingManager({ secret });
+    this.runtimeManager = this.runtimeManagerFactory({ workspaceRoot: this.workspaceRoot });
+    await this.runtimeManager.init();
+    this.capabilityManager = this.capabilityManagerFactory({
+      workspaceRoot: this.workspaceRoot,
+      catalog: [KILO_BACKEND_CAPABILITY_PACK],
+      installer: this.capabilityInstaller || createLocalCapabilityInstaller({ workspaceRoot: this.workspaceRoot })
+    });
+    await this.capabilityManager.init();
+    this.automationManager = this.automationManagerFactory({
+      workspaceRoot: this.workspaceRoot,
+      leaseVerifier: async ({ runtimeId, leaseId }) => {
+        const status = await this.runtimeManager.status();
+        return status.leases.some((lease) =>
+          lease.id === leaseId &&
+          lease.runtime_id === runtimeId &&
+          lease.status === "active" &&
+          lease.expires_at_ms > this.now()
+        );
+      }
+    });
+    for (const job of [
+      {
+        id: "deep-doctor",
+        description: "Run the governed HermesProof deep doctor",
+        runtime_id: "hermesproof",
+        action: "doctor.deep",
+        interval_minutes: 15,
+        timeout_seconds: 300,
+        retries: 2
+      },
+      {
+        id: "disable-unused-mcp",
+        description: "Disable runtimes whose bounded lease expired",
+        runtime_id: "hermesproof",
+        action: "runtime.disable-unused",
+        interval_minutes: 5,
+        timeout_seconds: 60,
+        retries: 1
+      },
+      {
+        id: "completion-pulse",
+        description: "Recompute missing acceptance evidence",
+        runtime_id: "hermesproof",
+        action: "completion.pulse",
+        interval_minutes: 10,
+        timeout_seconds: 180,
+        retries: 1
+      }
+    ]) this.automationManager.register(job);
+    this.runtimeReaper = setInterval(() => {
+      this.runtimeManager.disableUnused().catch(() => {});
+    }, 60_000);
+    this.runtimeReaper.unref?.();
     this.initialized = true;
     return this;
   }
@@ -153,6 +252,52 @@ export class HpMhaSerenaService {
       task: task.task,
       locks: lock.locks,
       files: lock.files,
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async catalog({ workspaceHandle, owner } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    const desktopActive = [
+      ...SERENA_DEFAULT_DIRECT_TOOLS,
+      ...SERENA_DEFAULT_GUARDED_TOOLS
+    ];
+    const optionalOrBackendSpecific = [
+      ...SERENA_OPTIONAL_DIRECT_TOOLS,
+      ...SERENA_OPTIONAL_GUARDED_TOOLS,
+      ...SERENA_QUERY_GUARDED_TOOLS,
+      ...SERENA_JETBRAINS_DIRECT_TOOLS,
+      ...SERENA_JETBRAINS_GUARDED_TOOLS
+    ];
+    return {
+      ok: true,
+      schema: "hermesproof.serena.catalog.v1",
+      runtime: {
+        version: SERENA_VERSION,
+        commit: SERENA_COMMIT,
+        source: SERENA_SOURCE,
+        backend: "lsp"
+      },
+      counts: {
+        catalogued: SERENA_CATALOG.length,
+        desktop_active: desktopActive.length,
+        optional_or_backend_specific: optionalOrBackendSpecific.length,
+        governed_lsp_active: SERENA_SELECTED_LSP_TOOLS.length,
+        raw_mutation_active: 0
+      },
+      profiles: {
+        desktop_active: desktopActive,
+        optional_or_backend_specific: optionalOrBackendSpecific,
+        governed_lsp_active: SERENA_SELECTED_LSP_TOOLS
+      },
+      routes: SERENA_TOOL_ROUTES,
+      custom_contexts: [...SERENA_CONTEXT_NAMES],
+      notes: [
+        "52 is the pinned executable catalogue, not one simultaneously active profile.",
+        "29 is Serena desktop-app default: 14 read/analysis tools plus 15 direct-authority tools.",
+        "HermesProof exposes 15 LSP read/analysis tools and keeps raw Serena mutations at zero.",
+        "JetBrains and query-project tools require their matching backend or mode."
+      ],
       workspace_handle_id: binding.handle_id
     };
   }
@@ -251,6 +396,107 @@ export class HpMhaSerenaService {
       await fs.rm(temporary, { force: true }).catch(() => {});
       throw error;
     }
+  }
+
+  async writeTextExclusive(file, text) {
+    const temporary =
+      file + "." + process.pid + "." + crypto.randomBytes(12).toString("hex") + ".tmp";
+    try {
+      await fs.writeFile(temporary, text, { encoding: "utf8", flag: "wx" });
+      try {
+        await fs.link(temporary, file);
+      } catch (error) {
+        if (error?.code !== "EPERM" && error?.code !== "ENOTSUP") throw error;
+        await fs.copyFile(temporary, file, fs.constants.COPYFILE_EXCL);
+      }
+    } finally {
+      await fs.rm(temporary, { force: true }).catch(() => {});
+    }
+  }
+
+  async guardedCreate({
+    workspaceHandle,
+    owner,
+    taskId,
+    file: requestedFile,
+    text
+  } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    const file = normalizeWorkspacePath(this.workspaceRoot, requestedFile);
+    if (typeof text !== "string") {
+      throw new HpMhaSerenaError("INVALID_CREATE", "text must be a string");
+    }
+    const locks = await this.manager.listLocks();
+    const exactLock = locks.locks.find((lock) =>
+      lock.file === file &&
+      lock.owner === owner &&
+      lock.task_id === taskId &&
+      !lock.is_stale
+    );
+    if (!exactLock) {
+      throw new HpMhaSerenaError(
+        "EXACT_LOCK_REQUIRED",
+        "A live exact-file lock owned by this principal and task is required",
+        { file, owner, task_id: taskId }
+      );
+    }
+    const absoluteFile = path.join(this.workspaceRoot, file);
+    const parent = await fs.stat(path.dirname(absoluteFile)).catch(() => null);
+    if (!parent?.isDirectory()) {
+      throw new HpMhaSerenaError(
+        "PARENT_DIRECTORY_REQUIRED",
+        "The parent directory must already exist",
+        { file }
+      );
+    }
+    const exists = await fs.stat(absoluteFile).catch((error) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
+    if (exists) {
+      throw new HpMhaSerenaError("FILE_EXISTS", "Guarded create never overwrites an existing path", { file });
+    }
+    const afterSha = sha256Hex(text);
+    try {
+      await this.writeTextExclusive(absoluteFile, text);
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        throw new HpMhaSerenaError("FILE_EXISTS", "Guarded create lost an exclusive-create race", { file });
+      }
+      throw error;
+    }
+    let evidence;
+    try {
+      evidence = await this.manager.appendEvidence({
+        owner,
+        taskId,
+        kind: "serena.safe_create",
+        summary: "Exact-lock guarded create: " + file,
+        data: {
+          file,
+          lock_id: exactLock.lock_id,
+          after_sha256: afterSha
+        }
+      });
+    } catch (error) {
+      const current = await fs.readFile(absoluteFile).catch(() => null);
+      if (current && sha256Hex(current) === afterSha) {
+        await fs.rm(absoluteFile, { force: true }).catch(() => {});
+      }
+      throw new HpMhaSerenaError(
+        "EVIDENCE_WRITE_FAILED",
+        "Create was rolled back because evidence could not be recorded",
+        { cause: error?.message ?? String(error) }
+      );
+    }
+    return {
+      ok: true,
+      status: "created",
+      file,
+      after_sha256: afterSha,
+      workspace_handle_id: binding.handle_id,
+      evidence: evidence.evidence
+    };
   }
 
   async guardedReplace({
@@ -386,7 +632,200 @@ export class HpMhaSerenaService {
     };
   }
 
+  async requireClaimedTask(owner, taskId) {
+    if (typeof taskId !== "string" || taskId.length === 0) {
+      throw new HpMhaSerenaError("ACTIVE_TASK_REQUIRED", "A claimed HermesProof task is required");
+    }
+    const summary = await this.manager.getStateSummary();
+    const task = summary.tasks.find((item) =>
+      item?.id === taskId && item?.owner === owner && item?.status === "claimed"
+    );
+    if (!task) {
+      throw new HpMhaSerenaError(
+        "ACTIVE_TASK_REQUIRED",
+        "A matching claimed HermesProof task is required for this mutation",
+        { owner, task_id: taskId }
+      );
+    }
+    return task;
+  }
+
+  async runtimeRegister({ workspaceHandle, owner, taskId, manifest } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    await this.requireClaimedTask(owner, taskId);
+    const result = await this.runtimeManager.register(manifest);
+    const evidence = await this.manager.appendEvidence({
+      owner,
+      taskId,
+      kind: "runtime.register",
+      summary: "Registered default-disabled runtime: " + result.runtime.id,
+      data: {
+        runtime_id: result.runtime.id,
+        executable_sha256: result.runtime.manifest.executable_sha256,
+        tools: result.runtime.manifest.tools,
+        permissions: result.runtime.manifest.permissions
+      }
+    });
+    return { ...result, evidence: evidence.evidence, workspace_handle_id: binding.handle_id };
+  }
+
+  async runtimeStatus({ workspaceHandle, owner } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return { ...(await this.runtimeManager.status()), workspace_handle_id: binding.handle_id };
+  }
+
+  async runtimeIssueLease({ workspaceHandle, owner, taskId, runtimeId, permissions, ttlSeconds } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    await this.requireClaimedTask(owner, taskId);
+    return {
+      ...(await this.runtimeManager.issueLease({
+        runtimeId,
+        workspace: this.workspaceRoot,
+        owner,
+        taskId,
+        permissions,
+        ttlMs: ttlSeconds * 1000
+      })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async runtimeEnable({ workspaceHandle, owner, runtimeId, leaseId } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.runtimeManager.enable({ runtimeId, leaseId })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async runtimeCycle({ workspaceHandle, owner, runtimeId, leaseId } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.runtimeManager.cycle({ runtimeId, leaseId })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async runtimeRevokeLease({ workspaceHandle, owner, leaseId } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.runtimeManager.revokeLease({ leaseId })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async runtimeDisableUnused({ workspaceHandle, owner } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.runtimeManager.disableUnused()),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async capabilityResolve({ workspaceHandle, owner, requiredCapabilities } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...this.capabilityManager.resolve(requiredCapabilities),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async capabilityPlan({ workspaceHandle, owner, packId } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ok: true,
+      ...this.capabilityManager.plan(packId),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async capabilityInstall({ workspaceHandle, owner, taskId, packId, apply = false } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    if (apply) await this.requireClaimedTask(owner, taskId);
+    return {
+      ...(await this.capabilityManager.install({ packId, apply })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async automationStatus({ workspaceHandle, owner } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...this.automationManager.status(),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async automationPlan({ workspaceHandle, owner, jobId, platform } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ok: true,
+      ...this.automationManager.plan({ jobId, platform }),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async automationEnable({ workspaceHandle, owner, jobId, platform, leaseId } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.automationManager.enable({ jobId, platform, leaseId })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async automationCycle({ workspaceHandle, owner, jobId, platform, leaseId } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.automationManager.cycle({ jobId, platform, leaseId })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async automationKillSwitch({ workspaceHandle, owner, reason } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ...(await this.automationManager.killSwitch({ reason })),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
+  async kiloBackendDoctor({
+    workspaceHandle,
+    owner,
+    extensionVersion,
+    bundledKiloPath,
+    indexing = {},
+    integrations = {}
+  } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    const result = await this.kiloProbe({
+      extensionVersion,
+      bundledKiloPath,
+      indexing,
+      integrations: {
+        hermesproof: true,
+        serena: true,
+        mcp_config: true,
+        ...integrations
+      }
+    });
+    return { ...result, workspace_handle_id: binding.handle_id };
+  }
+
+  async kiloBackendPlan({ workspaceHandle, owner, report } = {}) {
+    const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    return {
+      ok: true,
+      ...createKiloBackendInstallPlan({ report, workspaceRoot: this.workspaceRoot }),
+      workspace_handle_id: binding.handle_id
+    };
+  }
+
   async close() {
+    if (this.runtimeReaper) {
+      clearInterval(this.runtimeReaper);
+      this.runtimeReaper = null;
+    }
     const adapter = this.serenaAdapter;
     this.serenaAdapter = null;
     this.receipts.clear();

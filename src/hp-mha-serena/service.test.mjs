@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -290,6 +291,101 @@ test("guarded edit rejects missing locks and post-analysis source drift", async 
         error instanceof HpMhaSerenaError &&
         error.code === "SOURCE_CHANGED_AFTER_ANALYSIS"
     );
+    await service.close();
+  });
+});
+
+test("service exposes workspace-bound lifecycle, capability, automation, and Kilo planning", async () => {
+  await withWorkspace(async (workspaceRoot) => {
+    const kiloProbe = async (options) => ({
+      schema: "hermesproof.kilo-backend-report.v1",
+      ok: true,
+      release_blockers: [],
+      required_capabilities: [],
+      components: { kilo_cli: { status: "REPLACED", release_blocking: false } },
+      inventory: { bundled_kilo: { path: options.bundledKiloPath, present: true } }
+    });
+    const service = new HpMhaSerenaService({
+      workspaceRoot,
+      stateDirName: ".hermes-test",
+      kiloProbe
+    });
+    await service.init();
+    const binding = await service.bindWorkspace({ owner: "codex-test", ttlMs: 60_000 });
+    const auth = { workspaceHandle: binding.token, owner: "codex-test" };
+
+    const runtime = await service.runtimeStatus(auth);
+    assert.deepEqual(runtime.runtimes, []);
+
+    const resolved = await service.capabilityResolve({
+      ...auth,
+      requiredCapabilities: ["kilo.cli", "mcp.client"]
+    });
+    assert.deepEqual(resolved.selected_pack_ids, ["kilo-backend"]);
+    const packPlan = await service.capabilityPlan({ ...auth, packId: "kilo-backend" });
+    assert.equal(packPlan.global_install, false);
+    assert.equal(packPlan.enabled_after_install, false);
+
+    const automation = await service.automationStatus(auth);
+    assert.deepEqual(
+      automation.jobs.map((job) => job.id),
+      ["deep-doctor", "disable-unused-mcp", "completion-pulse"]
+    );
+    const schedule = await service.automationPlan({
+      ...auth,
+      jobId: "deep-doctor",
+      platform: "windows"
+    });
+    assert.equal(schedule.adapter, "windows-task-scheduler");
+    assert.equal(schedule.mutates_system, false);
+
+    const doctor = await service.kiloBackendDoctor({
+      ...auth,
+      extensionVersion: "7.10.0-rc.25",
+      bundledKiloPath: "G:/fixture/kilo.exe"
+    });
+    assert.equal(doctor.ok, true);
+    assert.equal(doctor.inventory.bundled_kilo.path, "G:/fixture/kilo.exe");
+    const kiloPlan = await service.kiloBackendPlan({
+      ...auth,
+      report: doctor
+    });
+    assert.deepEqual(kiloPlan.pack_ids, []);
+    assert.equal(kiloPlan.global_install, false);
+    await service.close();
+  });
+});
+
+
+test("service registers, leases, starts, cycles, and revokes a real hash-bound runtime", async () => {
+  await withWorkspace(async (workspaceRoot) => {
+    const service = await new HpMhaSerenaService({ workspaceRoot, stateDirName: ".hermes-test" }).init();
+    const binding = await service.bindWorkspace({ owner: "codex-test", ttlMs: 60_000 });
+    const auth = { workspaceHandle: binding.token, owner: "codex-test" };
+    await service.claimAndLock({ ...auth, taskId: "runtime-e2e", files: ["src/runtime.mjs"] });
+    const executableSha256 = crypto.createHash("sha256").update(await readFile(process.execPath)).digest("hex");
+    const registered = await service.runtimeRegister({
+      ...auth,
+      taskId: "runtime-e2e",
+      manifest: {
+        id: "fixture-runtime",
+        command: [process.execPath, "-e", "setInterval(() => {}, 1000)"],
+        executable_sha256: executableSha256,
+        tools: ["fixture.read"],
+        permissions: ["workspace:read"]
+      }
+    });
+    assert.equal(registered.runtime.enabled, false);
+    assert.equal(registered.evidence.kind, "runtime.register");
+    const issued = await service.runtimeIssueLease({ ...auth, taskId: "runtime-e2e", runtimeId: "fixture-runtime", permissions: ["workspace:read"], ttlSeconds: 60 });
+    const enabled = await service.runtimeEnable({ ...auth, runtimeId: "fixture-runtime", leaseId: issued.lease.id });
+    assert.equal(enabled.runtime.enabled, true);
+    assert.ok(Number.isInteger(enabled.runtime.pid));
+    const cycled = await service.runtimeCycle({ ...auth, runtimeId: "fixture-runtime", leaseId: issued.lease.id });
+    assert.equal(cycled.runtime.generation, 2);
+    const revoked = await service.runtimeRevokeLease({ ...auth, leaseId: issued.lease.id });
+    assert.equal(revoked.lease.status, "revoked");
+    assert.equal((await service.runtimeStatus(auth)).runtimes[0].enabled, false);
     await service.close();
   });
 });
