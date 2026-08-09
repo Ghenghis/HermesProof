@@ -37,3 +37,20 @@ test("README and Pages site are GitLab-first and link the current diagrams", asy
   assert.match(page, /34/);
   assert.match(styles, /prefers-reduced-motion/);
 });
+
+test("operations docs match the shipped Serena, scheduler, backup, and Claude Code contracts", async () => {
+  const [troubleshooting, windowsInstall, reconnect] = await Promise.all([
+    readFile(path.join(root, "docs", "TROUBLESHOOTING_UPDATES.md"), "utf8"),
+    readFile(path.join(root, "docs", "WINDOWS_INSTALL.md"), "utf8"),
+    readFile(path.join(root, "docs", "AUTO_RECONNECT.md"), "utf8"),
+  ]);
+  assert.match(troubleshooting, /language_servers:/);
+  assert.doesNotMatch(troubleshooting, /```yaml\s+languages:/);
+  assert.match(troubleshooting, /HermesProof Automatic Update/);
+  assert.match(windowsInstall, /backups[\\/]clients/);
+  assert.match(windowsInstall, /managed recovery data/i);
+  assert.match(windowsInstall, /-SkipUserPath/);
+  assert.match(windowsInstall, /-SkipSystemChanges/);
+  assert.match(reconnect, /~\/\.claude\.json/);
+  assert.doesNotMatch(reconnect, /In `~\/\.claude\/settings\.json`/);
+});

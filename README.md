@@ -69,12 +69,12 @@ See [Windows install, repair, backup, and uninstall](docs/WINDOWS_INSTALL.md).
 | Windsurf | Both servers in the Windsurf MCP configuration |
 | Cursor | Both servers in the Cursor MCP configuration |
 | Claude Desktop | Both servers in the desktop configuration |
-| Claude Code | Both servers installed or refreshed with `claude mcp` |
+| Claude Code | Both servers installed or refreshed with `claude mcp`; the real user MCP store `~/.claude.json` is snapshotted |
 | LM Studio | MCP host wiring plus a local-model route; LM Link is preferred |
 | Ollama | Local inference fallback when LM Studio/LM Link is unavailable; it is not misrepresented as an MCP host |
 | Devin | Exportable MCP configuration template for the Devin environment |
 
-Existing files are backed up and recorded with before/after hashes. Restore refuses to overwrite configuration that the user changed after installation.
+Existing files are backed up in an immutable, SHA-bound manifest and recorded with before/after hashes. Restore refuses to overwrite configuration that the user changed after installation. Repeat uninstall is idempotent, and a requested purge stops without deleting recovery data if client restoration cannot be proven.
 
 ## Safe daily workflow
 

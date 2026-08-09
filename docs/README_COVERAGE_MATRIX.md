@@ -15,7 +15,7 @@ This matrix maps the current v0.9.0-rc.1 README claims to executable evidence. G
 | Authorized reverse-engineering pack | reverse-engineering-kit.mjs | pack validation, inventory, and resolver tests |
 | LM Studio LM Link with Ollama fallback | wizard-writers.mjs | client installer test reads local-models.json |
 | Kilo, VS Code, Codex, Windsurf, LM Studio, Claude, Cursor, Devin | wizard-detectors.mjs / wizard-writers.mjs | installer matrix and snapshot tests |
-| Client rollback protects later user changes | client-config-snapshot.mjs | after-hash and manifest-digest tamper tests |
+| Client rollback protects later user changes and recovery data | client-config-snapshot.mjs / uninstall-hermesproof.ps1 | immutable-manifest, after-hash, repeat-uninstall, purge-failure, and Claude `~/.claude.json` tests |
 | Immutable updater with quarantine and rollback | managed-updater.mjs | updater activation, probe failure, crash journal, stale lock, cleanup tests |
 | Only allowlisted GitLab sources and refs | git-source.mjs / path-policy.mjs | real local bare-repository integration and rejection tests |
 | Nine production update groups, no skips | release-verifier.mjs / production-gates.mjs | verifier and production gate tests |

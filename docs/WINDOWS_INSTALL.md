@@ -18,13 +18,13 @@ The supported distribution is the GitLab release ZIP for `v0.9.0-rc.1`. Installa
    .\install-hermesproof.ps1 -Workspace "G:\Github\your-project" -AutoUpdate
    ```
 
-The installer validates its manifest, creates `%USERPROFILE%\.hermesproof-managed`, stages an immutable release, performs real MCP handshakes against both servers, snapshots supported client files, installs stable-launcher entries, and enables the optional six-hour Windows task.
+The installer validates its manifest, creates `%USERPROFILE%\.hermesproof-managed`, stages an immutable release, performs real MCP handshakes against both servers, snapshots supported client files, installs stable-launcher entries, and enables the optional six-hour Windows task. Client snapshots use an immutable SHA-bound manifest under `%USERPROFILE%\.hermesproof-managed\backups\clients\<snapshot-id>`.
 
 ![Windows installation flow](diagrams/windows-install-flow.svg)
 
 ## Default client coverage
 
-Kilo Code/VS Code, Codex, Windsurf, Cursor, Claude Desktop, Claude Code, LM Studio, and a Devin template receive both `hermes3d-locks` and `hp-mha-serena`. LM Studio also receives the LM Link route. Ollama is configured as a model fallback, not falsely advertised as a native MCP host.
+Kilo Code/VS Code, Codex, Windsurf, Cursor, Claude Desktop, Claude Code, LM Studio, and a Devin template receive both `hermes3d-locks` and `hp-mha-serena`. Claude Code's user MCP store is `~/.claude.json` and is included in rollback coverage. LM Studio also receives the LM Link route. Ollama is configured as a model fallback, not falsely advertised as a native MCP host.
 
 Restart an open client after installation. Run `hermesproof-update status` and then use the client’s MCP tools list to confirm both servers.
 
@@ -36,7 +36,15 @@ Re-running the same installer is safe. It creates a new immutable release direct
 .\install-hermesproof.ps1 -Workspace "G:\Github\your-project" -Repair
 ```
 
-If a client file was changed after HermesProof wrote it, automatic restore refuses to overwrite that newer user change. Compare the backup under the managed `client-snapshots` directory and merge intentionally.
+If a client file was changed after HermesProof wrote it, automatic restore refuses to overwrite that newer user change. Compare the current file with the immutable manifest and backup under `%USERPROFILE%\.hermesproof-managed\backups\clients`, then merge intentionally.
+
+For an isolated portable smoke test, `-SkipUserPath` keeps the user and process PATH unchanged:
+
+```powershell
+.\install-hermesproof.ps1 -Workspace "C:\test\workspace" -ManagedRoot "C:\test\managed" -SkipUserPath
+```
+
+This switch is intended for testing or deliberately portable operation; ordinary per-user installs should retain the default PATH wiring.
 
 ## Rollback
 
@@ -53,7 +61,23 @@ Rollback atomically switches the active pointer to the previous known-good relea
 .\uninstall-hermesproof.ps1
 ```
 
-The uninstaller disables the HermesProof scheduled task and removes only entries owned by the stable launcher. It preserves evidence, snapshots, and releases unless `-PurgeManagedData` is explicitly supplied.
+The first uninstall removes the scheduled task and restores every snapshotted client file to its pre-install state only when its recorded after-hash still matches. The successful restore is recorded, so repeating uninstall is idempotent. Releases, evidence, and backups remain available.
+
+Permanent managed-data deletion is a separate explicit operation:
+
+```powershell
+.\uninstall-hermesproof.ps1 -PurgeManagedData
+```
+
+Purge is fail-closed: if a client changed after install, the snapshot is invalid, or the verified restore helper is unavailable, the command exits nonzero and all managed recovery data is preserved.
+
+For an isolated executable test, `-SkipSystemChanges` prevents Task Scheduler and user PATH changes:
+
+```powershell
+.\uninstall-hermesproof.ps1 -ManagedRoot "C:\test\managed" -SkipSystemChanges
+```
+
+Do not use `-SkipSystemChanges` for a normal uninstall because it intentionally leaves system integration untouched.
 
 ## Moving the setup to another PC
 
