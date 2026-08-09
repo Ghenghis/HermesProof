@@ -146,11 +146,55 @@ function parseArgs(argv) {
   return options;
 }
 
+async function resolveCliDefaults(options) {
+  const verifierDirectory = path.dirname(fileURLToPath(import.meta.url));
+  if (!options.artifactFile) {
+    const candidateDirectories = [
+      verifierDirectory,
+      path.resolve(verifierDirectory, "..", "dist")
+    ];
+    const artifacts = new Set();
+    for (const directory of candidateDirectories) {
+      const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        if (
+          entry.isFile() &&
+          /^HermesProof-.+-windows-x64\.zip$/i.test(entry.name) &&
+          !entry.name.includes("UNSIGNED-DEVELOPMENT")
+        ) {
+          artifacts.add(path.resolve(directory, entry.name));
+        }
+      }
+    }
+    if (artifacts.size !== 1) {
+      throw new Error(`expected exactly one signed HermesProof Windows ZIP, found ${artifacts.size}`);
+    }
+    options.artifactFile = [...artifacts][0];
+  }
+
+  if (!options.publicKeyFile) {
+    const candidates = [
+      path.join(verifierDirectory, "hermesproof-release-ed25519-public.pem"),
+      path.resolve(verifierDirectory, "..", "config", "hermesproof-release-ed25519-public.pem")
+    ];
+    for (const candidate of candidates) {
+      const stat = await fs.lstat(candidate).catch(() => null);
+      if (stat?.isFile() && !stat.isSymbolicLink()) {
+        options.publicKeyFile = candidate;
+        break;
+      }
+    }
+    if (!options.publicKeyFile) throw new Error("release public key was not found beside the verifier or in config");
+  }
+  return options;
+}
+
 function usage() {
   return [
-    "Usage: node verify-hermesproof-release.mjs --artifact <zip> [options]",
+    "Usage: node verify-hermesproof-release.mjs [--artifact <zip>] [options]",
     "",
     "Options:",
+    "  --artifact <zip>     Default: exactly one signed HermesProof Windows ZIP beside the verifier or in ../dist",
     "  --checksum <file>    Default: <artifact>.sha256",
     "  --signature <file>   Default: <artifact>.sig",
     "  --public-key <file>  Default: hermesproof-release-ed25519-public.pem beside verifier",
@@ -166,11 +210,7 @@ if (isMain) {
     if (args.help) {
       process.stdout.write(usage() + "\n");
     } else {
-      if (!args.artifactFile) throw new Error("--artifact is required");
-      args.publicKeyFile ||= path.join(
-        path.dirname(fileURLToPath(import.meta.url)),
-        "hermesproof-release-ed25519-public.pem"
-      );
+      await resolveCliDefaults(args);
       const result = await verifyDownloadedRelease(args);
       if (args.json) {
         process.stdout.write(JSON.stringify(result) + "\n");

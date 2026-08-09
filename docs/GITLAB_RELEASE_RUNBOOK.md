@@ -13,7 +13,7 @@ npm test
 npm run truth-gates
 $env:HERMESPROOF_RELEASE_SIGNING_KEY_FILE = 'C:\private\HermesProof-release-ed25519-private.pem'
 npm run build:windows-release
-npm run release:verify -- --artifact .\dist\HermesProof-v0.9.0-rc.1-windows-x64.zip --public-key .\config\hermesproof-release-ed25519-public.pem
+npm run release:verify
 node .\scripts\release-checksum.mjs --verify-sha256
 Remove-Item Env:HERMESPROOF_RELEASE_SIGNING_KEY_FILE
 ```

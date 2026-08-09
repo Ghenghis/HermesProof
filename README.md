@@ -52,7 +52,7 @@ Download the ZIP, its exact `.sha256` and `.sig` sidecars, `hermesproof-release-
 node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-rc.1-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
 ```
 
-The command must print `[PASS] HermesProof release verified`. Any checksum, filename, public-key fingerprint, envelope, or Ed25519 signature mismatch exits nonzero. From a source checkout, the equivalent command is `npm run release:verify -- --artifact <zip> --public-key config/hermesproof-release-ed25519-public.pem`.
+The command must print `[PASS] HermesProof release verified`. Any checksum, filename, public-key fingerprint, envelope, or Ed25519 signature mismatch exits nonzero. From a source checkout containing exactly one official Windows ZIP in `dist`, run `npm run release:verify`. For a custom path, invoke `node scripts/verify-hermesproof-release.mjs --artifact <zip> --public-key config/hermesproof-release-ed25519-public.pem` directly so PowerShell/npm option forwarding cannot alter the arguments.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
