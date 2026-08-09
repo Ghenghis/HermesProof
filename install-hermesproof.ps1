@@ -4,7 +4,8 @@ param(
   [string]$ManagedRoot = [IO.Path]::Combine($env:USERPROFILE, ".hermesproof-managed"),
   [string[]]$Targets = @("kilocode", "vscode", "codex", "windsurf", "lm-studio", "ollama", "claude-desktop", "claude-code", "cursor", "devin"),
   [switch]$AutoUpdate,
-  [switch]$Repair
+  [switch]$Repair,
+  [switch]$SkipUserPath
 )
 
 Set-StrictMode -Version Latest
@@ -173,9 +174,10 @@ try {
 
   $manifestDigest = (Get-FileHash -LiteralPath ([IO.Path]::Combine($releaseDirectory, "release-manifest.json")) -Algorithm SHA256).Hash.ToLowerInvariant()
   $previousSha = if ($null -ne $previousActive) { $previousActive.currentSha } else { $null }
+  $generation = if ($null -ne $previousActive) { [int]$previousActive.generation + 1 } else { 1 }
   $registryReleases = @($previousRegistry.releases | Where-Object { $_.sha -ne $sha })
   $registryReleases += [ordered]@{ sha = $sha; state = "known-good"; directory = $releaseDirectory; evidenceDigest = $manifestDigest; recordedUtc = [DateTime]::UtcNow.ToString("o") }
-  $active = [ordered]@{ schema = $schema; generation = (if ($null -ne $previousActive) { [int]$previousActive.generation + 1 } else { 1 }); currentSha = $sha; previousSha = $previousSha; channel = "stable"; evidenceDigest = $manifestDigest; clientSnapshot = $clientSnapshot; activatedUtc = [DateTime]::UtcNow.ToString("o") }
+  $active = [ordered]@{ schema = $schema; generation = $generation; currentSha = $sha; previousSha = $previousSha; channel = "stable"; evidenceDigest = $manifestDigest; clientSnapshot = $clientSnapshot; activatedUtc = [DateTime]::UtcNow.ToString("o") }
   Write-JsonAtomic $registryFile ([ordered]@{ schema = $schema; releases = $registryReleases })
   Write-JsonAtomic $activeFile $active
   Write-JsonAtomic $installFile ([ordered]@{ schema = $installSchema; version = $manifest.version; sourceSha = $sha; workspaceRoot = $workspaceRoot; managedRoot = $managed; targets = $Targets; clientSnapshot = $clientSnapshot; installedUtc = [DateTime]::UtcNow.ToString("o") })
@@ -185,12 +187,14 @@ try {
   $serverCmd = "@echo off`r`n`"$nodeCommand`" `"$stableLauncher`" %*`r`n"
   [IO.File]::WriteAllText([IO.Path]::Combine($binRoot, "hermesproof-update.cmd"), $updateCmd, (New-Object Text.UTF8Encoding($false)))
   [IO.File]::WriteAllText([IO.Path]::Combine($binRoot, "hermesproof-launch.cmd"), $serverCmd, (New-Object Text.UTF8Encoding($false)))
-  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-  $pathParts = @($userPath -split ';' | Where-Object { $_ })
-  if (-not ($pathParts | Where-Object { Test-SamePath $_ $binRoot })) {
-    [Environment]::SetEnvironmentVariable("Path", (($pathParts + $binRoot) -join ';'), "User")
+  if (-not $SkipUserPath) {
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $pathParts = @($userPath -split ';' | Where-Object { $_ })
+    if (-not ($pathParts | Where-Object { Test-SamePath $_ $binRoot })) {
+      [Environment]::SetEnvironmentVariable("Path", (($pathParts + $binRoot) -join ';'), "User")
+    }
+    if (-not (($env:Path -split ';') | Where-Object { Test-SamePath $_ $binRoot })) { $env:Path = "$env:Path;$binRoot" }
   }
-  if (-not (($env:Path -split ';') | Where-Object { Test-SamePath $_ $binRoot })) { $env:Path = "$env:Path;$binRoot" }
 
   if ($AutoUpdate) {
     & $nodeCommand $updateLauncher auto enable --json

@@ -31,6 +31,13 @@ test("Windows installer and uninstaller parse and contain fail-safe controls", a
   assert.match(install, /clientSnapshot/);
   assert.match(install, /quarantine/i);
   assert.match(install, /AutoUpdate/);
+  assert.match(install, /\[switch\]\$SkipUserPath/);
+  assert.match(install, /if \(-not \$SkipUserPath\) \{[\s\S]*SetEnvironmentVariable\("Path"/);
+  assert.doesNotMatch(
+    install,
+    /generation\s*=\s*\(if\b/,
+    "Windows PowerShell executes a parenthesized inline if as a command"
+  );
   assert.match(uninstall, /restore-client-snapshot\.mjs/);
   assert.match(uninstall, /PurgeManagedData/);
   assert.match(uninstall, /HermesProof Automatic Update/);
