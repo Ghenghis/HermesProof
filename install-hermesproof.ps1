@@ -108,6 +108,7 @@ $registryFile = [IO.Path]::Combine($stateRoot, "releases.json")
 $installFile = [IO.Path]::Combine($stateRoot, "install.json")
 $previousActive = Read-JsonOrDefault $activeFile $null
 $previousRegistry = Read-JsonOrDefault $registryFile ([pscustomobject]@{ schema = $schema; releases = @() })
+$previousInstall = Read-JsonOrDefault $installFile $null
 $transactionFile = [IO.Path]::Combine($stateRoot, "windows-install-transaction.json")
 Write-JsonAtomic $transactionFile ([ordered]@{ schema = $installSchema; phase = "staging"; sha = $sha; startedUtc = [DateTime]::UtcNow.ToString("o") })
 $staging = [IO.Path]::Combine($stagingRoot, "$sha-$([guid]::NewGuid().ToString('N'))")
@@ -171,6 +172,8 @@ try {
   $clientResult = ($clientJson | Select-Object -Last 1) | ConvertFrom-Json
   if (-not $clientResult.ok) { throw "One or more client configurations failed" }
   $clientSnapshot = $clientResult.snapshot
+  $uninstallSnapshot = if ($null -ne $previousInstall -and $null -ne $previousInstall.clientSnapshot) { $previousInstall.clientSnapshot } else { $clientSnapshot }
+  $installedUtc = if ($null -ne $previousInstall -and $previousInstall.installedUtc) { $previousInstall.installedUtc } else { [DateTime]::UtcNow.ToString("o") }
 
   $manifestDigest = (Get-FileHash -LiteralPath ([IO.Path]::Combine($releaseDirectory, "release-manifest.json")) -Algorithm SHA256).Hash.ToLowerInvariant()
   $previousSha = if ($null -ne $previousActive) { $previousActive.currentSha } else { $null }
@@ -180,7 +183,7 @@ try {
   $active = [ordered]@{ schema = $schema; generation = $generation; currentSha = $sha; previousSha = $previousSha; channel = "stable"; evidenceDigest = $manifestDigest; clientSnapshot = $clientSnapshot; activatedUtc = [DateTime]::UtcNow.ToString("o") }
   Write-JsonAtomic $registryFile ([ordered]@{ schema = $schema; releases = $registryReleases })
   Write-JsonAtomic $activeFile $active
-  Write-JsonAtomic $installFile ([ordered]@{ schema = $installSchema; version = $manifest.version; sourceSha = $sha; workspaceRoot = $workspaceRoot; managedRoot = $managed; targets = $Targets; clientSnapshot = $clientSnapshot; installedUtc = [DateTime]::UtcNow.ToString("o") })
+  Write-JsonAtomic $installFile ([ordered]@{ schema = $installSchema; version = $manifest.version; sourceSha = $sha; workspaceRoot = $workspaceRoot; managedRoot = $managed; targets = $Targets; clientSnapshot = $uninstallSnapshot; installedUtc = $installedUtc; lastActivatedUtc = [DateTime]::UtcNow.ToString("o") })
 
   $updateLauncher = [IO.Path]::Combine($controlRoot, "scripts", "hermesproof-update-launch.mjs")
   $updateCmd = "@echo off`r`n`"$nodeCommand`" `"$updateLauncher`" %*`r`n"

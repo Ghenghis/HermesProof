@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$ManagedRoot = [IO.Path]::Combine($env:USERPROFILE, ".hermesproof-managed"),
-  [switch]$PurgeManagedData
+  [switch]$PurgeManagedData,
+  [switch]$SkipSystemChanges
 )
 
 Set-StrictMode -Version Latest
@@ -13,25 +14,32 @@ if (-not (Test-Path -LiteralPath $managed)) { Write-Host "HermesProof is not ins
 $rootItem = Get-Item -LiteralPath $managed -Force
 if (($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "ManagedRoot is a link or junction" }
 
-& schtasks.exe /Delete /TN "HermesProof Automatic Update" /F 2>$null | Out-Null
+if (-not $SkipSystemChanges) {
+  & schtasks.exe /Delete /TN "HermesProof Automatic Update" /F 2>$null | Out-Null
+}
 $stateRoot = [IO.Path]::Combine($managed, "state")
 $activeFile = [IO.Path]::Combine($stateRoot, "active-release.json")
+$installFile = [IO.Path]::Combine($stateRoot, "install.json")
 if (Test-Path -LiteralPath $activeFile) {
   $active = Get-Content -LiteralPath $activeFile -Raw | ConvertFrom-Json
-  if ($null -ne $active.clientSnapshot -and $active.clientSnapshot.manifestFile) {
+  $install = if (Test-Path -LiteralPath $installFile) { Get-Content -LiteralPath $installFile -Raw | ConvertFrom-Json } else { $null }
+  $restoreSnapshot = if ($null -ne $install -and $null -ne $install.clientSnapshot) { $install.clientSnapshot } else { $active.clientSnapshot }
+  if ($null -ne $restoreSnapshot -and $restoreSnapshot.manifestFile) {
     $release = [IO.Path]::Combine($managed, "releases", [string]$active.currentSha)
     $restore = [IO.Path]::Combine($release, "scripts", "restore-client-snapshot.mjs")
     if (Test-Path -LiteralPath $restore) {
       $env:HERMESPROOF_MANAGED_ROOT = $managed
-      & node.exe $restore --manifest $active.clientSnapshot.manifestFile --sha256 $active.clientSnapshot.manifestSha256
+      & node.exe $restore --manifest $restoreSnapshot.manifestFile --sha256 $restoreSnapshot.manifestSha256
       if ($LASTEXITCODE -ne 0) { Write-Warning "Some client files changed after install and were not overwritten; review the snapshot manually." }
     }
   }
 }
-$binRoot = [IO.Path]::Combine($managed, "bin")
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$remaining = @($userPath -split ';' | Where-Object { $_ -and -not [string]::Equals(([IO.Path]::GetFullPath($_)).TrimEnd("\"), $binRoot.TrimEnd("\"), [StringComparison]::OrdinalIgnoreCase) })
-[Environment]::SetEnvironmentVariable("Path", ($remaining -join ';'), "User")
+if (-not $SkipSystemChanges) {
+  $binRoot = [IO.Path]::Combine($managed, "bin")
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $remaining = @($userPath -split ';' | Where-Object { $_ -and -not [string]::Equals(([IO.Path]::GetFullPath($_)).TrimEnd("\"), $binRoot.TrimEnd("\"), [StringComparison]::OrdinalIgnoreCase) })
+  [Environment]::SetEnvironmentVariable("Path", ($remaining -join ';'), "User")
+}
 
 if ($PurgeManagedData) {
   Remove-Item -LiteralPath $managed -Recurse -Force

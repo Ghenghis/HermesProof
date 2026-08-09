@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
@@ -29,6 +30,8 @@ test("Windows installer and uninstaller parse and contain fail-safe controls", a
   assert.match(install, /hermesproof-launch\.mjs/);
   assert.match(install, /install-clients\.mjs/);
   assert.match(install, /clientSnapshot/);
+  assert.match(install, /\$previousInstall\s*=\s*Read-JsonOrDefault/);
+  assert.match(install, /clientSnapshot\s*=\s*\$uninstallSnapshot/);
   assert.match(install, /quarantine/i);
   assert.match(install, /AutoUpdate/);
   assert.match(install, /\[switch\]\$SkipUserPath/);
@@ -41,4 +44,50 @@ test("Windows installer and uninstaller parse and contain fail-safe controls", a
   assert.match(uninstall, /restore-client-snapshot\.mjs/);
   assert.match(uninstall, /PurgeManagedData/);
   assert.match(uninstall, /HermesProof Automatic Update/);
+});
+
+test("uninstaller restores the first-install client snapshot after a repair", async (t) => {
+  const uninstallerFile = path.join(root, "uninstall-hermesproof.ps1");
+  const uninstaller = await fs.readFile(uninstallerFile, "utf8");
+  assert.match(
+    uninstaller,
+    /\[switch\]\$SkipSystemChanges/,
+    "the isolated executable test must not touch Task Scheduler or the user PATH"
+  );
+  const managedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-uninstall-lineage-"));
+  t.after(() => fs.rm(managedRoot, { recursive: true, force: true }));
+  const sha = "c".repeat(40);
+  const scriptsDir = path.join(managedRoot, "releases", sha, "scripts");
+  const stateDir = path.join(managedRoot, "state");
+  const recordFile = path.join(managedRoot, "restore-arguments.json");
+  const originalManifest = path.join(managedRoot, "backups", "first-install", "manifest.json");
+  const repairManifest = path.join(managedRoot, "backups", "repair", "manifest.json");
+  await fs.mkdir(scriptsDir, { recursive: true });
+  await fs.mkdir(stateDir, { recursive: true });
+  await fs.writeFile(
+    path.join(scriptsDir, "restore-client-snapshot.mjs"),
+    'import fs from "node:fs"; fs.writeFileSync(process.env.HP_UNINSTALL_RECORD, JSON.stringify(process.argv.slice(2)));\n',
+    "utf8"
+  );
+  await fs.writeFile(path.join(stateDir, "active-release.json"), JSON.stringify({
+    currentSha: sha,
+    clientSnapshot: { manifestFile: repairManifest, manifestSha256: "2".repeat(64) }
+  }), "utf8");
+  await fs.writeFile(path.join(stateDir, "install.json"), JSON.stringify({
+    clientSnapshot: { manifestFile: originalManifest, manifestSha256: "1".repeat(64) }
+  }), "utf8");
+
+  await execFileAsync("powershell.exe", [
+    "-NoLogo", "-NoProfile", "-NonInteractive",
+    "-File", uninstallerFile,
+    "-ManagedRoot", managedRoot,
+    "-SkipSystemChanges"
+  ], {
+    env: { ...process.env, HP_UNINSTALL_RECORD: recordFile },
+    windowsHide: true
+  });
+
+  assert.deepEqual(JSON.parse(await fs.readFile(recordFile, "utf8")), [
+    "--manifest", originalManifest, "--sha256", "1".repeat(64)
+  ]);
 });
