@@ -271,7 +271,7 @@ function upsertTomlSection(raw, section, block) {
   return raw + separator + block + "\n";
 }
 
-async function writeCursor({ workspaceRoot, serverEntry, serverName, paths, repoRoot, dryRun }) {
+async function writeCursor({ servers, paths, repoRoot, dryRun }) {
   const files = [
     { path: paths.cursorMcp, kind: "json" },
     { src: path.join(repoRoot, "examples", "cursor", ".cursor", "rules", "hermesproof.mdc"), path: path.join(paths.cursorRulesDir, "hermesproof.mdc"), kind: "copy" },
@@ -280,7 +280,7 @@ async function writeCursor({ workspaceRoot, serverEntry, serverName, paths, repo
   ];
   if (dryRun) return { ok: true, status: "planned", files: files.map((f) => f.path) };
   const backups = [];
-  await upsertJsonMcp(files[0].path, { workspaceRoot, serverEntry, serverName, dryRun: false });
+  await upsertJsonMcp(files[0].path, { servers, dryRun: false });
   for (const item of files.slice(1)) {
     await ensureParent(item.path);
     const bak = await backup(item.path);

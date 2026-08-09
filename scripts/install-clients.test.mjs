@@ -24,7 +24,7 @@ test("Windows-first install writes both HermesProof servers to the supported cli
     HERMESPROOF_TEST_HOME: homeDir
   };
 
-  const targets = ["kilocode", "lm-studio", "ollama", "codex", "windsurf", "vscode", "devin"];
+  const targets = ["kilocode", "lm-studio", "ollama", "codex", "windsurf", "vscode", "cursor", "devin"];
   const result = await writeClients({
     clients: targets,
     workspaceRoot,
@@ -35,8 +35,8 @@ test("Windows-first install writes both HermesProof servers to the supported cli
   assert.deepEqual(result.selected, targets);
   assert.equal(result.snapshot.finalized, true);
   assert.match(result.snapshot.manifestFile, /backups[\\/]clients/);
-  assert.equal(result.rollback, null);
   for (const target of targets) assert.equal(result.results[target].ok, true, target);
+  assert.equal(result.rollback, null);
 
   const kilo = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".kilo", "kilo.json"), "utf8"));
   assert.deepEqual(Object.keys(kilo.mcp).sort(), ["hermes3d-locks", "hp-mha-serena"]);
@@ -56,6 +56,9 @@ test("Windows-first install writes both HermesProof servers to the supported cli
 
   const vscode = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".vscode", "mcp.json"), "utf8"));
   assert.deepEqual(Object.keys(vscode.servers).sort(), ["hermes3d-locks", "hp-mha-serena"]);
+
+  const cursor = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".cursor", "mcp.json"), "utf8"));
+  assert.deepEqual(Object.keys(cursor.mcpServers).sort(), ["hermes3d-locks", "hp-mha-serena"]);
 
   const codex = await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8");
   assert.match(codex, /\[mcp_servers\.hermes3d-locks\]/);
