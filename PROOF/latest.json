@@ -1,7 +1,7 @@
 {
-  "run_id": "truth_2026-08-09T19-03-27-409Z",
-  "ts_utc": "2026-08-09T19:03:27.409Z",
-  "duration_ms": 46310,
+  "run_id": "truth_2026-08-09T19-08-44-671Z",
+  "ts_utc": "2026-08-09T19:08:44.671Z",
+  "duration_ms": 100834,
   "ok": true,
   "pass_count": 38,
   "fail_count": 0,
@@ -16,10 +16,10 @@
       "id": "source.integrity_manifest",
       "level": "required",
       "ok": true,
-      "duration_ms": 49,
+      "duration_ms": 41,
       "evidence": {
         "file_count": 184,
-        "manifest_sha256": "ebc988e1f26d6125b68bdf66826383f3372cd9156fbccf040a8c388d9f40f2a4"
+        "manifest_sha256": "322b68189a1e0d98aa80d6934910f5388293090cf3d5bf1517a2c2ff13400db9"
       },
       "details": "184 files hashed"
     },
@@ -27,7 +27,7 @@
       "id": "deps.parity",
       "level": "required",
       "ok": true,
-      "duration_ms": 3,
+      "duration_ms": 2,
       "evidence": {
         "declared": {
           "@modelcontextprotocol/client": "2.0.0",
@@ -55,12 +55,12 @@
       "id": "tests.unit",
       "level": "required",
       "ok": true,
-      "duration_ms": 31517,
+      "duration_ms": 86666,
       "evidence": {
         "exit_code": 0,
         "pass_count": 495,
         "fail_count": 0,
-        "stdout_tail": "ge\nok 409 - default and selected LSP surfaces stay least privilege\n  ---\n  duration_ms: 0.6528\n  type: 'test'\n  ...\n# Subtest: workspace-bound service claims, locks, reports, and releases atomically\nok 410 - workspace-bound service claims, locks, reports, and releases atomically\n  ---\n  duration_ms: 527.0859\n  type: 'test'\n  ...\n# Subtest: service rejects another principal and another workspace before coordination\nok 411 - service rejects another principal and another workspace before coordination\n  ---\n  duration_ms: 224.1414\n  type: 'test'\n  ...\n# Subtest: persisted service identity accepts an unexpired handle after a clean restart\nok 412 - persisted service identity accepts an unexpired handle after a clean restart\n  ---\n  duration_ms: 240.9822\n  type: 'test'\n  ...\n# Subtest: semantic inspection issues one-use source receipts for exact-lock edits\nok 413 - semantic inspection issues one-use source receipts for exact-lock edits\n  ---\n  duration_ms: 514.4551\n  type: 'test'\n  ...\n# Subtest: guarded edit rejects missing locks and post-analysis source drift\nok 414 - guarded edit rejects missing locks and post-analysis source drift\n  ---\n  duration_ms: 464.9818\n  type: 'test'\n  ...\n# Subtest: service exposes workspace-bound lifecycle, capability, automation, and Kilo planning\nok 415 - service exposes workspace-bound lifecycle, capability, automation, and Kilo planning\n  ---\n  duration_ms: 843.1703\n  type: 'test'\n  ...\n# Subtest: updater controls are workspace-bound, exact-lock guarded, and idempotent\nok 416 - updater controls are workspace-bound, exact-lock guarded, and idempotent\n  ---\n  duration_ms: 669.8265\n  type: 'test'\n  ...\n# Subtest: service registers, leases, starts, cycles, and revokes a real hash-bound runtime\nok 417 - service registers, leases, starts, cycles, and revokes a real hash-bound runtime\n  ---\n  duration_ms: 1099.0542\n  type: 'test'\n  ...\n1..417\n# tests 496\n# suites 13\n# pass 495\n# fail 0\n# cancelled 0\n# skipped 1\n# todo 0\n# duration_ms 31423.2732\n",
+        "stdout_tail": "e\nok 409 - default and selected LSP surfaces stay least privilege\n  ---\n  duration_ms: 0.3364\n  type: 'test'\n  ...\n# Subtest: workspace-bound service claims, locks, reports, and releases atomically\nok 410 - workspace-bound service claims, locks, reports, and releases atomically\n  ---\n  duration_ms: 527.0264\n  type: 'test'\n  ...\n# Subtest: service rejects another principal and another workspace before coordination\nok 411 - service rejects another principal and another workspace before coordination\n  ---\n  duration_ms: 118.0803\n  type: 'test'\n  ...\n# Subtest: persisted service identity accepts an unexpired handle after a clean restart\nok 412 - persisted service identity accepts an unexpired handle after a clean restart\n  ---\n  duration_ms: 160.1349\n  type: 'test'\n  ...\n# Subtest: semantic inspection issues one-use source receipts for exact-lock edits\nok 413 - semantic inspection issues one-use source receipts for exact-lock edits\n  ---\n  duration_ms: 553.9497\n  type: 'test'\n  ...\n# Subtest: guarded edit rejects missing locks and post-analysis source drift\nok 414 - guarded edit rejects missing locks and post-analysis source drift\n  ---\n  duration_ms: 1250.2501\n  type: 'test'\n  ...\n# Subtest: service exposes workspace-bound lifecycle, capability, automation, and Kilo planning\nok 415 - service exposes workspace-bound lifecycle, capability, automation, and Kilo planning\n  ---\n  duration_ms: 647.9307\n  type: 'test'\n  ...\n# Subtest: updater controls are workspace-bound, exact-lock guarded, and idempotent\nok 416 - updater controls are workspace-bound, exact-lock guarded, and idempotent\n  ---\n  duration_ms: 799.0291\n  type: 'test'\n  ...\n# Subtest: service registers, leases, starts, cycles, and revokes a real hash-bound runtime\nok 417 - service registers, leases, starts, cycles, and revokes a real hash-bound runtime\n  ---\n  duration_ms: 1189.4173\n  type: 'test'\n  ...\n1..417\n# tests 496\n# suites 13\n# pass 495\n# fail 0\n# cancelled 0\n# skipped 1\n# todo 0\n# duration_ms 86577.3798\n",
         "stderr_tail": ""
       },
       "details": "pass=495, fail=0, exit=0"
@@ -69,7 +69,7 @@
       "id": "server.stdio_handshake",
       "level": "required",
       "ok": true,
-      "duration_ms": 356,
+      "duration_ms": 490,
       "evidence": {
         "protocol_version": "2024-11-05",
         "server_name": "hermes3d-lock-orchestrator",
@@ -208,7 +208,7 @@
       "id": "doctor.hermes3d",
       "level": "required",
       "ok": true,
-      "duration_ms": 4,
+      "duration_ms": 5,
       "evidence": {
         "ok": true,
         "workspace_root": "C:\\Users\\Admin\\Documents\\Codex\\2026-08-08\\g-github-hermes3d-mcp-lock-orchestrator-2\\work\\hermesproof-release",
@@ -248,9 +248,9 @@
       "id": "events.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 21,
+      "duration_ms": 100,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-events-dir-lmgzzl",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-events-dir-aaGw28",
         "checks": {
           "outbox": true,
           "handled": true,
@@ -263,9 +263,9 @@
       "id": "tasks.directory_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 17,
+      "duration_ms": 22,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-tasks-dir-6bMvwR",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-tasks-dir-02xiGz",
         "checks": {
           "pending": true,
           "claimed": true,
@@ -279,17 +279,17 @@
       "id": "trigger.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 250,
+      "duration_ms": 269,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "trigger_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-IaHPPU",
+          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-r51AQn",
           "doctor": {
             "ok": true,
-            "workspace_root": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-IaHPPU",
-            "state_dir": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-IaHPPU\\.hermes3d_orchestrator",
+            "workspace_root": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-r51AQn",
+            "state_dir": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-trigger-doctor-r51AQn\\.hermes3d_orchestrator",
             "state_dir_name": ".hermes3d_orchestrator",
             "node_version": "v22.16.0",
             "platform": "win32",
@@ -344,13 +344,13 @@
       "id": "queue.doctor_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 412,
+      "duration_ms": 421,
       "evidence": {
         "exit_code": 0,
         "parsed": {
           "queue_doctor_schema_version": 1,
           "ok": true,
-          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-queue-doctor-oB0evy",
+          "workspace": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-queue-doctor-rgV8IG",
           "checks": [
             {
               "id": "tasks.directory_present",
@@ -388,11 +388,11 @@
       "id": "wizard.dry_run_passes",
       "level": "required",
       "ok": true,
-      "duration_ms": 549,
+      "duration_ms": 545,
       "evidence": {
         "exit_code": 0,
         "wrote_state": false,
-        "stdout_tail": "Setup Wizard\n────────────────────────\nDetected: Windows · Node v22.16.0 · git git version 2.55.0.windows.3\nWorkspace path: C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-wizard-sbHgk9\nGitHub repo: skipped\n\nDetected clients:\n  ✓ Claude Desktop\n  ✓ Claude Code CLI (2.1.92 (Claude Code))\n  ✓ Codex CLI\n  ✓ Windsurf / Cascade\n  ✗ Kilo Code (VS Code / CLI / JetBrains)\n  ✓ LM Studio / LM Link\n  ✓ Ollama local-model fallback (ollama version is 0.32.6)\n  ✗ Devin Add Your Own MCP export\n  ✓ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned C:\\Users\\Admin\\.codex\\config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-wizard-sbHgk9.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
+        "stdout_tail": "Setup Wizard\n────────────────────────\nDetected: Windows · Node v22.16.0 · git git version 2.55.0.windows.3\nWorkspace path: C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-wizard-OewRsZ\nGitHub repo: skipped\n\nDetected clients:\n  ✓ Claude Desktop\n  ✓ Claude Code CLI (2.1.92 (Claude Code))\n  ✓ Codex CLI\n  ✓ Windsurf / Cascade\n  ✗ Kilo Code (VS Code / CLI / JetBrains)\n  ✓ LM Studio / LM Link\n  ✓ Ollama local-model fallback (ollama version is 0.32.6)\n  ✗ Devin Add Your Own MCP export\n  ✓ Cursor\n  ✗ VS Code Copilot\n  ✗ Anthropic API / Claude Code SDK\nWire all detected? codex\n\nWriting configs\n  ✓ codex              planned C:\\Users\\Admin\\.codex\\config.toml\n\nBootstrap workspace\n  ✓ planned\n\nVerify\n  ✓ doctor: planned\n  ✓ truth-gates: skipped (--no-truth-gates)\n\nDone\n\nFirst message to send any agent:\nUse hermes_doctor and hermes_read_policy. Confirm workspace_root=C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-wizard-OewRsZ.\nThen claim_task + lock_files before editing anything. My owner string: codex-impl-01.\n",
         "stderr_tail": ""
       },
       "details": "wizard dry-run ok"
@@ -401,9 +401,9 @@
       "id": "e2e.multi_agent_flow",
       "level": "required",
       "ok": true,
-      "duration_ms": 800,
+      "duration_ms": 1218,
       "evidence": {
-        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-D0ppn5",
+        "sandbox": "C:\\Users\\Admin\\AppData\\Local\\Temp\\truth-gate-sandbox-XyUoBx",
         "checks": [
           {
             "id": "policy.workspace_root",
@@ -471,7 +471,7 @@
       "id": "workspace.integrity",
       "level": "required",
       "ok": true,
-      "duration_ms": 210,
+      "duration_ms": 200,
       "evidence": {
         "ok": true,
         "verdict": "pass",
@@ -481,7 +481,7 @@
         "recovery_ready": false,
         "workspace_root": "C:\\Users\\Admin\\Documents\\Codex\\2026-08-08\\g-github-hermes3d-mcp-lock-orchestrator-2\\work\\hermesproof-release",
         "branch": "release/hp-mha-serena-shippable",
-        "commit": "04ea0c5f5384e53ae15982e7bf8011c1e5dbf3d5",
+        "commit": "171dbb6b0fa5aa16b15294e2962617e44a8b6c08",
         "state_dir_name": ".hermes3d_orchestrator",
         "hermes3d_state_dir_present": true,
         "probe_files_left": 0,
@@ -547,7 +547,7 @@
       "id": "clients.claude_code_live",
       "level": "required",
       "ok": true,
-      "duration_ms": 5365,
+      "duration_ms": 5140,
       "evidence": {
         "exit_code": 0,
         "matched_line": "hermes3d-locks: node G:\\Github\\hermes3d-mcp-lock-orchestrator\\scripts\\mcp-supervisor.mjs - ✓ Connected"
@@ -570,7 +570,7 @@
       "id": "security.mcp_scan_pass",
       "level": "required",
       "ok": true,
-      "duration_ms": 133,
+      "duration_ms": 112,
       "evidence": {
         "file": "C:\\Users\\Admin\\Documents\\Codex\\2026-08-08\\g-github-hermes3d-mcp-lock-orchestrator-2\\work\\hermesproof-release\\src\\server.mjs",
         "bytes": 299937,
@@ -584,7 +584,7 @@
       "id": "evidence.hash_chain_valid",
       "level": "required",
       "ok": true,
-      "duration_ms": 36,
+      "duration_ms": 27,
       "evidence": {
         "positive": true,
         "negative": true,
@@ -633,7 +633,7 @@
       "id": "docs.master_prompt_deliverables_present",
       "level": "required",
       "ok": true,
-      "duration_ms": 4,
+      "duration_ms": 3,
       "evidence": {
         "required_count": 10,
         "findings": [
@@ -734,7 +734,7 @@
       "id": "continue.llm_classes.validate",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 0,
       "evidence": {
         "csv_path": "C:\\Users\\Admin\\Documents\\Codex\\2026-08-08\\g-github-hermes3d-mcp-lock-orchestrator-2\\work\\hermesproof-release\\policies\\provider-registry\\continue_llm_classes.csv",
         "expected_count": 62,
@@ -750,7 +750,7 @@
       "id": "kilocode.provider.mapping.validate",
       "level": "warn",
       "ok": true,
-      "duration_ms": 0,
+      "duration_ms": 1,
       "evidence": {
         "csv_path": "C:\\Users\\Admin\\Documents\\Codex\\2026-08-08\\g-github-hermes3d-mcp-lock-orchestrator-2\\work\\hermesproof-release\\policies\\provider-registry\\kilocode_mapping.csv",
         "present": false,
@@ -763,7 +763,7 @@
       "id": "lmstudio.health",
       "level": "warn",
       "ok": true,
-      "duration_ms": 1033,
+      "duration_ms": 1030,
       "evidence": {
         "base_url": "http://100.117.190.97:1234",
         "selected_url": "http://127.0.0.1:1234/v1/models",
@@ -809,7 +809,7 @@
       "id": "backend.api_config_presence",
       "level": "warn",
       "ok": true,
-      "duration_ms": 244,
+      "duration_ms": 227,
       "evidence": {
         "env_file": {
           "loaded": true,
@@ -859,7 +859,7 @@
       "id": "gitlab.auth_probe",
       "level": "warn",
       "ok": true,
-      "duration_ms": 687,
+      "duration_ms": 292,
       "evidence": {
         "env_file": {
           "loaded": true,
@@ -879,7 +879,7 @@
       "id": "secret.scan",
       "level": "required",
       "ok": true,
-      "duration_ms": 181,
+      "duration_ms": 148,
       "evidence": {
         "mode": "fallback",
         "scanner_ok": true,
@@ -892,7 +892,7 @@
       "id": "secrets.rotation_evidence_present",
       "level": "warn",
       "ok": true,
-      "duration_ms": 0,
+      "duration_ms": 1,
       "evidence": {
         "env_source": "default.win32",
         "env_candidate": "…/private/.env",
@@ -907,7 +907,7 @@
       "id": "sbom.cyclonedx_generated",
       "level": "required",
       "ok": true,
-      "duration_ms": 53,
+      "duration_ms": 37,
       "evidence": {
         "path": "C:/Users/Admin/Documents/Codex/2026-08-08/g-github-hermes3d-mcp-lock-orchestrator-2/work/hermesproof-release/PROOF/sbom.json",
         "components": 96,
@@ -921,7 +921,7 @@
       "id": "licenses.scan",
       "level": "required",
       "ok": true,
-      "duration_ms": 1625,
+      "duration_ms": 1398,
       "evidence": {
         "package_count": 99,
         "allowlist": [
@@ -1737,7 +1737,7 @@
       "id": "dependency.fresh",
       "level": "warn",
       "ok": true,
-      "duration_ms": 1361,
+      "duration_ms": 1262,
       "evidence": {
         "direct_deps_count": 7,
         "stale_count": 0,
@@ -1764,7 +1764,7 @@
             "status": "fresh",
             "latestVersion": "1.30.0",
             "publishedAt": "2026-07-27T17:56:01.640Z",
-            "ageMonths": 0.43
+            "ageMonths": 0.44
           },
           {
             "name": "@modelcontextprotocol/server",
@@ -1800,7 +1800,7 @@
       "id": "security.workflow_actions_sha_pinned",
       "level": "required",
       "ok": true,
-      "duration_ms": 1,
+      "duration_ms": 0,
       "evidence": {
         "workflow_count": 0,
         "uses_count": 0,
@@ -1813,7 +1813,7 @@
       "id": "accessibility.wcag_aa_pass",
       "level": "required",
       "ok": true,
-      "duration_ms": 1202,
+      "duration_ms": 996,
       "evidence": {
         "file": "C:\\Users\\Admin\\Documents\\Codex\\2026-08-08\\g-github-hermes3d-mcp-lock-orchestrator-2\\work\\hermesproof-release\\site\\index.html",
         "counts": {
@@ -1936,11 +1936,11 @@
       "id": "docs.reflects_changes",
       "level": "warn",
       "ok": true,
-      "duration_ms": 104,
+      "duration_ms": 94,
       "evidence": {
         "base": "HEAD~1",
         "head": "HEAD",
-        "change_count": 2,
+        "change_count": 4,
         "version_bump": null,
         "adr_changes": [],
         "triggers": []
@@ -1951,7 +1951,7 @@
       "id": "release.checksums_present",
       "level": "warn",
       "ok": true,
-      "duration_ms": 15,
+      "duration_ms": 11,
       "evidence": {
         "root": "C:\\Users\\Admin\\Documents\\Codex\\2026-08-08\\g-github-hermes3d-mcp-lock-orchestrator-2\\work\\hermesproof-release",
         "scanned": [
@@ -1996,7 +1996,7 @@
             "path": "dist/HermesProof-v0.9.0-rc.1-windows-x64.zip",
             "signature_verified": true,
             "key_fingerprint": "sha256:9b1fb58db81fd4dceaef5b78a4aa83db6c57d70dbabddf2b4c1b12abcf1a92da",
-            "verified_sha256": "b4f5e5196b6f024259bdf2feddd1ad0e607d2f4c3830e5f282f28ef2dcbc9e6b"
+            "verified_sha256": "8a3179370cc88cfdca4647e84b4ae9b607a14bfa3d78c2300c629f77ce08fcee"
           }
         ],
         "failing": [],
@@ -2009,7 +2009,7 @@
       "id": "quality.coderabbit_reviewed",
       "level": "skipped",
       "ok": true,
-      "duration_ms": 34,
+      "duration_ms": 30,
       "evidence": {
         "reason": "missing PR coordinates",
         "pr": null
@@ -2020,7 +2020,7 @@
       "id": "harness_attribution.contract",
       "level": "required",
       "ok": true,
-      "duration_ms": 8,
+      "duration_ms": 7,
       "evidence": {
         "gate": "HP-HARNESS-ATTRIBUTION"
       },
@@ -2030,7 +2030,7 @@
       "id": "harness_attribution.holdout_isolation_at_queue",
       "level": "required",
       "ok": true,
-      "duration_ms": 15,
+      "duration_ms": 14,
       "evidence": {
         "gate": "HP-HARNESS-ATTRIBUTION"
       },
