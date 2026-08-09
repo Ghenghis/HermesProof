@@ -1,8 +1,8 @@
 {
   "$schema": "hermesproof.hp_mha.harness_card.v2",
   "schema_version": 1,
-  "card_id": "openhands_cli_1_16_0_windows_installed_reference",
-  "description": "Installed reference manifest; copy to a root card only after re-running version and SHA-256 probes. Verified local Windows installation of OpenHands CLI 1.16.0 with SDK banner 1.21.0. Launcher SHA-256 5a3687df1526332cb8e6c94f5c00aa4d5eacf65ab82c71e64a1c8707c311756e; uv receipt SHA-256 e2feb60ea07e3478511e36b290479ce3d6f9f0874cb08d074a61216bb998c6f3; primary RECORD SHA-256 0b85772060a23f24765928177f75351c657bfbcc3b81209c5ea2063bb90010a9. Observed 2026-08-09.",
+  "card_id": "openhands_cli_1_16_0_windows_installed",
+  "description": "Verified local Windows installation of OpenHands CLI 1.16.0 with SDK banner 1.21.0. Launcher SHA-256 5a3687df1526332cb8e6c94f5c00aa4d5eacf65ab82c71e64a1c8707c311756e; uv receipt SHA-256 e2feb60ea07e3478511e36b290479ce3d6f9f0874cb08d074a61216bb998c6f3; primary RECORD SHA-256 0b85772060a23f24765928177f75351c657bfbcc3b81209c5ea2063bb90010a9. Observed 2026-08-09.",
   "layers": {
     "execution": {
       "installed_commit": "package:openhands-cli@1.16.0+openhands-sdk@1.21.0",

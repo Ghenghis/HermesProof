@@ -288,7 +288,7 @@ HermesProof remains the **independent authority**. The heavy benchmark execution
 
 The candidate optimizer **never** lives inside HermesProof (HP-MHA-009). HermesProof refuses to modify, select, or certify changes it itself performed. Synthetic or mock execution is also rejected (HP-MHA-010) — only real installed runtimes and real tool chains count toward the verdict.
 
-The `HP-HARNESS-ATTRIBUTION` release sub-gate (`scripts/truth-gates.mjs`) now runs at `required` level. Two real harness cards (`examples/hp-mha/harness-cards/hermesproof.json`, `hermesagent.json`) must each pass the full HP-MHA contract on every release run. Real 2×2 attribution matrices replace the placeholder once a benchmark pipeline is wired in; until then the sub-gate is asserting the contract plumbing, not the measured harness leverage.
+The `HP-HARNESS-ATTRIBUTION` release sub-gate (`scripts/truth-gates.mjs`) runs at `required` level. Five root cards—HermesProof, HermesAgent, OpenHands 1.16.0, Aider 0.86.2, and Goose 1.27.2—carry installed identities and SHA-256 provenance. The checked-in real Ollama 2×2 evidence in `examples/hp-mha/measured-matrix.json` is hash-bound and tamper-tested; its matrix `{0.2,0.2,0.1,0.8}` measures harness effect `+0.35`, model effect `+0.25`, and interaction `+0.70`.
 
 ## 8. Threat model & safety guarantees
 

@@ -15,9 +15,9 @@
 //   node examples/hp-mha/load-card.mjs --all
 //   node examples/hp-mha/load-card.mjs --task-sets
 //
-// Default card: hermesproof. Default matrix is the 0.5 / 0.6 / 0.7 / 0.8
-// fixture used by the truth-gate. Override --matrix with real measured
-// numbers once benchmark runs land. --all loads every card under
+// Default card: hermesproof. Default matrix is the checked-in real Ollama
+// measurement from measured-matrix.json (seed 260809). Override --matrix to
+// evaluate another hash-bound benchmark run. --all loads every card under
 // harness-cards/ and asserts each PASSes.
 //
 // Exit codes:
@@ -41,7 +41,7 @@ const cardsDir = path.join(here, "harness-cards");
 const taskSetsDir = path.join(here, "task-sets");
 
 function parseArgs(argv) {
-  const out = { card: "hermesproof", matrix: [0.5, 0.6, 0.7, 0.8], all: false, taskSets: false };
+  const out = { card: "hermesproof", matrix: [0.2, 0.2, 0.1, 0.8], all: false, taskSets: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--card") out.card = argv[++i];

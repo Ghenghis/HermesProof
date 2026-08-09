@@ -25,17 +25,18 @@ echo "dependency_lock_sha256=$LOCK_SHA"
 
 If the harness is not packaged, hash the source archive you would `tar -czf` to back it up. If you cannot compute a content-addressed identity for the harness, you cannot pass HP-MHA-001; do not ship a card without one.
 
-## 2. Fill in the template
+## 2. Materialize installed evidence
 
-Copy `examples/hp-mha/harness-cards/templates/<name>.json` to `examples/hp-mha/harness-cards/<name>.json` and replace every `FIXME` token with the values from step 1.
+The files under `harness-cards/templates/` are verified installed reference manifests, not placeholders. Copy the closest reference to `harness-cards/<name>.json`, assign a unique card id, then replace its package binding and SHA-256 fields with values from the actual installed runtime. Never reuse the reference hashes for a different installation.
 
 The 7 layers (Execution, Model & inference, Tools, Context, Scheduling, Observability, Governance) come from `docs/48-Point Lever.md` §4. Each layer's required field list is enforced by `validateHarnessCard(card)` in `src/core/hp-mha.mjs`. Cards that omit a required field, add an unknown field, or skip a layer will be rejected by the sub-gate.
 
 ## 3. Verify the contract
 
 ```bash
-npm run hp-mha:load-all -- --matrix 0.5,0.6,0.7,0.8   # placeholder until real 2x2 lands
-scripts/truth-gates.mjs --ci   # cards=2 → cards=3 once submitted
+npm run hp-mha:load-all                              # uses checked-in measured matrix
+node --test src/core/hp-mha-benchmark.test.mjs       # verifies evidence digest + tamper rejection
+node scripts/truth-gates.mjs --ci
 ```
 
 Both must `PASS` at `required` level. If your card fails `validateTaskSetTagUniqueness` or `assembleManifestSha256`, see `docs/audits/2026-08-06-hp-mha-phase3.codex.md` for the precise contract requirements.
@@ -57,7 +58,7 @@ Copy `examples/hp-mha/task-sets/holdout.json` or `examples/hp-mha/task-sets/opti
 
 ## 6. Running the release evaluation
 
-The placeholder attribution matrix `{s11:0.5, s12:0.6, s21:0.7, s22:0.8}` is intentional until measured data lands. Once your benchmark pipeline produces a real 2×2 matrix, override with `--matrix s11,s12,s21,s22` to the actual numbers.
+The checked-in real matrix is `{s11:0.2, s12:0.2, s21:0.1, s22:0.8}` from the hash-bound Ollama run in `measured-matrix.json` (seed 260809). It yields harness effect `0.35`, model effect `0.25`, and interaction `0.70`. Override `--matrix` only when evaluating another retained measurement.
 
 The sub-gate runs at `required` level on every release. A new card that fails will block the release.
 
@@ -65,7 +66,7 @@ The sub-gate runs at `required` level on every release. A new card that fails wi
 
 # Contributing a real 2×2 attribution matrix
 
-Once a benchmark pipeline exists, the matrix replaces `SMOKE_MATRIX` in `src/core/hp-mha.mjs`. Each cell is `verified_pass_rate` for the four model/harness pair combinations. The subtraction rules:
+Run `npm run hp-mha:measure-2x2` to produce a new real local measurement. The runner fixes temperature and seed, records response hashes and durations, and prints a digest-bound evidence object. Each cell is the deterministic safety score for one model/harness combination. The subtraction rules:
 
 ```
 harness_effect = ((s12 - s11) + (s22 - s21)) / 2

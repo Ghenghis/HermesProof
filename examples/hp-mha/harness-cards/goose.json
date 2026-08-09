@@ -1,24 +1,24 @@
 {
   "$schema": "hermesproof.hp_mha.harness_card.v2",
   "schema_version": 1,
-  "card_id": "openhands_cli_1_16_0_windows_installed_reference",
-  "description": "Installed reference manifest; copy to a root card only after re-running version and SHA-256 probes. Verified local Windows installation of OpenHands CLI 1.16.0 with SDK banner 1.21.0. Launcher SHA-256 5a3687df1526332cb8e6c94f5c00aa4d5eacf65ab82c71e64a1c8707c311756e; uv receipt SHA-256 e2feb60ea07e3478511e36b290479ce3d6f9f0874cb08d074a61216bb998c6f3; primary RECORD SHA-256 0b85772060a23f24765928177f75351c657bfbcc3b81209c5ea2063bb90010a9. Observed 2026-08-09.",
+  "card_id": "goose_1_27_2_windows_installed",
+  "description": "Verified local Windows static installation of Goose 1.27.2. Executable SHA-256 3f6412b6836a820d3de7884638abeb3d720feba9619d4b9798c5fde773abb14c is also the immutable compiled dependency-closure digest because this installation has no separate package lock. Observed 2026-08-09.",
   "layers": {
     "execution": {
-      "installed_commit": "package:openhands-cli@1.16.0+openhands-sdk@1.21.0",
-      "package_sha256": "5a3687df1526332cb8e6c94f5c00aa4d5eacf65ab82c71e64a1c8707c311756e",
-      "dependency_lock_sha256": "e2feb60ea07e3478511e36b290479ce3d6f9f0874cb08d074a61216bb998c6f3",
+      "installed_commit": "package:goose@1.27.2-static-windows-x64",
+      "package_sha256": "3f6412b6836a820d3de7884638abeb3d720feba9619d4b9798c5fde773abb14c",
+      "dependency_lock_sha256": "3f6412b6836a820d3de7884638abeb3d720feba9619d4b9798c5fde773abb14c",
       "container_digest": null,
-      "runner_identity": "openhands-uv-tool-windows",
+      "runner_identity": "goose-static-windows",
       "os_arch": "win32-x64",
-      "repo_commit": "package:openhands-cli@1.16.0+openhands-sdk@1.21.0",
+      "repo_commit": "package:goose@1.27.2-static-windows-x64",
       "repo_dirty": false,
-      "per_step_timeout_s": 60,
-      "task_timeout_s": 1800,
-      "max_steps": 256,
-      "token_budget": 1000000,
+      "per_step_timeout_s": 30,
+      "task_timeout_s": 1200,
+      "max_steps": 180,
+      "token_budget": 500000,
       "cost_budget_usd": 2,
-      "wall_clock_budget_s": 7200,
+      "wall_clock_budget_s": 3600,
       "network_policy": "config-allowlist",
       "sandbox_policy": "workspace-only"
     },
@@ -31,9 +31,8 @@
         "read",
         "write",
         "shell",
-        "browser",
-        "plan",
-        "ipython"
+        "computer_use",
+        "extension"
       ],
       "tool_schema_hashes": [],
       "mcp_servers": [
@@ -43,17 +42,17 @@
       "denylist_sha256": null,
       "tool_descriptions_sha256": null,
       "tool_result_format": "json",
-      "error_response_contract": "code+message+data",
-      "shell_restrictions": "sandbox-only",
+      "error_response_contract": "code+message",
+      "shell_restrictions": "allowlisted",
       "write_boundaries": "workspace-root",
       "destructive_op_policy": "deny"
     },
     "context": {
       "system_prompt_sha256": null,
       "project_contract_sha256": null,
-      "context_construction_rules": "explicit-pass",
-      "file_discovery": "ripgrep-indexed",
-      "retrieval_policy": "path-and-id",
+      "context_construction_rules": "extension-aware",
+      "file_discovery": "extension-driven",
+      "retrieval_policy": "by-id",
       "summarization_policy": "truncate-tool-output",
       "persistent_memory_policy": "session-only",
       "max_retained_history": 100,
@@ -63,19 +62,18 @@
     },
     "scheduling": {
       "controller": "loop",
-      "planning_stage": true,
+      "planning_stage": false,
       "retry_count": 2,
       "backoff": "exponential",
       "escalation_rules": "human-after-3",
       "subagent_delegation": true,
-      "model_selection_policy": "single",
+      "model_selection_policy": "multi-provider",
       "stop_conditions": [
         "task_done",
-        "budget_exceeded",
-        "approval_required"
+        "budget_exceeded"
       ],
-      "checkpoint_rollback": true,
-      "doom_loop_threshold": 5,
+      "checkpoint_rollback": false,
+      "doom_loop_threshold": 4,
       "per_file_edit_limit": 3,
       "pre_completion_checklist": true
     },
@@ -97,8 +95,7 @@
       "side_effect_boundaries": "workspace-only",
       "secret_access_policy": "deny",
       "human_approval_points": [
-        "destructive",
-        "external_publish"
+        "destructive"
       ],
       "destructive_action_policy": "deny",
       "redaction_policy": "redact-tokens",

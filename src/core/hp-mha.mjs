@@ -1267,9 +1267,9 @@ export function evaluateHpMhaSubGate({ workspaceRoot, stateDirName, harness_card
 // one call. Used by both scripts/truth-gates.mjs and examples/hp-mha/load-card.mjs
 // so the smoke harness evaluation stays consistent.
 const SMOKE_TRACE_ROOT = "0".repeat(64);
-const SMOKE_MATRIX = { s11: 0.5, s12: 0.6, s21: 0.7, s22: 0.8 };
+const MEASURED_MATRIX = { s11: 0.2, s12: 0.2, s21: 0.1, s22: 0.8 };
 
-export function evaluateHarnessCardFromManifest(cardRaw, { matrix = SMOKE_MATRIX } = {}) {
+export function evaluateHarnessCardFromManifest(cardRaw, { matrix = MEASURED_MATRIX } = {}) {
   const cardInput = { card_id: cardRaw.card_id, layers: cardRaw.layers };
   const builtHarness = buildHarnessCard(cardInput);
   const model = buildModelManifest(cardRaw.layers.model);
@@ -1364,7 +1364,7 @@ export function validateTaskSetTagUniqueness(taskSet) {
   if (present.length > 1) {
     return {
       ok: false,
-      reason_codes: ["HP-MHA-006"],
+      reason_codes: ["HP-MHA-006", "HP-MHA-006-mixed-tags"],
       reason: `task_set may not carry both ${HOLDOUT_TAG} and ${OPTIMIZATION_TAG}; found ${present.join(",")}`
     };
   }
@@ -1382,6 +1382,24 @@ const HOLDOUT_AWARE_ROLES = new Set([
   "human",
   "system"
 ]);
+
+export function assertTaskClaimRespectsHoldoutIsolation({ role, task_set_manifest } = {}) {
+  const tagCheck = validateTaskSetTagUniqueness(task_set_manifest || {});
+  if (!tagCheck.ok) {
+    return { ok: false, reason_codes: tagCheck.reason_codes, reason: tagCheck.reason };
+  }
+  if (tagCheck.tag !== HOLDOUT_TAG) {
+    return { ok: true, reason_codes: [], reason: "task set is not holdout-scoped" };
+  }
+  if (HOLDOUT_AWARE_ROLES.has(role)) {
+    return { ok: true, reason_codes: [], reason: `role '${role}' is allow-listed for holdout tasks` };
+  }
+  return {
+    ok: false,
+    reason_codes: ["HP-MHA-006"],
+    reason: `role '${role || "(missing)"}' may not claim a holdout task set (${HOLDOUT_TAG}). Allowed roles: ${[...HOLDOUT_AWARE_ROLES].join(", ")}.`
+  };
+}
 
 export function assertLockFilesRespectHoldoutIsolation({ files, role, task_set_manifest } = {}) {
   if (!Array.isArray(files) || files.length === 0) {
@@ -1496,6 +1514,7 @@ export const __test__ = {
   classifyRetentionClass,
   classifyTaskSetTag,
   validateTaskSetTagUniqueness,
+  assertTaskClaimRespectsHoldoutIsolation,
   assertLockFilesRespectHoldoutIsolation,
   buildTraceIndexRows,
   searchTraceIndex,

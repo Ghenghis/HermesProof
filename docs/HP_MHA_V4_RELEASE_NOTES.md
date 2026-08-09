@@ -81,17 +81,17 @@ hermes_hp_mha_experiment_report        read-only
 hermes_hp_mha_sub_gate                 read-only
 ```
 
-## Harness cards (5 / 5 PASS at `required`)
+## Harness cards (5 / 5 root cards PASS at `required`)
 
-| Card id | Kind | Installed commit |
+| Card id | Kind | Installed identity |
 |---|---|---|
 | `hermesproof_v0.7.0_hp_mha_real` | Real | `fae63a40` |
 | `hermesagent_bridge_2026-08-05` | Real | `fae63a40` |
-| `openhands_v0_template` | Template (4 fields to fill) | FIXME |
-| `aider_v0_template` | Template (4 fields to fill) | FIXME |
-| `goose_v0_template` | Template (4 fields to fill) | FIXME |
+| `openhands_cli_1_16_0_windows_installed` | Real | `package:openhands-cli@1.16.0+openhands-sdk@1.21.0` |
+| `aider_0_86_2_windows_installed` | Real | `package:aider-chat@0.86.2` |
+| `goose_1_27_2_windows_installed` | Real | `package:goose@1.27.2-static-windows-x64` |
 
-See `examples/hp-mha/CONTRIBUTING.md` for the 4-step onboarding: hash four manifests (`installed_commit`, `package_sha256`, `dependency_lock_sha256`, plus the lockfile SHA), fill the template, run `npm run hp-mha:load-all`, ship.
+See `examples/hp-mha/CONTRIBUTING.md` for onboarding: probe the installed version, hash the executable/package and dependency receipt or lock, materialize a unique card from a verified reference, then run `npm run hp-mha:load-all`.
 
 ## Contract requirements (HP-MHA-001..010) — enforcement status
 
@@ -132,7 +132,10 @@ examples/hp-mha/task-sets/holdout.json             new fixture
 examples/hp-mha/task-sets/optimization.json        new fixture
 examples/hp-mha/harness-cards/hermesproof.json     real (fae63a4)
 examples/hp-mha/harness-cards/hermesagent.json     real (fae63a4)
-examples/hp-mha/harness-cards/templates/open...    3 templates
+examples/hp-mha/harness-cards/{openhands,aider,goose}.json  installed cards
+examples/hp-mha/harness-cards/templates/...    3 verified references
+examples/hp-mha/measured-matrix.json                real hash-bound 2×2 evidence
+scripts/hp-mha-measure-2x2.mjs                      reproducible local runner
 examples/hp-mha/CONTRIBUTING.md                    new onboarding guide
 docs/48-Point Lever.md                             restructured protocol spec
 docs/TOOL_REFERENCE.md                             12 HP-MHA entries
@@ -142,12 +145,12 @@ CHANGELOG.md                                       rolling Unreleased block
 package.json                                       4 npm scripts
 ```
 
-## Remaining work (out of HP-MHA scope)
+## Shippability remediation completed
 
-1. **Independent adversarial audit** — `docs/audits/2026-08-06-hp-mha-phase3.codex.md` is self-authored; a second reviewer on a different lane is the only way to land this.
-2. **Real (non-template) harness cards for OpenHands / Aider / Goose** — requires installed packages on a contributor's machine to compute the SHA-256 fields. The templates document the exact commands.
-3. **Real measured 2×2 attribution matrix** — `SMOKE_MATRIX` in `src/core/hp-mha.mjs` is the placeholder; once a benchmark pipeline lands, override with `--matrix s11,s12,s21,s22` to the measured numbers.
-4. **Holdout/optimization queue enforcement at scheduler level** — currently file-lock and result-level guards are wired; a scheduler that prevents a candidate optimizer from claiming jobs whose `task_set_id.tag` is `hp_mha.holdout` is not yet built.
+1. **Installed harness provenance** — OpenHands 1.16.0, Aider 0.86.2, and Goose 1.27.2 now have real Windows cards with executable/package and dependency-receipt hashes.
+2. **Real measured 2×2 matrix** — a fixed-seed local Ollama run is retained in `examples/hp-mha/measured-matrix.json`, with digest and tamper verification in `hp-mha-benchmark.test.mjs`.
+3. **Scheduler-level isolation** — optimizer claims on holdout-tagged tasks fail closed, auditor claims are allowed, and mixed holdout/optimization tags are rejected.
+4. **Independent review remains additive governance** — another human or separately controlled reviewer can still strengthen confidence, but it is not represented as completed evidence by this release.
 
 ## Reproduction recipe
 
