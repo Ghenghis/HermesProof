@@ -173,7 +173,7 @@
 
 ## Task 10: Make CI useful without consuming the shared-minute budget
 
-**Files:** `.gitlab-ci.yml`, `.github/workflows/**`, `scripts/runner-broker.mjs`, CI tests.
+**Files:** `.gitlab-ci.yml`, removal of obsolete GitHub workflows, `scripts/runner-broker.mjs`, CI tests.
 
 1. Add workflow rules preventing duplicate branch/MR pipelines and scheduled runs.
 2. Use path changes to select syntax/unit/integration jobs.

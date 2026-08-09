@@ -89,7 +89,7 @@ Pulses must respect WCAG contrast on their final/static frame. A pulse that runs
 
 - Indent at 2 spaces.
 - Sort gradient stops by `offset` ascending.
-- ID prefix every reusable element with file basename (e.g. `pipeline-flow-grad-cyan`) to prevent collisions when multiple SVGs render in the same DOM (GitHub Pages, README rendering, Inspector).
+- ID prefix every reusable element with file basename (e.g. `pipeline-flow-grad-cyan`) to prevent collisions when multiple SVGs render in the same DOM (GitLab Pages, README rendering, Inspector).
 - Comment animation chains with one-line `<!-- stage X: gate fires -->` headers above each `<g>` group.
 
 ## 9. Validation

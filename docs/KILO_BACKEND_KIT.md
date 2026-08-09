@@ -28,7 +28,7 @@ Use `--compact` for CI or agent consumption. Use `--bundled-kilo <path>` when th
 
 ## MCP operations
 
-The second server now has 26 tools. In addition to governed Serena coordination, it provides:
+The second server now has 34 tools. In addition to governed Serena coordination, it provides:
 
 - Runtime manager: task-gated hash-bound registration, status, bounded lease, enable, cycle, revoke, and automatic disable-unused.
 - Capability manager: resolve, isolated plan, and task-gated install.

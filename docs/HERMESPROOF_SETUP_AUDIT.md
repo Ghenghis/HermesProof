@@ -4,7 +4,7 @@
 
 ## 1. Repository identity
 
-- **Repo URL:** https://github.com/Ghenghis/HermesProof
+- **Repo URL:** https://gitlab.com/Ghenghis/HermesProof
 - **Local path:** `G:\Github\hermes3d-mcp-lock-orchestrator`
 - **Package name:** `hermesproof@0.2.0` (private)
 - **Bin:** `hermesproof` → `src/server.mjs`
@@ -84,8 +84,8 @@ State-dir name configurable via `MCP_LOCK_STATE_DIR` (rejects slashes / `..`).
 
 ## 7. CI workflows
 
-- `.github/workflows/truth-gates.yml` — push to `main`, PR, manual; runs `npm ci` + `truth-gates -- --ci`; on `main` push, refreshes `PROOF/latest.json` + `PROOF_E2E_REPORT.md` and commits with `[skip ci]`.
-- `.github/workflows/pages.yml` — push to `main` on `site/**` / `docs/diagrams/**` / itself, or manual; assembles `_site/` from `site/*` + `docs/diagrams/*.svg`, deploys to GitHub Pages at https://ghenghis.github.io/HermesProof/.
+- `.gitlab-ci.yml` — project-owned `hermesproof-local` runner; validates docs, updater, full suite, proof, and Pages without untagged shared compute.
+- GitLab Pages deploys the checked site bundle to https://ghenghis.gitlab.io/HermesProof only after proof jobs pass.
 
 **Gaps (Phase 1):**
 - Action versions are `@v4` tags (force-push risk; March 2026 trivy/tj-actions/axios incidents).

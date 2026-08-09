@@ -1,5 +1,11 @@
 # HermesProof — Architecture
 
+> **Current release:** v0.9.0-rc.1 is a two-server monorepo: `hermes3d-locks` exposes 121
+> coordination/proof tools and `hp-mha-serena` exposes 34 governed harness, Serena,
+> capability, automation, backend, and updater tools.
+
+![Current HermesProof ecosystem](./diagrams/ecosystem-e2e.svg)
+
 This document is the consolidated technical view of HermesProof. Every other doc in `docs/` is a deeper dive into one slice of what's described here.
 
 ## 1. System overview
@@ -8,13 +14,14 @@ This document is the consolidated technical view of HermesProof. Every other doc
 <img src="./diagrams/architecture.svg" alt="HermesProof system architecture" width="100%"/>
 </div>
 
-HermesProof is **one Node process per workspace**. It speaks JSON-RPC over stdio (MCP `2025-11-25`), is single-threaded by design (so its lock state cannot race against itself), and writes to a single hidden directory inside the workspace.
+HermesProof runs **two cooperating Node MCP processes per workspace**. Both speak JSON-RPC over stdio. The core server owns durable coordination/proof state; the composite server delegates all mutations through claims and locks while adding semantic analysis, harnesses, capability packs, automation, backend recovery, and managed updates.
 
 | Layer | What it does | Where it lives |
 | --- | --- | --- |
 | Clients | Claude Desktop, Claude Code, Codex, Windsurf | each in its own MCP config file |
 | Transport | stdio JSON-RPC, MCP 2025-11-25 | `@modelcontextprotocol/sdk` |
-| Server | 116 MCP tools across coordination, workspace switching, workspace release hygiene, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails/checkpoints, KiloCode agent-bus proof enforcement, A2A task exchange, Hermes Agent bridging, HP-MHA Model–Harness Attribution, diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Core server | 121 MCP tools for coordination, workspace controls, GitLab, clients, gates, queues, evidence, release truth, and diagnostics | [`src/server.mjs`](../src/server.mjs) |
+| Composite server | 34 governed tools for HP-MHA, Serena, capability packs, automation, Kilo backend recovery, and updates | [`src/hp-mha-serena/server.mjs`](../src/hp-mha-serena/server.mjs) |
 | Lock manager | atomic mkdir, heartbeat, handoff, evidence | [`src/core/lock-manager.mjs`](../src/core/lock-manager.mjs) |
 | Event manager | passive outbox events, atomic moves, review-packet inputs | `src/core/event-manager.mjs` |
 | Queue manager | passive task queue, priority pickup, stale-task recovery | `src/core/queue-manager.mjs` |
@@ -164,7 +171,7 @@ Evidence ledger verification is checkpoint-aware. `hermes_verify_evidence` still
 | 01 | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
 | 02 | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
 | 03 | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04 | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 102 MCP tools |
+| 04 | `server.stdio_handshake` | Real core and composite servers boot, complete MCP initialize, and return 121 and 34 tools |
 | 05 | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
 | 06 | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
 | 07 | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
@@ -192,7 +199,7 @@ Evidence ledger verification is checkpoint-aware. `hermes_verify_evidence` still
 | 29 | `sbom.cyclonedx_generated` | CycloneDX SBOM generation succeeds |
 | 30 | `licenses.scan` | Production dependency licenses pass the SPDX allow/deny policy |
 | 31 | `dependency.fresh` | Direct deps freshness check runs with advisory windows |
-| 32 | `security.workflow_actions_sha_pinned` | GitHub Actions are pinned according to workflow hardening policy |
+| 32 | `security.workflow_actions_sha_pinned` | CI workflow policy is hardened; the GitLab pipeline additionally enforces a project-owned runner tag |
 | 33 | `accessibility.wcag_aa_pass` | Accessibility gate reaches WCAG AA policy status |
 | 34 | `perf.budgets_pass` | Performance budgets gate reaches policy status |
 | 35 | `docs.reflects_changes` | Docs reflection gate verifies user-facing changes are documented |
@@ -213,25 +220,11 @@ Outputs:
 - `PROOF_E2E_REPORT.md` — human-readable summary
 - exit code `0` iff every required gate passed
 
-## 6. CI auto-attestation
+## 6. GitLab local-runner attestation
 
-GitHub Actions workflow [`.github/workflows/truth-gates.yml`](../.github/workflows/truth-gates.yml) runs on every push to `main` and every PR:
+[`.gitlab-ci.yml`](../.gitlab-ci.yml) runs only on the release branch, main, merge requests, and tags. Every job inherits the `hermesproof-local` tag, so no untagged shared runner can consume the project's limited compute minutes. The pipeline installs exact dependencies, checks generated docs, runs updater/client tests, runs the full suite, generates truth-gate artifacts, and publishes GitLab Pages only after proof succeeds.
 
-```yaml
-on:
-  push:    { branches: [main] }
-  pull_request:
-  workflow_dispatch:
-```
-
-Steps:
-
-1. Checkout (full history, persist credentials).
-2. Setup Node 20 (`actions/setup-node@v4` with npm cache).
-3. `npm ci || npm install`.
-4. `node scripts/truth-gates.mjs --ci` — must exit 0.
-5. Upload `PROOF/latest.json` + `PROOF_E2E_REPORT.md` as a 90-day artifact named `proof-<sha>`.
-6. **If main + success**: commit refreshed proof back to `main` with `[skip ci]` to break the loop.
+Ordinary development pushes use GitLab's `ci.skip` push option. The final release pipeline runs on the project-owned Windows runner after the complete local proof suite is green.
 
 Failed runs leave the artifact uploaded for diagnosis but do not push anything. The previous proof at HEAD stays current.
 
@@ -312,7 +305,8 @@ See [`SECURITY_POLICY.md`](./SECURITY_POLICY.md) for the formal allowlist and re
 ```text
 HermesProof/
 ├── src/
-│   ├── server.mjs                 # MCP entrypoint (102 MCP tools)
+│   ├── server.mjs                 # core MCP entrypoint (121 tools)
+│   └── hp-mha-serena/server.mjs   # governed composite entrypoint (34 tools)
 │   └── core/
 │       ├── lock-manager.mjs       # state machine, TTL, handoff
 │       ├── event-manager.mjs      # event_schema_version=1 outbox bridge
@@ -346,8 +340,7 @@ HermesProof/
 │   ├── MAINTENANCE.md
 │   ├── SETUP_GENERIC_PROJECT.md
 │   └── SETUP_*.md                 # one per client
-├── .github/workflows/
-│   └── truth-gates.yml            # CI auto-attestation
+├── .gitlab-ci.yml                 # project-owned runner proof + Pages
 ├── PROOF/
 │   └── latest.json                # auto-refreshed by CI
 ├── PROOF_E2E_REPORT.md            # auto-refreshed by CI

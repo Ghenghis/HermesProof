@@ -11,7 +11,7 @@ Implement the HermesProof artifact specified by Claude's design wave, exactly as
 ## 2. Repos and paths
 
 - HermesProof local: `G:\Github\hermes3d-mcp-lock-orchestrator`
-- HermesProof remote: https://github.com/Ghenghis/HermesProof
+- HermesProof remote: https://gitlab.com/Ghenghis/HermesProof
 - Hermes3D reference-only: `G:\Github\Hermes3D` / https://github.com/Ghenghis/Hermes3D
 
 ## 3. Pre-flight (always)
@@ -39,7 +39,7 @@ If any file is locked: `hermes_request_handoff` and wait for `hermes_approve_han
 2. SVG Asset Agent              (only edits docs/diagrams/*.svg)
 3. README Assembly Agent        (only edits README.md)
 4. Docs Update Agent            (only edits docs/*.md other than spec docs)
-5. CI / Truth Gate Agent        (only edits .github/workflows/*.yml + scripts/truth-gates.mjs)
+5. CI / Truth Gate Agent        (only edits .gitlab-ci.yml + scripts/truth-gates.mjs)
 6. Link Validation Agent        (read-only; runs lychee, reports broken refs)
 7. Security / Secrets Scan Agent (read-only; runs gitleaks/detect-secrets)
 8. Evidence Reporter            (only writes handoffs/* and appends ledger)
@@ -70,8 +70,7 @@ LICENSE
 AGENTS.md
 PROOF/latest.json
 PROOF_E2E_REPORT.md
-.github/workflows/truth-gates.yml
-.github/workflows/pages.yml
+.gitlab-ci.yml
 src/server.mjs                          (Phase 1+ only)
 src/core/lock-manager.mjs               (Phase 1+ only)
 src/core/gate-runner.mjs                (Phase 1+ only)

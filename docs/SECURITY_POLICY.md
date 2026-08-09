@@ -1,5 +1,9 @@
 # HermesProof — Security Policy
 
+> v0.9.0-rc.1 adds a fail-closed managed updater, hash-guarded client snapshots,
+> signed/pinned capability-pack policy, and a second governed MCP server. See
+> [UPDATER_RUNBOOK.md](UPDATER_RUNBOOK.md) for the activation contract.
+
 This MCP is intentionally narrow. Everything the server is allowed to do is enumerated in this document.
 
 <div align="center">
@@ -21,7 +25,7 @@ The two surfaces an attacker (or a buggy agent) might target are the **state dir
 
 ## Not allowed
 
-- Arbitrary shell execution.
+- Arbitrary or client-supplied shell execution. Reviewed gates and bounded exact-argument process adapters are permitted only for declared capabilities.
 - Arbitrary file writing through MCP.
 - Editing files without locks.
 - Force unlocking active locks.

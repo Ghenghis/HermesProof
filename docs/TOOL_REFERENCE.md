@@ -1,6 +1,21 @@
 # HermesProof — Tool Reference
 
-The server exposes 119 MCP tools across coordination, workspace switching, workspace release hygiene, project connection, workspace bug tickets, testing/release mode, project contracts, anti-slop reviews, claim audits/correction packets, agentic loop ticks, agent watchdog recovery, agent profiles, agent presence, inbox messaging, assistance routing, skills routing, unlock requests, live status, event long-polling, backend/GitLab readiness, GitLab project and merge-request work, WinMerge comparison, gates, evidence, events, queue pickup, anonymous orchestration, provider-performance routing, KiloCode/OpenHands delegation governance, KiloCode project guardrails, KiloCode agent-bus proof enforcement, A2A task exchange, Hermes Agent bridging, HP-MHA Model–Harness Attribution, and diagnostics.
+The current monorepo ships two MCP servers: 121 core tools in `hermes3d-locks` and 34 governed tools in `hp-mha-serena`. Counts are generated from [release facts](GENERATED_RELEASE_FACTS.md) and enforced by real stdio tool-list probes.
+
+## hp-mha-serena composite server (34 tools)
+
+| Group | Tools |
+| --- | --- |
+| Runtime/MCP manager | `hp_mha_runtime_status`, `hp_mha_runtime_register`, `hp_mha_runtime_disable_unused`, `hp_mha_runtime_issue_lease`, `hp_mha_runtime_enable`, `hp_mha_runtime_cycle`, `hp_mha_runtime_revoke_lease` |
+| Capability packs | `hp_mha_capability_resolve`, `hp_mha_capability_plan`, `hp_mha_capability_install` |
+| Automation/cron | `hp_mha_automation_status`, `hp_mha_automation_plan`, `hp_mha_automation_enable`, `hp_mha_automation_cycle`, `hp_mha_automation_kill_switch` |
+| Kilo backend | `hp_mha_kilo_backend_doctor`, `hp_mha_kilo_backend_plan` |
+| Managed updates | `hp_mha_update_status`, `hp_mha_update_check`, `hp_mha_update_evidence`, `hp_mha_update_apply`, `hp_mha_update_rollback`, `hp_mha_update_channel`, `hp_mha_update_auto`, `hp_mha_update_cleanup` |
+| Governed Serena | `hp_mha_serena_bind_workspace`, `hp_mha_serena_catalog`, `hp_mha_serena_claim_and_lock`, `hp_mha_serena_health`, `hp_mha_serena_semantic_inspect`, `hp_mha_serena_guarded_create`, `hp_mha_serena_guarded_replace`, `hp_mha_serena_status`, `hp_mha_serena_release` |
+
+Every mutation in these groups requires workspace binding, owner/task context, the exact operation or file lock, and an idempotency key. Raw Serena mutations are not registered.
+
+## hermes3d-locks core server (121 tools)
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture showing the MCP tools surfaced over stdio JSON-RPC" width="100%"/>

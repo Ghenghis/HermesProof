@@ -43,10 +43,10 @@ If you want a fully hands-free loop with no human bridge, that is **CP-HERMESPRO
 - Events stored at `.hermes3d_orchestrator/events/{outbox,handled,failed}/<event_id>.json` with atomic `fs.rename` transitions.
 - 4 new MCP tools: `hermes_list_events`, `hermes_mark_event_handled`, `hermes_emit_event`, `hermes_create_blocked_handoff`.
 - 3 new scripts: `scripts/watch-events.mjs` (3 modes: console / packet / optional webhook), `scripts/generate-review-packet.mjs`, `scripts/trigger-doctor.mjs`.
-- 1 new GitHub Actions workflow: `hermesproof-review-check.yml` runs **LLM-free mechanical checks** on every PR open.
+- The GitLab local-runner pipeline runs **LLM-free mechanical checks** for merge requests.
 - Retention: `events/handled/*.json` older than 30 days pruned by `scripts/prune-events.mjs`.
 
-**The biggest win:** the GitHub Actions checklist. It runs without anyone online and catches lock-discipline drift mechanically.
+**The biggest win:** the project-owned GitLab runner checklist catches lock-discipline drift mechanically without consuming shared minutes.
 
 **What this stage does NOT do:**
 - Wake Claude / Codex / any hosted chat

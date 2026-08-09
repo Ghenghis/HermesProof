@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">HermesProof ecosystem end-to-end architecture</title>
+  <desc id="desc">Clients connect to two MCP servers. HermesProof coordinates locks and evidence while HP-MHA-Serena governs semantic analysis, harnesses, automation, capability packs, local models, and updates.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#071525"/><stop offset="1" stop-color="#181136"/></linearGradient>
+    <linearGradient id="core" x2="1"><stop stop-color="#20d9ff"/><stop offset="1" stop-color="#7b61ff"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#65e7ff"/></marker>
+    <style>
+      text{font-family:Segoe UI,Arial,sans-serif;fill:#eef8ff}.label{font-size:18px;font-weight:700}.small{font-size:14px;fill:#b7cadb}
+      .box{fill:#0d2237;stroke:#3d6587;stroke-width:2}.client{fill:#111d30;stroke:#48566f}.line{fill:none;stroke:#65e7ff;stroke-width:3;marker-end:url(#arrow);stroke-dasharray:10 8;animation:flow 1.8s linear infinite}
+      .pulse{animation:pulse 2.6s ease-in-out infinite;transform-origin:center}
+      @keyframes flow{to{stroke-dashoffset:-36}}@keyframes pulse{50%{opacity:.66}}
+      @media (prefers-reduced-motion:reduce){.line,.pulse{animation:none}}
+    </style>
+  </defs>
+  <rect width="1200" height="650" rx="28" fill="url(#bg)"/>
+  <text x="600" y="48" text-anchor="middle" font-size="28" font-weight="800">HermesProof — governed completion from intent to evidence</text>
+  <g class="client">
+    <rect x="38" y="95" width="245" height="62" rx="13"/><text class="label" x="160" y="122" text-anchor="middle">VS Code family</text><text class="small" x="160" y="145" text-anchor="middle">Kilo · Windsurf · Cursor</text>
+    <rect x="38" y="177" width="245" height="62" rx="13"/><text class="label" x="160" y="203" text-anchor="middle">Agent clients</text><text class="small" x="160" y="226" text-anchor="middle">Codex · Claude · Devin</text>
+    <rect x="38" y="259" width="245" height="62" rx="13"/><text class="label" x="160" y="285" text-anchor="middle">Local inference</text><text class="small" x="160" y="308" text-anchor="middle">LM Studio LM Link · Ollama</text>
+  </g>
+  <path class="line" d="M283 126 C335 126 330 177 380 177"/><path class="line" d="M283 208 L380 208"/><path class="line" d="M283 290 C335 290 330 239 380 239"/>
+  <g filter="url(#glow)" class="pulse">
+    <rect x="380" y="102" width="340" height="210" rx="22" fill="url(#core)" opacity=".92"/>
+    <rect x="394" y="116" width="312" height="84" rx="14" fill="#09192c"/><text class="label" x="550" y="150" text-anchor="middle">hermes3d-locks · 121 tools</text><text class="small" x="550" y="178" text-anchor="middle">claim · lock · handoff · gate · evidence</text>
+    <rect x="394" y="214" width="312" height="84" rx="14" fill="#09192c"/><text class="label" x="550" y="248" text-anchor="middle">hp-mha-serena · 34 tools</text><text class="small" x="550" y="276" text-anchor="middle">semantic intelligence behind locks</text>
+  </g>
+  <path class="line" d="M720 207 L804 207"/>
+  <g class="box">
+    <rect x="804" y="91" width="354" height="245" rx="20"/>
+    <text class="label" x="981" y="125" text-anchor="middle">Completion control plane</text>
+    <text class="small" x="830" y="163">✓ Serena 1.6.2.dev0 — zero raw mutations</text>
+    <text class="small" x="830" y="195">✓ HP-MHA measured harness + holdouts</text>
+    <text class="small" x="830" y="227">✓ MCP/package/automation managers</text>
+    <text class="small" x="830" y="259">✓ Backend + reverse-engineering packs</text>
+    <text class="small" x="830" y="291">✓ Signed, pinned, least-privilege leases</text>
+  </g>
+  <path class="line" d="M981 336 L981 390"/>
+  <g class="box">
+    <rect x="72" y="408" width="1055" height="178" rx="22"/>
+    <text class="label" x="600" y="442" text-anchor="middle">Fail-closed delivery loop</text>
+    <g class="small" text-anchor="middle">
+      <rect x="102" y="474" width="150" height="66" rx="14" fill="#15354c"/><text x="177" y="502">Acceptance graph</text><text x="177" y="523">what “done” means</text>
+      <rect x="292" y="474" width="150" height="66" rx="14" fill="#15354c"/><text x="367" y="502">Safe edit</text><text x="367" y="523">claim → Serena → lock</text>
+      <rect x="482" y="474" width="150" height="66" rx="14" fill="#15354c"/><text x="557" y="502">Diagnostics</text><text x="557" y="523">tests + visual proof</text>
+      <rect x="672" y="474" width="150" height="66" rx="14" fill="#15354c"/><text x="747" y="502">Truth gates</text><text x="747" y="523">37 release checks</text>
+      <rect x="862" y="474" width="220" height="66" rx="14" fill="#15354c"/><text x="972" y="502">Attestation + rollback</text><text x="972" y="523">hashes · evidence · known-good</text>
+    </g>
+    <path class="line" d="M252 507 L292 507 M442 507 L482 507 M632 507 L672 507 M822 507 L862 507"/>
+  </g>
+</svg>
