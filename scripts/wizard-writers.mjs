@@ -91,7 +91,7 @@ export async function writeClients({
 function selectedConfigFiles(selected, paths) {
   const byClient = {
     "claude-desktop": [paths.claudeDesktop],
-    "claude-code": [paths.claudeUserSettings],
+    "claude-code": [paths.claudeUserConfig],
     codex: [paths.codex],
     windsurf: [paths.windsurf, paths.windsurfRules],
     kilocode: [paths.kilocodeMcp, paths.kilocodeRules, paths.kilocodePrompt],

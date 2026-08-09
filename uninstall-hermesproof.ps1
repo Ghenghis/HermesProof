@@ -7,6 +7,13 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+function Write-JsonAtomic([string]$File, $Value) {
+  $temporary = "$File.tmp-$([guid]::NewGuid().ToString('N'))"
+  [IO.File]::WriteAllText($temporary, (($Value | ConvertTo-Json -Depth 20) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+  Move-Item -LiteralPath $temporary -Destination $File -Force
+}
+
 $managed = [IO.Path]::GetFullPath($ManagedRoot)
 if ([string]::Equals($managed.TrimEnd("\"), ([IO.Path]::GetPathRoot($managed)).TrimEnd("\"), [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to uninstall from a filesystem root" }
 if ([string]::Equals($managed.TrimEnd("\"), ([IO.Path]::GetFullPath($env:USERPROFILE)).TrimEnd("\"), [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to uninstall the user profile root" }
@@ -20,17 +27,32 @@ if (-not $SkipSystemChanges) {
 $stateRoot = [IO.Path]::Combine($managed, "state")
 $activeFile = [IO.Path]::Combine($stateRoot, "active-release.json")
 $installFile = [IO.Path]::Combine($stateRoot, "install.json")
+$restoreStateFile = [IO.Path]::Combine($stateRoot, "client-restore.json")
 if (Test-Path -LiteralPath $activeFile) {
   $active = Get-Content -LiteralPath $activeFile -Raw | ConvertFrom-Json
   $install = if (Test-Path -LiteralPath $installFile) { Get-Content -LiteralPath $installFile -Raw | ConvertFrom-Json } else { $null }
   $restoreSnapshot = if ($null -ne $install -and $null -ne $install.clientSnapshot) { $install.clientSnapshot } else { $active.clientSnapshot }
-  if ($null -ne $restoreSnapshot -and $restoreSnapshot.manifestFile) {
+  $restoreState = if (Test-Path -LiteralPath $restoreStateFile) { Get-Content -LiteralPath $restoreStateFile -Raw | ConvertFrom-Json } else { $null }
+  $alreadyRestored = $null -ne $restoreState -and
+    $null -ne $restoreSnapshot -and
+    [string]::Equals([string]$restoreState.manifestSha256, [string]$restoreSnapshot.manifestSha256, [StringComparison]::OrdinalIgnoreCase)
+  if (-not $alreadyRestored -and $null -ne $restoreSnapshot -and $restoreSnapshot.manifestFile) {
     $release = [IO.Path]::Combine($managed, "releases", [string]$active.currentSha)
     $restore = [IO.Path]::Combine($release, "scripts", "restore-client-snapshot.mjs")
     if (Test-Path -LiteralPath $restore) {
       $env:HERMESPROOF_MANAGED_ROOT = $managed
       & node.exe $restore --manifest $restoreSnapshot.manifestFile --sha256 $restoreSnapshot.manifestSha256
-      if ($LASTEXITCODE -ne 0) { Write-Warning "Some client files changed after install and were not overwritten; review the snapshot manually." }
+      if ($LASTEXITCODE -ne 0) {
+        throw "Client restoration failed; managed recovery data was preserved at $managed. Review the snapshot before retrying."
+      } else {
+        Write-JsonAtomic $restoreStateFile ([ordered]@{
+          schema = "hermesproof.client-restore-state.v1"
+          manifestSha256 = [string]$restoreSnapshot.manifestSha256
+          restoredUtc = [DateTime]::UtcNow.ToString("o")
+        })
+      }
+    } else {
+      throw "Client restore helper is missing; managed recovery data was preserved at $managed."
     }
   }
 }

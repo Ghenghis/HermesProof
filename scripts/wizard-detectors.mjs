@@ -37,6 +37,7 @@ export function clientPaths({ workspaceRoot, homeDir = resolveHome(), env = proc
         ? path.join(homeDir, "Library", "Application Support", "Claude", "claude_desktop_config.json")
         : path.join(homeDir, ".config", "Claude", "claude_desktop_config.json"),
     claudeUserDir: path.join(homeDir, ".claude"),
+    claudeUserConfig: path.join(homeDir, ".claude.json"),
     claudeUserSettings: path.join(homeDir, ".claude", "settings.json"),
     claudeHooksSidecar: path.join(homeDir, ".claude", "settings.hermesproof.hooks.json"),
     codex: path.join(homeDir, ".codex", "config.toml"),
@@ -81,7 +82,7 @@ export async function detectClients({ workspaceRoot, env = process.env, homeDir 
       label: "Claude Code CLI",
       detected: claudeCode.detected,
       version: claudeCode.version,
-      configPath: paths.claudeUserSettings
+      configPath: paths.claudeUserConfig
     },
     codex: {
       id: "codex",

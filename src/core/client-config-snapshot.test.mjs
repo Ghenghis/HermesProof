@@ -26,6 +26,7 @@ test("client config snapshot restores changed existing files and removes install
   await fs.writeFile(existing, '{"after":true}\n', "utf8");
   await fs.writeFile(created, '{"installed":true}\n', "utf8");
   const finalized = await finalizeClientConfigSnapshot({ manifestFile: snapshot.manifestFile });
+  const finalizedManifest = await fs.readFile(snapshot.manifestFile);
 
   const restored = await restoreClientConfigSnapshot({
     manifestFile: snapshot.manifestFile,
@@ -35,6 +36,11 @@ test("client config snapshot restores changed existing files and removes install
   assert.equal(restored.ok, true);
   assert.equal(await fs.readFile(existing, "utf8"), '{"before":true}\n');
   await assert.rejects(fs.access(created), /ENOENT/);
+  assert.deepEqual(
+    await fs.readFile(snapshot.manifestFile),
+    finalizedManifest,
+    "restoring must not mutate the content-addressed snapshot manifest"
+  );
 });
 
 test("restore refuses to overwrite user changes made after installation", async (t) => {

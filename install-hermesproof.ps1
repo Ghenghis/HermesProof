@@ -106,6 +106,7 @@ foreach ($directory in @($stateRoot, $releasesRoot, $stagingRoot, $quarantineRoo
 $activeFile = [IO.Path]::Combine($stateRoot, "active-release.json")
 $registryFile = [IO.Path]::Combine($stateRoot, "releases.json")
 $installFile = [IO.Path]::Combine($stateRoot, "install.json")
+$restoreStateFile = [IO.Path]::Combine($stateRoot, "client-restore.json")
 $previousActive = Read-JsonOrDefault $activeFile $null
 $previousRegistry = Read-JsonOrDefault $registryFile ([pscustomobject]@{ schema = $schema; releases = @() })
 $previousInstall = Read-JsonOrDefault $installFile $null
@@ -205,6 +206,7 @@ try {
   }
   Remove-Item -LiteralPath $transactionFile -Force
   if ($controlBackup -and (Test-Path -LiteralPath $controlBackup)) { Remove-Item -LiteralPath $controlBackup -Recurse -Force }
+  if (Test-Path -LiteralPath $restoreStateFile) { Remove-Item -LiteralPath $restoreStateFile -Force }
   Write-Host "HermesProof $($manifest.version) installed and verified." -ForegroundColor Green
   Write-Host "Core tools: 121 | Composite tools: 34 | Managed root: $managed"
   Write-Host "Open a new terminal, restart MCP clients, then run: hermesproof-update status"

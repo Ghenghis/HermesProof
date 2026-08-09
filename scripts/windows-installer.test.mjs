@@ -91,3 +91,81 @@ test("uninstaller restores the first-install client snapshot after a repair", as
     "--manifest", originalManifest, "--sha256", "1".repeat(64)
   ]);
 });
+
+test("uninstaller restores clients once and a later purge is idempotent", async (t) => {
+  const uninstallerFile = path.join(root, "uninstall-hermesproof.ps1");
+  const testRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-uninstall-idempotent-"));
+  t.after(() => fs.rm(testRoot, { recursive: true, force: true }));
+  const managedRoot = path.join(testRoot, "managed");
+  const recordFile = path.join(testRoot, "restore-calls.json");
+  const sha = "d".repeat(40);
+  const scriptsDir = path.join(managedRoot, "releases", sha, "scripts");
+  const stateDir = path.join(managedRoot, "state");
+  const manifestFile = path.join(managedRoot, "backups", "first-install", "manifest.json");
+  await fs.mkdir(scriptsDir, { recursive: true });
+  await fs.mkdir(stateDir, { recursive: true });
+  await fs.writeFile(
+    path.join(scriptsDir, "restore-client-snapshot.mjs"),
+    'import fs from "node:fs"; const file=process.env.HP_UNINSTALL_RECORD; let calls=[]; try { calls=JSON.parse(fs.readFileSync(file,"utf8")); } catch {} calls.push(process.argv.slice(2)); fs.writeFileSync(file,JSON.stringify(calls));\n',
+    "utf8"
+  );
+  await fs.writeFile(path.join(stateDir, "active-release.json"), JSON.stringify({
+    currentSha: sha,
+    clientSnapshot: { manifestFile, manifestSha256: "3".repeat(64) }
+  }), "utf8");
+  await fs.writeFile(path.join(stateDir, "install.json"), JSON.stringify({
+    clientSnapshot: { manifestFile, manifestSha256: "3".repeat(64) }
+  }), "utf8");
+
+  const common = [
+    "-NoLogo", "-NoProfile", "-NonInteractive",
+    "-File", uninstallerFile,
+    "-ManagedRoot", managedRoot,
+    "-SkipSystemChanges"
+  ];
+  const environment = { ...process.env, HP_UNINSTALL_RECORD: recordFile };
+  await execFileAsync("powershell.exe", common, { env: environment, windowsHide: true });
+  await execFileAsync("powershell.exe", [...common, "-PurgeManagedData"], { env: environment, windowsHide: true });
+
+  assert.deepEqual(JSON.parse(await fs.readFile(recordFile, "utf8")), [[
+    "--manifest", manifestFile, "--sha256", "3".repeat(64)
+  ]]);
+  await assert.rejects(fs.access(managedRoot), /ENOENT/);
+});
+
+test("uninstaller preserves managed recovery data when client restoration fails", async (t) => {
+  const uninstallerFile = path.join(root, "uninstall-hermesproof.ps1");
+  const managedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-uninstall-fail-closed-"));
+  t.after(() => fs.rm(managedRoot, { recursive: true, force: true }));
+  const sha = "e".repeat(40);
+  const scriptsDir = path.join(managedRoot, "releases", sha, "scripts");
+  const stateDir = path.join(managedRoot, "state");
+  const manifestFile = path.join(managedRoot, "backups", "clients", "original", "manifest.json");
+  await fs.mkdir(scriptsDir, { recursive: true });
+  await fs.mkdir(stateDir, { recursive: true });
+  await fs.writeFile(
+    path.join(scriptsDir, "restore-client-snapshot.mjs"),
+    'process.stderr.write("simulated client drift\\n"); process.exitCode=1;\n',
+    "utf8"
+  );
+  await fs.writeFile(path.join(stateDir, "active-release.json"), JSON.stringify({
+    currentSha: sha,
+    clientSnapshot: { manifestFile, manifestSha256: "4".repeat(64) }
+  }), "utf8");
+  await fs.writeFile(path.join(stateDir, "install.json"), JSON.stringify({
+    clientSnapshot: { manifestFile, manifestSha256: "4".repeat(64) }
+  }), "utf8");
+
+  await assert.rejects(
+    execFileAsync("powershell.exe", [
+      "-NoLogo", "-NoProfile", "-NonInteractive",
+      "-File", uninstallerFile,
+      "-ManagedRoot", managedRoot,
+      "-SkipSystemChanges",
+      "-PurgeManagedData"
+    ], { windowsHide: true }),
+    /managed recovery data was preserved/i
+  );
+  assert.equal(await fs.stat(managedRoot).then((stat) => stat.isDirectory()), true);
+  assert.equal(await fs.stat(path.join(stateDir, "install.json")).then((stat) => stat.isFile()), true);
+});

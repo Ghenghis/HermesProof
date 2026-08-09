@@ -208,6 +208,8 @@ test("Claude Code receives both servers and LM Studio alone receives the LM Link
   assert.equal(result.results["claude-code"].ok, true);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls.map((call) => call.args[4]).sort(), ["hermes3d-locks", "hp-mha-serena"]);
+  assert.equal(result.snapshot.allowedFiles.includes(path.join(homeDir, ".claude.json")), true);
+  assert.equal(result.snapshot.allowedFiles.includes(path.join(homeDir, ".claude", "settings.json")), false);
   const localModels = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".hermesproof", "local-models.json"), "utf8"));
   assert.equal(localModels.routing.preferred, "lm-studio-lm-link");
   assert.equal(localModels.routing.fallback, "ollama");

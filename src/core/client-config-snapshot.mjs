@@ -132,7 +132,5 @@ export async function restoreClientConfigSnapshot({
       await fs.rm(entry.file, { force: true });
     }
   }
-  manifest.restoredUtc = new Date().toISOString();
-  await writeJsonAtomic(file, manifest);
   return { ok: true, manifestFile: file, restored: manifest.entries.map((entry) => entry.file) };
 }
