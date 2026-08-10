@@ -9,10 +9,11 @@ import {
   SERENA_SOURCE,
   SERENA_VERSION,
   SerenaAdapter,
-  SerenaAdapterError
+  SerenaAdapterError,
+  buildSerenaChildPath
 } from "./serena-adapter.mjs";
 
-test("Serena capability routes cover the current 29-tool catalog exactly once", () => {
+test("Serena default desktop surface routes 29 tools exactly once", () => {
   const routed = [...SERENA_DIRECT_TOOLS, ...SERENA_GUARDED_TOOLS];
   assert.equal(SERENA_DIRECT_TOOLS.length, 14);
   assert.equal(SERENA_GUARDED_TOOLS.length, 15);
@@ -21,6 +22,22 @@ test("Serena capability routes cover the current 29-tool catalog exactly once", 
   assert.ok(SERENA_GUARDED_TOOLS.includes("activate_project"));
   assert.ok(SERENA_GUARDED_TOOLS.includes("edit_memory"));
   assert.ok(SERENA_GUARDED_TOOLS.includes("execute_shell_command"));
+});
+
+test("Windows Serena child PATH is deduplicated, bounded, and keeps Node first", () => {
+  const nodeDir = path.dirname(process.execPath);
+  const repeated = Array.from({ length: 100 }, () => nodeDir).join(";");
+  const childPath = buildSerenaChildPath({
+    currentPath: repeated + ";C:\\Windows\\System32;C:\\Windows",
+    nodeExecutable: process.execPath,
+    uvxCommand: "uvx",
+    platform: "win32",
+    systemRoot: "C:\\Windows"
+  });
+  const entries = childPath.split(";");
+  assert.equal(entries[0].toLowerCase(), nodeDir.toLowerCase());
+  assert.equal(entries.filter((entry) => entry.toLowerCase() === nodeDir.toLowerCase()).length, 1);
+  assert.ok(childPath.length < 7_500);
 });
 
 function fakeClient({ tools, result = { content: [{ type: "text", text: "ok" }] } }) {
@@ -68,8 +85,8 @@ test("Serena runtime is immutable and semantic calls use the configured project"
   });
 
   const health = await adapter.connect();
-  assert.equal(SERENA_VERSION, "1.6.2.dev0");
-  assert.equal(SERENA_COMMIT, "430fc62e72d3a82059b870560e4a2ea60bbb9cf5");
+  assert.equal(SERENA_VERSION, "1.7.0");
+  assert.equal(SERENA_COMMIT, "949a27ef1e5fda1a6e7b561e777bcece345c6ffd");
   assert.match(SERENA_SOURCE, new RegExp(SERENA_COMMIT + "$"));
   assert.equal(health.ok, true);
   assert.equal(health.mutation_tools_active.length, 0);

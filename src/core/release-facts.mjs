@@ -4,7 +4,7 @@ import path from "node:path";
 export const RELEASE_FACTS_SCHEMA = "hermesproof.release-facts.v1";
 
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const SERENA_VERSION_RE = /^\d+\.\d+\.\d+\.dev\d+$/;
+const SERENA_VERSION_RE = /^\d+\.\d+\.\d+(?:\.dev\d+)?$/;
 const REF_RE = /^refs\/heads\/[0-9A-Za-z._/-]+$/;
 const SERVER_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
 

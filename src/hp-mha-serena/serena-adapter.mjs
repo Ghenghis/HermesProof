@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 import { Client } from "@modelcontextprotocol/client";
@@ -32,6 +33,47 @@ const MUTATION_TOOLS = new Set([
   ...SERENA_QUERY_GUARDED_TOOLS,
   ...SERENA_JETBRAINS_GUARDED_TOOLS
 ]);
+
+export function buildSerenaChildPath({
+  currentPath = process.env.PATH ?? "",
+  nodeExecutable = process.execPath,
+  uvxCommand = "uvx",
+  platform = process.platform,
+  systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? ""
+} = {}) {
+  const separator = platform === "win32" ? ";" : path.delimiter;
+  const sourceEntries = String(currentPath)
+    .split(separator)
+    .map((entry) => entry.trim().replace(/^"(.*)"$/u, "$1"))
+    .filter(Boolean);
+  const priority = [path.dirname(nodeExecutable)];
+
+  if (path.isAbsolute(uvxCommand)) {
+    priority.push(path.dirname(uvxCommand));
+  } else {
+    const suffixes = platform === "win32" ? ["", ".exe", ".cmd", ".bat"] : [""];
+    const uvxEntry = sourceEntries.find((entry) =>
+      suffixes.some((suffix) => fs.existsSync(path.join(entry, uvxCommand + suffix)))
+    );
+    if (uvxEntry) priority.push(uvxEntry);
+  }
+  if (platform === "win32" && systemRoot) {
+    priority.push(path.join(systemRoot, "System32"), systemRoot);
+  }
+
+  const seen = new Set();
+  const bounded = [];
+  for (const entry of [...priority, ...sourceEntries]) {
+    if (!entry) continue;
+    const key = platform === "win32" ? entry.toLowerCase() : entry;
+    if (seen.has(key)) continue;
+    const nextLength = bounded.join(separator).length + separator.length + entry.length;
+    if (platform === "win32" && nextLength > 7_000) continue;
+    seen.add(key);
+    bounded.push(entry);
+  }
+  return bounded.join(separator);
+}
 
 export class SerenaAdapterError extends Error {
   constructor(code, message, details = undefined) {
@@ -116,6 +158,14 @@ export class SerenaAdapter {
   }
 
   launchOptions() {
+    const childEnv = { ...process.env };
+    for (const key of Object.keys(childEnv)) {
+      if (key.toLowerCase() === "path") delete childEnv[key];
+    }
+    childEnv.PATH = buildSerenaChildPath({ uvxCommand: this.uvxCommand });
+    childEnv.SERENA_USAGE_REPORTING = "false";
+    childEnv.PYTHONUTF8 = "1";
+    if (this.serenaHome) childEnv.SERENA_HOME = this.serenaHome;
     return {
       command: this.uvxCommand,
       args: [
@@ -139,12 +189,7 @@ export class SerenaAdapter {
         "WARNING"
       ],
       cwd: this.workspaceRoot,
-      env: {
-        ...process.env,
-        ...(this.serenaHome ? { SERENA_HOME: this.serenaHome } : {}),
-        SERENA_USAGE_REPORTING: "false",
-        PYTHONUTF8: "1"
-      }
+      env: childEnv
     };
   }
 

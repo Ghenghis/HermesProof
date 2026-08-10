@@ -11,7 +11,7 @@ test("generated release documentation matches the canonical facts", async () => 
   const rendered = await renderReleaseDocs({ root });
   assert.match(rendered.markdown, /121 core MCP tools/);
   assert.match(rendered.markdown, /34 governed composite MCP tools/);
-  assert.match(rendered.markdown, /Serena 1\.6\.2\.dev0/);
+  assert.match(rendered.markdown, /Serena 1\.7\.0/);
   assert.equal(rendered.json.servers.composite.tools, 34);
   assert.equal(rendered.json.gitlab.projectUrl, "https://gitlab.com/Ghenghis/HermesProof");
 

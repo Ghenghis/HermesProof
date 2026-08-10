@@ -1,16 +1,18 @@
-# Serena 1.6.2.dev0 integration
+# Serena 1.7.0 integration
 
-HermesProof pins Serena 1.6.2.dev0 and treats it as semantic intelligence behind the Hermes coordination boundary, not as an unrestricted editor.
+HermesProof pins Serena 1.7.0 at immutable upstream commit `949a27ef1e5fda1a6e7b561e777bcece345c6ffd` and treats it as semantic intelligence behind the Hermes coordination boundary, not as an unrestricted editor.
+
+Upstream release notes: https://github.com/oraios/serena/releases/tag/v1.7.0
 
 ## Current schema
 
-The tracked project file is `.serena/project.yml` and uses the pinned commit's current `language_servers` key with TypeScript enabled. The older `languages` form is rejected by HermesProof's regression gate because Serena 1.6.2.dev0 migrates it on load. The immutable Serena commit is the schema source of truth; this avoids both the original stale-package `KeyError: languages` failure and later schema drift.
+The tracked project file is `.serena/project.yml` and uses the pinned commit's current `language_servers` key with TypeScript enabled. The older `languages` form is rejected by HermesProof's regression gate because Serena 1.7.0 migrates it on load. The immutable Serena commit is the schema source of truth; this avoids both the original stale-package `KeyError: languages` failure and later schema drift.
 
 ## Tool-count explanation
 
 Serena dashboard counts depend on context and mode. These numbers describe different surfaces, not contradictory versions:
 
-- 52 catalogued tools in Serena 1.6.2.dev0;
+- 52 catalogued tools in Serena 1.7.0;
 - 29 active tools in the desktop-app context shown by the dashboard;
 - 15 semantic/LSP tools exposed by hp-mha-serena through Hermes policy;
 - 0 raw Serena mutation tools exposed without a claim and lock.

@@ -8,7 +8,7 @@ import { buildSerenaRuntimePolicy } from "./generate-serena-runtime-policy.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("shipped Serena 1.6.2.dev0 config uses language_servers and TypeScript, never legacy languages", async () => {
+test("shipped Serena 1.7.0 config uses language_servers and TypeScript, never legacy languages", async () => {
   const raw = await fs.readFile(path.join(repoRoot, ".serena", "project.yml"), "utf8");
   assert.match(raw, /^language_servers:\s*$/m);
   assert.match(raw, /^\s*-\s*typescript\s*$/m);

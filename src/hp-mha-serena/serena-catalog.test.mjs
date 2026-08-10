@@ -32,7 +32,7 @@ test("pinned Serena catalog covers all 52 executable tools exactly once", () => 
 
 test("generated runtime policy carries executable truth and fail-closed routes", () => {
   const policy = buildSerenaRuntimePolicy();
-  assert.equal(policy.runtime.version, "1.6.2.dev0");
+  assert.equal(policy.runtime.version, "1.7.0");
   assert.equal(policy.inventory.full_catalog_count, 52);
   assert.equal(policy.inventory.desktop_default_count, 29);
   assert.equal(policy.inventory.selected_lsp_direct_count, 15);

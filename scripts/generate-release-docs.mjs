@@ -93,6 +93,9 @@ async function main() {
   if (!result.ok) process.exitCode = 1;
 }
 
-if (path.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
+if (
+  path.resolve(process.argv[1] || "").toLowerCase() ===
+  path.resolve(fileURLToPath(import.meta.url)).toLowerCase()
+) {
   await main();
 }

@@ -3,9 +3,9 @@
   "generated": true,
   "runtime": {
     "name": "serena-agent",
-    "version": "1.6.2.dev0",
-    "commit": "430fc62e72d3a82059b870560e4a2ea60bbb9cf5",
-    "source": "git+https://github.com/oraios/serena@430fc62e72d3a82059b870560e4a2ea60bbb9cf5",
+    "version": "1.7.0",
+    "commit": "949a27ef1e5fda1a6e7b561e777bcece345c6ffd",
+    "source": "git+https://github.com/oraios/serena@949a27ef1e5fda1a6e7b561e777bcece345c6ffd",
     "install": {
       "runner": "uvx",
       "pin": "immutable-git-commit",

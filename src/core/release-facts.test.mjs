@@ -25,7 +25,7 @@ test("release facts load the supported GitLab-first product contract", async () 
     composite: { name: "hp-mha-serena", tools: 34 }
   });
   assert.deepEqual(facts.serena, {
-    version: "1.6.2.dev0",
+    version: "1.7.0",
     cataloguedTools: 52,
     desktopActiveTools: 29,
     governedLspTools: 15,
@@ -58,7 +58,7 @@ test("release facts reject unsafe remotes, refs, versions, and counts", () => {
       composite: { name: "hp-mha-serena", tools: 34 }
     },
     serena: {
-      version: "1.6.2.dev0",
+      version: "1.7.0",
       cataloguedTools: 52,
       desktopActiveTools: 29,
       governedLspTools: 15,

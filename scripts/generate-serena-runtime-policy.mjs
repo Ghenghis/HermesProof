@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import {
   SERENA_CATALOG,
@@ -171,9 +171,8 @@ export function writeSerenaRuntimePolicy({
   return outputPath;
 }
 
-const invokedPath = process.argv[1]
-  ? pathToFileURL(path.resolve(process.argv[1])).href
-  : "";
-if (import.meta.url === invokedPath) {
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]).toLowerCase() : "";
+const modulePath = path.resolve(fileURLToPath(import.meta.url)).toLowerCase();
+if (modulePath === invokedPath) {
   process.stdout.write(writeSerenaRuntimePolicy() + "\n");
 }

@@ -22,7 +22,7 @@
     }
   },
   "serena": {
-    "version": "1.6.2.dev0",
+    "version": "1.7.0",
     "cataloguedTools": 52,
     "desktopActiveTools": 29,
     "governedLspTools": 15,

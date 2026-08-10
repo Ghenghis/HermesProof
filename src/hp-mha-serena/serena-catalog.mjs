@@ -1,5 +1,5 @@
-export const SERENA_VERSION = "1.6.2.dev0";
-export const SERENA_COMMIT = "430fc62e72d3a82059b870560e4a2ea60bbb9cf5";
+export const SERENA_VERSION = "1.7.0";
+export const SERENA_COMMIT = "949a27ef1e5fda1a6e7b561e777bcece345c6ffd";
 export const SERENA_SOURCE =
   "git+https://github.com/oraios/serena@" + SERENA_COMMIT;
 

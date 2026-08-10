@@ -6,7 +6,7 @@ This matrix maps the current v0.9.0-rc.1 README claims to executable evidence. G
 | --- | --- | --- |
 | 121 core MCP tools | src/server.mjs | real core stdio initialize + tools/list; release-facts test |
 | 34 composite MCP tools | src/hp-mha-serena/server.mjs | real composite stdio initialize + tools/list |
-| Serena 1.6.2.dev0 uses pinned `language_servers` schema | .serena/project.yml | serena-project-config.test.mjs |
+| Serena 1.7.0 uses pinned `language_servers` schema | .serena/project.yml | serena-project-config.test.mjs |
 | 52 catalogued / 29 desktop / 15 governed / 0 raw mutations | serena-catalog.mjs and runtime policy generator | catalog, adapter, and service tests |
 | Task/owner/file locking | lock-manager.mjs | concurrency, handoff, stale recovery, and service tests |
 | HP-MHA fails closed on invalid Merkle proof | hp-mha.mjs and smoke-e2e.mjs | hp-mha-smoke-failclosed plus measured 2x2 output |

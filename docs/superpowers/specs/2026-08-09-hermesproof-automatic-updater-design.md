@@ -32,7 +32,7 @@ The implementation includes:
 - Fail-closed release verification and post-activation health checks.
 - Atomic dual-server activation for `hermes3d-locks` and `hp-mha-serena`.
 - Timestamped client-configuration backups and transactional rewiring.
-- Serena 1.6.2.dev0 configuration/context regeneration and validation.
+- Serena 1.7.0 configuration/context regeneration and validation.
 - Quarantine of failed candidates and recovery after interrupted updates.
 - Current-plus-previous known-good retention.
 - CLI, MCP, doctor, harness, evidence, generated-reference, and user documentation.
@@ -211,7 +211,7 @@ A candidate must pass:
 3. Lockfile-only dependency installation with package-manager version recorded.
 4. Dependency license/hash inventory and CycloneDX-compatible SBOM.
 5. Secret and private-key pattern scan with redacted output.
-6. Serena 1.6.2.dev0 version, required `languages`, context hashes, and read-only Hermes LSP validation.
+6. Serena 1.7.0 version, required `language_servers`, context hashes, and read-only Hermes LSP validation.
 7. Generated-reference drift checks for the 121-tool core and 26-tool composite registries.
 8. Focused updater unit, state-machine, security, and recovery tests.
 9. Full `npm test` with zero unexpected failures.
@@ -296,7 +296,7 @@ Targets include Claude Desktop, Claude Code, Codex, Windsurf, Kilo Code, Cursor,
 
 Every staged release will:
 
-- Confirm Serena 1.6.2.dev0.
+- Confirm Serena 1.7.0.
 - Validate `.serena/project.yml` against the pinned Serena commit's schema, including `language_servers`.
 - Regenerate or validate contexts for Codex, Kilo Code, Windsurf, Devin, LM Studio, and Ollama.
 - Verify context hashes against the shipped manifest.
@@ -401,7 +401,7 @@ Implementation is incomplete until all related documentation is updated and cros
 - `README.md`: installation, updates, channels, both servers, rollback, and generated counts.
 - Architecture guide: updater boundary, trust model, launcher, state machine, and dual-server topology.
 - Client guide: clean install, legacy migration, target matrix, backups, reconnect behavior, and effective-config verification.
-- Serena guide: 1.6.2.dev0 schema, `languages`, active/catalog/exposed counts, contexts, onboarding, and lock restrictions.
+- Serena guide: 1.7.0 schema, `language_servers`, active/catalog/exposed counts, contexts, onboarding, and lock restrictions.
 - HP-MHA guide: updater harness card, self-hosting scenario, measured attribution, Merkle evidence, and failure behavior.
 - Operations runbook: scheduled refresh, maintenance windows, offline behavior, quarantine, rollback, crash recovery, disk retention, and Windows/VPS commands.
 - MCP reference: generated updater schemas and regenerated registry totals.
@@ -489,7 +489,7 @@ The updater is shippable only when:
 - Automatic update is safely manageable on Windows and Linux without system privilege.
 - Stable and preview policy cannot be silently broadened.
 - Current/previous remain protected and cleanup cannot escape managed storage.
-- Serena 1.6.2.dev0 probes pass and unsafe direct mutation stays denied.
+- Serena 1.7.0 probes pass and unsafe direct mutation stays denied.
 - HP-MHA evidence is measured, tamper-detecting, and fail-closed.
 - HermesProof MCP controls drive and observe the full update/rollback E2E.
 - All related docs and diagrams are current, linked, generated where appropriate, and drift-tested.

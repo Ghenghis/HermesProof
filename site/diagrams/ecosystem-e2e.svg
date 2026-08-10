@@ -31,7 +31,7 @@
   <g class="box">
     <rect x="804" y="91" width="354" height="245" rx="20"/>
     <text class="label" x="981" y="125" text-anchor="middle">Completion control plane</text>
-    <text class="small" x="830" y="163">✓ Serena 1.6.2.dev0 — zero raw mutations</text>
+    <text class="small" x="830" y="163">✓ Serena 1.7.0 — zero raw mutations</text>
     <text class="small" x="830" y="195">✓ HP-MHA measured harness + holdouts</text>
     <text class="small" x="830" y="227">✓ MCP/package/automation managers</text>
     <text class="small" x="830" y="259">✓ Backend + reverse-engineering packs</text>

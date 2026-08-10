@@ -3,7 +3,7 @@
 
 HermesProof **0.9.0-rc.1** ships **121 core MCP tools** and
 **34 governed composite MCP tools**. The composite server integrates
-**Serena 1.6.2.dev0** with 52 catalogued tools,
+**Serena 1.7.0** with 52 catalogued tools,
 29 active desktop tools, 15
 lock-governed semantic/LSP tools, and **0 unrestricted mutation tools**.
 
