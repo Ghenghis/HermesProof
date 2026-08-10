@@ -15,3 +15,18 @@ test("GitLab CI cannot consume untagged shared runners and publishes Pages", asy
   assert.match(ci, /npm run test:updater/);
   assert.match(ci, /npm test/);
 });
+
+test("retained GitLab governance assets are reviewable and never auto-included", async () => {
+  const [codeowners, optionalCi, bootstrap, securityPolicy] = await Promise.all([
+    readFile(path.join(root, "CODEOWNERS"), "utf8"),
+    readFile(path.join(root, ".gitlab", "hermesproof-ultimate.yml"), "utf8"),
+    readFile(path.join(root, "docs", "gitlab", "hermesproof-ultimate-bootstrap.md"), "utf8"),
+    readFile(path.join(root, "docs", "gitlab", "security-policy-template.yml"), "utf8")
+  ]);
+  assert.match(codeowners, /^\* @Ghenghis$/m);
+  assert.match(codeowners, /^\/src\/ @Ghenghis$/m);
+  assert.match(optionalCi, /OPTIONAL TEMPLATE/);
+  assert.match(optionalCi, /Jobs\/SAST\.gitlab-ci\.yml/);
+  assert.match(bootstrap, /not included automatically/i);
+  assert.match(securityPolicy, /HermesProof block critical security findings/);
+});

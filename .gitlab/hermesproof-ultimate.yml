@@ -1,0 +1,15 @@
+# OPTIONAL TEMPLATE - NOT INCLUDED AUTOMATICALLY.
+#
+# This file is retained as a reviewed starting point for GitLab security
+# features. Include it only after assigning a compatible isolated runner and
+# confirming the project's compute budget. HermesProof's release, proof, and
+# truth gates remain authoritative in the root .gitlab-ci.yml.
+
+include:
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
+
+variables:
+  GITLAB_ADVANCED_SAST_ENABLED: "true"
+  AST_ENABLE_MR_PIPELINES: "true"
