@@ -60,6 +60,10 @@ export function releaseArtifactBasename(releaseTag, unsignedDevelopment = false)
   return "HermesProof-" + releaseTag + "-windows-x64" + suffix;
 }
 
+export function releaseSumsFilename(unsignedDevelopment = false) {
+  return unsignedDevelopment ? "SHA256SUMS-UNSIGNED-DEVELOPMENT.txt" : "SHA256SUMS.txt";
+}
+
 export async function finalizeWindowsReleaseArtifact({
   artifactFile,
   sumsFile,
@@ -188,7 +192,7 @@ export async function buildWindowsRelease({
   const zipFile = path.join(path.resolve(outputRoot), name + ".zip");
   await fs.mkdir(path.dirname(zipFile), { recursive: true });
   await compressWindowsZip({ stage, zipFile });
-  const sumsFile = path.join(path.resolve(outputRoot), "SHA256SUMS.txt");
+  const sumsFile = path.join(path.resolve(outputRoot), releaseSumsFilename(unsignedDevelopment));
   if (unsignedDevelopment) {
     const zipSha256 = await sha256File(zipFile);
     const checksumFile = zipFile + ".sha256";

@@ -9,6 +9,7 @@ import {
   finalizeWindowsReleaseArtifact,
   createReleaseManifest,
   filterReleasePaths,
+  releaseSumsFilename,
   releaseArtifactBasename,
   requireOfficialSigningKey,
   verifyReleaseManifest
@@ -73,6 +74,8 @@ test("unsigned development artifact names cannot be confused with official relea
     releaseArtifactBasename("v0.9.0-rc.1", true),
     "HermesProof-v0.9.0-rc.1-windows-x64-UNSIGNED-DEVELOPMENT"
   );
+  assert.equal(releaseSumsFilename(false), "SHA256SUMS.txt");
+  assert.equal(releaseSumsFilename(true), "SHA256SUMS-UNSIGNED-DEVELOPMENT.txt");
 });
 
 test("finalizes an official ZIP with exact sidecars and self-verification", async (t) => {
