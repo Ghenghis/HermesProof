@@ -17,6 +17,7 @@ $bundleRoot = [IO.Path]::GetFullPath($PSScriptRoot)
 $managed = [IO.Path]::GetFullPath($ManagedRoot)
 $workspaceRoot = [IO.Path]::GetFullPath($Workspace)
 $manifestFile = [IO.Path]::Combine($bundleRoot, "release-manifest.json")
+$pathHelperFile = [IO.Path]::Combine($bundleRoot, "scripts", "windows-child-path.ps1")
 $clientSnapshot = $null
 $controlBackup = $null
 $releaseDirectory = $null
@@ -77,10 +78,19 @@ function Verify-ReleaseManifest([string]$Root, $Manifest) {
 
 function Invoke-Checked([string]$Command, [string[]]$Arguments, [string]$WorkingDirectory) {
   Push-Location $WorkingDirectory
+  $previousPath = $env:Path
   try {
+    $env:Path = Get-HermesProofChildPath -PathValue $previousPath -Prepend @(
+      (Split-Path -Parent $Command),
+      [IO.Path]::Combine($env:SystemRoot, "System32"),
+      $env:SystemRoot
+    )
     & $Command @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Command exited with code $LASTEXITCODE" }
-  } finally { Pop-Location }
+  } finally {
+    $env:Path = $previousPath
+    Pop-Location
+  }
 }
 
 $managed = Assert-SafeManagedRoot $managed
@@ -88,6 +98,7 @@ if (-not (Test-Path -LiteralPath $workspaceRoot -PathType Container)) { throw "W
 if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) { throw "release-manifest.json is missing; use the GitLab release bundle" }
 $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
 Verify-ReleaseManifest $bundleRoot $manifest
+. $pathHelperFile
 if ([string]$manifest.version -ne "0.9.0-rc.1") { throw "Unexpected release version" }
 $sha = [string]$manifest.sourceSha
 if ($sha -notmatch '^[0-9a-f]{40,64}$') { throw "Invalid source SHA in release manifest" }

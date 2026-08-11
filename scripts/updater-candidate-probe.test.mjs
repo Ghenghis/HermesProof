@@ -23,6 +23,20 @@ test("candidate probe performs a real core MCP handshake and lists its registry"
   assert.equal(result.tools.includes("hermes_doctor"), true);
 });
 
+test("composite candidate probe leaves the target workspace unchanged", async (t) => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hp-composite-probe-clean-"));
+  t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }));
+  const result = await probeCandidateServer({
+    candidateRoot: repoRoot,
+    workspaceRoot,
+    server: "hp-mha-serena"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.toolCount, 34);
+  assert.deepEqual(await fs.readdir(workspaceRoot), []);
+});
+
 test("candidate probe rejects unknown server names before process launch", async () => {
   await assert.rejects(
     probeCandidateServer({ candidateRoot: repoRoot, workspaceRoot: repoRoot, server: "shell" }),

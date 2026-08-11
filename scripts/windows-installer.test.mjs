@@ -46,6 +46,48 @@ test("Windows installer and uninstaller parse and contain fail-safe controls", a
   assert.match(uninstall, /HermesProof Automatic Update/);
 });
 
+test("Windows child PATH stays below the cmd limit and preserves Node resolution", async () => {
+  const helperFile = path.join(root, "scripts", "windows-child-path.ps1");
+  const powerShell = path.join(
+    process.env.SystemRoot || "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe"
+  );
+  const currentPath = process.env.Path || process.env.PATH || "";
+  const oversizedPath = [currentPath, currentPath, currentPath].join(";");
+  assert.ok(oversizedPath.length > 8_191, "fixture must exceed the cmd.exe PATH boundary");
+  const command = [
+    ". $env:HP_PATH_HELPER",
+    "$safe = Get-HermesProofChildPath -PathValue $env:HP_OVERSIZED_PATH -Prepend @($env:HP_NODE_DIR, \"$env:SystemRoot\\System32\", \"$env:SystemRoot\")",
+    "if ($safe.Length -gt 8000) { throw \"safe PATH remained too long: $($safe.Length)\" }",
+    "$env:Path = $safe",
+    "& $env:ComSpec /d /s /c '\"node --version\"'",
+    "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+    "Write-Output \"safe-length=$($safe.Length)\""
+  ].join("; ");
+
+  const { stdout } = await execFileAsync(powerShell, [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    command
+  ], {
+    env: {
+      ...process.env,
+      HP_NODE_DIR: path.dirname(process.execPath),
+      HP_OVERSIZED_PATH: oversizedPath,
+      HP_PATH_HELPER: helperFile
+    },
+    windowsHide: true
+  });
+
+  assert.match(stdout, /v\d+\.\d+\.\d+/u);
+  assert.match(stdout, /safe-length=\d+/u);
+});
+
 test("uninstaller restores the first-install client snapshot after a repair", async (t) => {
   const uninstallerFile = path.join(root, "uninstall-hermesproof.ps1");
   const uninstaller = await fs.readFile(uninstallerFile, "utf8");

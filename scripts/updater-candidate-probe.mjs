@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +25,9 @@ export async function probeCandidateServer({
   const entry = path.join(path.resolve(candidateRoot), ...SERVER_ENTRIES[server]);
   const stat = await fs.lstat(entry);
   if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("candidate server entry is invalid");
+  const probeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-candidate-probe-"));
+  const probeWorkspace = path.join(probeRoot, "workspace");
+  await fs.mkdir(probeWorkspace);
   const client = new Client({ name: "hermesproof-updater-probe", version: "1.0.0" });
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -31,10 +35,11 @@ export async function probeCandidateServer({
     cwd: path.resolve(candidateRoot),
     env: {
       ...process.env,
-      MCP_LOCK_WORKSPACE: path.resolve(workspaceRoot),
-      HERMES_WORKSPACE_ROOT: path.resolve(workspaceRoot),
+      MCP_LOCK_WORKSPACE: probeWorkspace,
+      HERMES_WORKSPACE_ROOT: probeWorkspace,
       HERMES_STATE_DIR_NAME: ".hermesproof-updater-probe",
-      SERENA_HOME: path.join(path.resolve(workspaceRoot), ".serena-runtime")
+      HERMESPROOF_MANAGED_ROOT: path.join(probeRoot, "managed"),
+      SERENA_HOME: path.join(probeRoot, "serena")
     },
     stderr: "pipe"
   });
@@ -59,6 +64,7 @@ export async function probeCandidateServer({
   } finally {
     clearTimeout(timer);
     await client.close().catch(() => {});
+    await fs.rm(probeRoot, { recursive: true, force: true });
   }
 }
 
