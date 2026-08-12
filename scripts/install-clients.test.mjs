@@ -52,9 +52,12 @@ test("Windows-first install writes both HermesProof servers to the supported cli
   assert.deepEqual(kilo.mcp["hermes3d-locks"].command.slice(0, 1), ["node"]);
   assert.equal(kilo.mcp["hermes3d-locks"].enabled, true);
   assert.equal(kilo.mcp["hp-mha-serena"].enabled, true);
+  assert.equal(kilo.mcp["hermes3d-locks"].environment.HERMES_WORKSPACE_ROOT, undefined);
+  assert.equal(kilo.mcp["hp-mha-serena"].environment.HERMES_WORKSPACE_ROOT, workspaceRoot);
 
   const lmStudio = JSON.parse(await fs.readFile(path.join(homeDir, ".lmstudio", "mcp.json"), "utf8"));
   assert.deepEqual(Object.keys(lmStudio.mcpServers).sort(), ["hermes3d-locks", "hp-mha-serena"]);
+  assert.equal(lmStudio.mcpServers["hp-mha-serena"].env.HERMES_WORKSPACE_ROOT, workspaceRoot);
   const localModels = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".hermesproof", "local-models.json"), "utf8"));
   assert.equal(localModels.routing.preferred, "lm-studio-lm-link");
   assert.equal(localModels.routing.fallback, "ollama");
@@ -62,20 +65,26 @@ test("Windows-first install writes both HermesProof servers to the supported cli
 
   const windsurf = JSON.parse(await fs.readFile(path.join(homeDir, ".codeium", "windsurf", "mcp_config.json"), "utf8"));
   assert.deepEqual(Object.keys(windsurf.mcpServers).sort(), ["hermes3d-locks", "hp-mha-serena"]);
+  assert.equal(windsurf.mcpServers["hp-mha-serena"].env.HERMES_WORKSPACE_ROOT, workspaceRoot);
 
   const vscode = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".vscode", "mcp.json"), "utf8"));
   assert.deepEqual(Object.keys(vscode.servers).sort(), ["hermes3d-locks", "hp-mha-serena"]);
+  assert.equal(vscode.servers["hp-mha-serena"].env.HERMES_WORKSPACE_ROOT, workspaceRoot);
 
   const cursor = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".cursor", "mcp.json"), "utf8"));
   assert.deepEqual(Object.keys(cursor.mcpServers).sort(), ["hermes3d-locks", "hp-mha-serena"]);
+  assert.equal(cursor.mcpServers["hp-mha-serena"].env.HERMES_WORKSPACE_ROOT, workspaceRoot);
 
   const codex = await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8");
   assert.match(codex, /\[mcp_servers\.hermes3d-locks\]/);
   assert.match(codex, /\[mcp_servers\.hp-mha-serena\]/);
+  const codexComposite = codex.slice(codex.indexOf("[mcp_servers.hp-mha-serena]"));
+  assert.match(codexComposite, /HERMES_WORKSPACE_ROOT\s*=/);
 
   const devin = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".hermesproof", "devin", "mcp-install.json"), "utf8"));
   assert.equal(devin.schema, "hermesproof.devin-mcp-install.v1");
   assert.deepEqual(devin.servers.map((server) => server.name), ["hermes3d-locks", "hp-mha-serena"]);
+  assert.equal(devin.servers.find((server) => server.name === "hp-mha-serena").env_variables.HERMES_WORKSPACE_ROOT, workspaceRoot);
   assert.ok(devin.instructions.some((line) => line.includes("Test listing tools")));
 });
 
@@ -208,6 +217,8 @@ test("Claude Code receives both servers and LM Studio alone receives the LM Link
   assert.equal(result.results["claude-code"].ok, true);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls.map((call) => call.args[4]).sort(), ["hermes3d-locks", "hp-mha-serena"]);
+  const compositeCall = calls.find((call) => call.args[4] === "hp-mha-serena");
+  assert.ok(compositeCall.args.includes("HERMES_WORKSPACE_ROOT=" + workspaceRoot));
   assert.equal(result.snapshot.allowedFiles.includes(path.join(homeDir, ".claude.json")), true);
   assert.equal(result.snapshot.allowedFiles.includes(path.join(homeDir, ".claude", "settings.json")), false);
   const localModels = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".hermesproof", "local-models.json"), "utf8"));

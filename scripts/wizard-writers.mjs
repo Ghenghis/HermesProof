@@ -191,16 +191,20 @@ export function hermesServerSpecs({
   launcherPath,
   managedRoot
 }) {
-  const make = (name, entry) => ({
-    name,
-    entry,
-    command: "node",
-    args: launcherPath ? [launcherPath, "--server", name] : [entry],
-    env: {
-      MCP_LOCK_WORKSPACE: workspaceRoot,
-      ...(launcherPath && managedRoot ? { HERMESPROOF_MANAGED_ROOT: path.resolve(managedRoot) } : {})
-    }
-  });
+  const make = (name, entry) => {
+    const composite = name === "hp-mha-serena";
+    return {
+      name,
+      entry,
+      command: "node",
+      args: launcherPath ? [launcherPath, "--server", name] : [entry],
+      env: {
+        MCP_LOCK_WORKSPACE: workspaceRoot,
+        ...(composite ? { HERMES_WORKSPACE_ROOT: workspaceRoot } : {}),
+        ...(launcherPath && managedRoot ? { HERMESPROOF_MANAGED_ROOT: path.resolve(managedRoot) } : {})
+      }
+    };
+  };
   return [
     make(coreName, path.join(repoRoot, "src", "server.mjs")),
     make("hp-mha-serena", path.join(repoRoot, "src", "hp-mha-serena", "server.mjs"))
@@ -246,11 +250,14 @@ async function upsertCodexToml(file, { servers, dryRun }) {
   }
   let nextRaw = raw;
   for (const server of servers) {
+    const env = Object.entries(server.env)
+      .map(([key, value]) => key + " = \"" + toml(value) + "\"")
+      .join(", ");
     const block = [
       "[mcp_servers." + server.name + "]",
       "command = \"" + toml(server.command) + "\"",
       "args = [" + server.args.map((arg) => "\"" + toml(arg) + "\"").join(", ") + "]",
-      "env = { MCP_LOCK_WORKSPACE = \"" + toml(server.env.MCP_LOCK_WORKSPACE) + "\" }",
+      "env = { " + env + " }",
       "enabled = true",
       "startup_timeout_sec = 20",
       "tool_timeout_sec = 120",
@@ -368,7 +375,7 @@ async function writeClaudeCode({ workspaceRoot, servers, dryRun, commandRunner }
     command,
     args: [
       "mcp", "add", "--transport", "stdio", server.name, "--scope", "user",
-      "--env", "MCP_LOCK_WORKSPACE=" + workspaceRoot,
+      ...Object.entries(server.env).flatMap(([key, value]) => ["--env", key + "=" + value]),
       "--", server.command, ...server.args
     ]
   }));
