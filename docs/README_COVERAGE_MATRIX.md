@@ -1,6 +1,6 @@
 # README coverage matrix
 
-This matrix maps the current v0.9.0-rc.1 README claims to executable evidence. Generated numbers come from config/release-facts.json and scripts/generate-release-docs.mjs.
+This matrix maps the current v0.9.0 README claims to executable evidence. Generated numbers come from config/release-facts.json and scripts/generate-release-docs.mjs.
 
 | Current claim | Implementation | Required evidence |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ This matrix maps the current v0.9.0-rc.1 README claims to executable evidence. G
 | Only allowlisted GitLab sources and refs | git-source.mjs / path-policy.mjs | real local bare-repository integration and rejection tests |
 | Nine production update groups, no skips | release-verifier.mjs / production-gates.mjs | verifier and production gate tests |
 | Windows release ZIP, checksum, and cryptographic signature | build-windows-release.mjs / release-signing.mjs / verify-hermesproof-release.mjs | real Ed25519 key, archive/checksum/envelope/key tamper tests, standalone pre-extraction verifier, install smoke |
-| GitLab-only local-runner CI and Pages | .gitlab-ci.yml | gitlab-ci-policy.test.mjs |
+| Local release proof, audited source-of-truth lineage, dual release mirrors, and GitLab Pages | .gitlab-ci.yml; docs/CURRENT_RELEASE_STATUS.md; docs/GITLAB_RELEASE_RUNBOOK.md | gitlab-ci-policy.test.mjs; release-docs-drift.test.mjs |
 | Animated diagrams respect reduced motion | docs/diagrams and site/styles.css | release-docs-drift and site quality checks |
 
 No production-ready claim is accepted solely from documentation. The final release must include a clean-tree local suite, both live MCP probes, truth-gate evidence, Windows install/repair/rollback smoke, checksums, GitLab asset re-download verification, and a successful project-owned runner pipeline.

@@ -6,6 +6,10 @@ adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.9.0] — 2026-08-12
+
 ### Added
 - Runtime workspace switching for multi-repo use: `hermes_get_workspace` reports the active root and `hermes_set_workspace` switches to another existing absolute workspace directory, records `workspace.switch` evidence, and refuses to strand active locks unless `allowActiveLocks` is explicit.
 - Live collaboration tools: `hermes_live_status` returns the active workspace's lock/queue/event/agent snapshot, and `hermes_wait_for_events` long-polls event outbox changes for request/response-friendly realtime agent coordination.

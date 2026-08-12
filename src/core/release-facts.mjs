@@ -58,6 +58,29 @@ function exactGitLabPagesUrl(value, field) {
   return value.replace(/\/$/, "");
 }
 
+function exactGitHubUrl(value, field, expectedPath) {
+  requiredString(value, field);
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(field + " is invalid");
+  }
+  const normalizedPath = url.pathname.replace(/\/$/, "");
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "github.com" ||
+    normalizedPath !== expectedPath ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(field + " must be the credential-free HermesProof GitHub URL");
+  }
+  return value.replace(/\/$/, "");
+}
+
 function deepFreeze(value) {
   if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
@@ -95,6 +118,9 @@ export function validateReleaseFacts(input) {
   exactGitLabUrl(input.gitlab?.projectUrl, "gitlab.projectUrl");
   exactGitLabPagesUrl(input.gitlab?.pagesUrl, "gitlab.pagesUrl");
   if (input.gitlab.apiProject !== "Ghenghis%2FHermesProof") throw new Error("gitlab.apiProject is invalid");
+  exactGitHubUrl(input.github?.projectUrl, "github.projectUrl", "/Ghenghis/HermesProof");
+  exactGitHubUrl(input.github?.releasesUrl, "github.releasesUrl", "/Ghenghis/HermesProof/releases");
+  if (input.github.apiRepo !== "Ghenghis/HermesProof") throw new Error("github.apiRepo is invalid");
   requiredString(input.channels?.stable, "channels.stable", REF_RE);
   requiredString(input.channels?.preview, "channels.preview", REF_RE);
   if (input.channels.stable !== "refs/heads/main") throw new Error("channels.stable must target main");

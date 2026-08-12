@@ -1,5 +1,11 @@
 # Update troubleshooting
 
+## npm scripts exit 1 without a child-process error on Windows
+
+Run `hermes_doctor` or `node scripts/doctor.mjs`. If `windows_cmd_path_length` fails, the inherited `PATH` exceeds the 8,191-character `cmd.exe` environment limit. npm uses `cmd.exe` for lifecycle scripts on Windows; the shell can silently drop an overlong `PATH`, making `node` appear unavailable even when PowerShell can run it directly.
+
+Remove duplicate and stale entries from the Windows user/system PATH, restart the terminal and MCP clients, and rerun doctor. Do not permanently replace PATH with a minimal value because installed compilers, Git, PowerShell, and model tools may depend on it. A bounded process-local PATH is acceptable only for a controlled release/test command and must include the exact Node directory, Git, PowerShell, and Windows system directories.
+
 ## Candidate is quarantined
 
 Run:

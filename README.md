@@ -6,13 +6,15 @@
 
 **A fail-closed coordination, semantic-intelligence, harness, capability, and release control plane for coding agents.**
 
-[![Release](https://img.shields.io/badge/release-v0.9.0--rc.1-7b61ff?style=flat-square)](https://gitlab.com/Ghenghis/HermesProof/-/releases)
+[![Release](https://img.shields.io/badge/release-v0.9.0-7b61ff?style=flat-square)](https://gitlab.com/Ghenghis/HermesProof/-/releases)
 [![GitLab](https://img.shields.io/badge/source-GitLab-fc6d26?style=flat-square)](https://gitlab.com/Ghenghis/HermesProof)
+[![GitHub mirror](https://img.shields.io/badge/mirror-GitHub-181717?style=flat-square)](https://github.com/Ghenghis/HermesProof)
 [![Pages](https://img.shields.io/badge/docs-GitLab%20Pages-20d9ff?style=flat-square)](https://ghenghis.gitlab.io/HermesProof)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A520-45e1ac?style=flat-square)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-45e1ac?style=flat-square)](LICENSE)
 
 [Live release site](https://ghenghis.gitlab.io/HermesProof) ·
+[GitHub release mirror](https://github.com/Ghenghis/HermesProof/releases) ·
 [Windows install](docs/WINDOWS_INSTALL.md) ·
 [Release verification](docs/WINDOWS_INSTALL.md#verify-before-extraction) ·
 [Updater runbook](docs/UPDATER_RUNBOOK.md) ·
@@ -49,7 +51,7 @@ The release ZIP is the recommended path for another PC. It is per-user, does not
 Download the ZIP, its exact `.sha256` and `.sig` sidecars, `hermesproof-release-ed25519-public.pem`, and `verify-hermesproof-release.mjs` into one folder. Verify the download before extraction:
 
 ```powershell
-node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-rc.1-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
+node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
 ```
 
 The command must print `[PASS] HermesProof release verified`. Any checksum, filename, public-key fingerprint, envelope, or Ed25519 signature mismatch exits nonzero. From a source checkout containing exactly one official Windows ZIP in `dist`, run `npm run release:verify`. For a custom path, invoke `node scripts/verify-hermesproof-release.mjs --artifact <zip> --public-key config/hermesproof-release-ed25519-public.pem` directly so PowerShell/npm option forwarding cannot alter the arguments.
@@ -169,6 +171,7 @@ Reverse-engineering support is for software, devices, firmware, and data the ope
 
 ## Documentation
 
+- [Current release and source of truth](docs/CURRENT_RELEASE_STATUS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Windows install](docs/WINDOWS_INSTALL.md)
 - [Updater runbook](docs/UPDATER_RUNBOOK.md)

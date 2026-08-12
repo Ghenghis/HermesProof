@@ -8,10 +8,17 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
+const windowsPowerShell = path.join(
+  process.env.SystemRoot || "C:\\Windows",
+  "System32",
+  "WindowsPowerShell",
+  "v1.0",
+  "powershell.exe"
+);
 
 async function parsePowerShell(file) {
   const command = "$tokens=$null;$errors=$null;[System.Management.Automation.Language.Parser]::ParseFile($env:HP_PARSE_FILE,[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count){$errors|ForEach-Object{$_.Message};exit 1}";
-  await execFileAsync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
+  await execFileAsync(windowsPowerShell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
     env: { ...process.env, HP_PARSE_FILE: file },
     windowsHide: true
   });
@@ -48,15 +55,12 @@ test("Windows installer and uninstaller parse and contain fail-safe controls", a
 
 test("Windows child PATH stays below the cmd limit and preserves Node resolution", async () => {
   const helperFile = path.join(root, "scripts", "windows-child-path.ps1");
-  const powerShell = path.join(
-    process.env.SystemRoot || "C:\\Windows",
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe"
-  );
   const currentPath = process.env.Path || process.env.PATH || "";
-  const oversizedPath = [currentPath, currentPath, currentPath].join(";");
+  const syntheticSegments = Array.from(
+    { length: 512 },
+    (_, index) => `C:\\HermesProof\\OversizedPathFixture\\${index.toString().padStart(4, "0")}`
+  );
+  const oversizedPath = [currentPath, ...syntheticSegments].filter(Boolean).join(";");
   assert.ok(oversizedPath.length > 8_191, "fixture must exceed the cmd.exe PATH boundary");
   const command = [
     ". $env:HP_PATH_HELPER",
@@ -68,7 +72,7 @@ test("Windows child PATH stays below the cmd limit and preserves Node resolution
     "Write-Output \"safe-length=$($safe.Length)\""
   ].join("; ");
 
-  const { stdout } = await execFileAsync(powerShell, [
+  const { stdout } = await execFileAsync(windowsPowerShell, [
     "-NoLogo",
     "-NoProfile",
     "-NonInteractive",
@@ -119,7 +123,7 @@ test("uninstaller restores the first-install client snapshot after a repair", as
     clientSnapshot: { manifestFile: originalManifest, manifestSha256: "1".repeat(64) }
   }), "utf8");
 
-  await execFileAsync("powershell.exe", [
+  await execFileAsync(windowsPowerShell, [
     "-NoLogo", "-NoProfile", "-NonInteractive",
     "-File", uninstallerFile,
     "-ManagedRoot", managedRoot,
@@ -166,8 +170,8 @@ test("uninstaller restores clients once and a later purge is idempotent", async 
     "-SkipSystemChanges"
   ];
   const environment = { ...process.env, HP_UNINSTALL_RECORD: recordFile };
-  await execFileAsync("powershell.exe", common, { env: environment, windowsHide: true });
-  await execFileAsync("powershell.exe", [...common, "-PurgeManagedData"], { env: environment, windowsHide: true });
+  await execFileAsync(windowsPowerShell, common, { env: environment, windowsHide: true });
+  await execFileAsync(windowsPowerShell, [...common, "-PurgeManagedData"], { env: environment, windowsHide: true });
 
   assert.deepEqual(JSON.parse(await fs.readFile(recordFile, "utf8")), [[
     "--manifest", manifestFile, "--sha256", "3".repeat(64)
@@ -199,7 +203,7 @@ test("uninstaller preserves managed recovery data when client restoration fails"
   }), "utf8");
 
   await assert.rejects(
-    execFileAsync("powershell.exe", [
+    execFileAsync(windowsPowerShell, [
       "-NoLogo", "-NoProfile", "-NonInteractive",
       "-File", uninstallerFile,
       "-ManagedRoot", managedRoot,

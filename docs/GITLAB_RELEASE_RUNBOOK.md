@@ -1,6 +1,6 @@
-# GitLab release runbook
+# Dual-remote release runbook
 
-GitLab is the only publishing origin for this release. Shared compute minutes must not be consumed by ordinary branch pushes.
+GitLab is the authoritative OTA source and GitHub is the public mirror. Both remotes publish the same source commit, annotated tag, notes, and signed assets. GitLab shared compute minutes are not used: all release gates run locally and branch/tag pushes use the GitLab `ci.skip` push option.
 
 ## Local proof first
 
@@ -20,35 +20,35 @@ Remove-Item Env:HERMESPROOF_RELEASE_SIGNING_KEY_FILE
 
 The official build fails before staging if `HERMESPROOF_RELEASE_SIGNING_KEY_FILE` is absent. It also fails if the external private key does not match `config/hermesproof-release-ed25519-public.pem`. Review the generated checksums, Ed25519 signature, key fingerprint, manifest, SBOM, both MCP probe evidence, and Windows install smoke result. The expected current key fingerprint is `sha256:9b1fb58db81fd4dceaef5b78a4aa83db6c57d70dbabddf2b4c1b12abcf1a92da`.
 
-Create reviewed commits with the configured author email, then push with GitLab’s `ci.skip` push option until the final tagged release. Never use `build:windows-release:unsigned-development` for a tag or release asset.
+Create reviewed commits with the configured author email, then push every GitLab branch and tag with the `ci.skip` push option. Never use `build:windows-release:unsigned-development` for a tag or release asset.
 
 ## Pipeline policy
 
-All GitLab jobs use the project-owned `hermesproof-local` runner tag. No untagged shared runner job is allowed. Pages and release validation run only for the approved release branch, main, or a tag. A final pipeline is started only after the local suite passes.
+The v0.9.0 publication does not start a GitLab pipeline. If a project-owned runner is restored later, its jobs must retain the `hermesproof-local` tag and no untagged shared-runner job may be enabled. A local signed proof bundle is the release gate while the project has no usable GitLab compute allowance.
 
 ## Publish
 
-1. Push `release/hp-mha-serena-shippable` to GitLab.
-2. Update draft merge request 3.
-3. Run the final local-runner pipeline.
-4. Tag `v0.9.0-rc.1`.
-5. Upload the complete asset set:
-   - `HermesProof-v0.9.0-rc.1-windows-x64.zip`
-   - `HermesProof-v0.9.0-rc.1-windows-x64.zip.sha256`
-   - `HermesProof-v0.9.0-rc.1-windows-x64.zip.sig`
+1. Push `release/hp-mha-serena-shippable` to GitLab and GitHub without force.
+2. Update and merge GitLab merge request 3; open and merge the matching GitHub pull request without squashing either remote's history.
+3. Fetch both remotes and require both `main` branches to contain the verified stable source commit.
+4. Create one annotated `v0.9.0` tag at that verified source commit and push it to both remotes.
+5. Create matching GitLab and GitHub releases and upload the complete asset set to each:
+   - `HermesProof-v0.9.0-windows-x64.zip`
+   - `HermesProof-v0.9.0-windows-x64.zip.sha256`
+   - `HermesProof-v0.9.0-windows-x64.zip.sig`
    - `hermesproof-release-ed25519-public.pem`
    - `verify-hermesproof-release.mjs`
    - `SHA256SUMS.txt`
    - release manifest, SBOM, `PROOF/latest.json`, and `PROOF_E2E_REPORT.md`
-6. Record the archive SHA-256 and key fingerprint in the release notes.
-7. Download every asset into a new empty directory. Run:
+6. Record the source commit, archive SHA-256, and key fingerprint in both release notes.
+7. Download every asset from each provider into a separate empty directory. Run in both:
 
    ```powershell
-   node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-rc.1-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
+   node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
    ```
 
 8. Extract only after verification passes, then run the isolated two-server MCP smoke from the downloaded archive.
-9. Verify the GitLab Pages site and its reduced-motion behavior.
+9. Verify the GitLab Pages site, GitHub README, all release links, and reduced-motion behavior.
 
 ## Key handling and rotation
 

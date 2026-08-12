@@ -1,6 +1,6 @@
 # HermesProof — Security Policy
 
-> v0.9.0-rc.1 adds a fail-closed managed updater, hash-guarded client snapshots,
+> v0.9.0 adds a fail-closed managed updater, hash-guarded client snapshots,
 > signed/pinned capability-pack policy, and a second governed MCP server. See
 > [UPDATER_RUNBOOK.md](UPDATER_RUNBOOK.md) for the activation contract.
 

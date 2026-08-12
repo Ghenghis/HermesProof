@@ -11,7 +11,7 @@
   </defs>
   <rect width="1200" height="560" rx="30" fill="url(#bg)"/>
   <text class="h" x="600" y="48" text-anchor="middle">Source to signed ZIP to verified install</text>
-  <text class="s" x="600" y="73" text-anchor="middle">Offline, fail-closed, GitLab-only, independently verifiable before extraction</text>
+  <text class="s" x="600" y="73" text-anchor="middle">Offline, fail-closed, mirrored on GitLab + GitHub, independently verifiable before extraction</text>
   <g text-anchor="middle">
     <rect class="box" x="28" y="120" width="170" height="104" rx="16"/><text class="n" x="113" y="153">Tracked source</text><text class="s" x="113" y="179">clean HEAD</text><text class="s" x="113" y="199">121 + 34 tools</text>
     <rect class="box" x="230" y="120" width="178" height="104" rx="16"/><text class="n" x="319" y="153">Build manifest</text><text class="s" x="319" y="179">file SHA-256</text><text class="s" x="319" y="199">source commit</text>

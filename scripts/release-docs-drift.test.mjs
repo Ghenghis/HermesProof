@@ -19,23 +19,31 @@ test("generated release documentation matches the canonical facts", async () => 
   assert.deepEqual(result, { ok: true, drift: [] });
 });
 
-test("README and Pages site are GitLab-first and link the current diagrams", async () => {
-  const [readme, page, styles] = await Promise.all([
+test("README and Pages site publish the stable dual-remote release and current diagrams", async () => {
+  const [readme, page, styles, currentStatus] = await Promise.all([
     readFile(path.join(root, "README.md"), "utf8"),
     readFile(path.join(root, "site", "index.html"), "utf8"),
     readFile(path.join(root, "site", "styles.css"), "utf8"),
+    readFile(path.join(root, "docs", "CURRENT_RELEASE_STATUS.md"), "utf8"),
   ]);
 
   for (const content of [readme, page]) {
     assert.match(content, /gitlab\.com\/Ghenghis\/HermesProof/i);
+    assert.match(content, /github\.com\/Ghenghis\/HermesProof/i);
     assert.match(content, /ecosystem-e2e\.svg/);
     assert.match(content, /updater-lifecycle-animated\.svg/);
   }
-  assert.doesNotMatch(readme, /github\.com\/Ghenghis\/HermesProof/i);
-  assert.match(page, /0\.9\.0-rc\.1/);
+  assert.match(page, /v0\.9\.0/);
+  assert.doesNotMatch(page, /0\.9\.0-rc\.1/);
   assert.match(page, /121/);
   assert.match(page, /34/);
   assert.match(styles, /prefers-reduced-motion/);
+  assert.match(readme, /CURRENT_RELEASE_STATUS\.md/);
+  assert.match(currentStatus, /release\/hp-mha-serena-shippable/);
+  assert.match(currentStatus, /GitLab and GitHub must contain the same verified source commit/i);
+  assert.match(currentStatus, /GitLab shared-runner minutes/i);
+  assert.match(currentStatus, /measured, fail-closed HP-MHA/i);
+  assert.match(currentStatus, /No audited repository contains a later August 11 harness commit/i);
 });
 
 test("operations docs match the shipped Serena, scheduler, backup, and Claude Code contracts", async () => {

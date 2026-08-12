@@ -48,7 +48,7 @@ test("manifest hashes every payload file and detects tampering", async (t) => {
   const manifest = await createReleaseManifest({
     root,
     files: ["package.json", "src/server.mjs"],
-    version: "0.9.0-rc.1",
+    version: "0.9.0",
     sourceSha: "a".repeat(40)
   });
   assert.equal(manifest.files.length, 2);
@@ -69,10 +69,10 @@ test("official release configuration fails before build work when signing key is
 });
 
 test("unsigned development artifact names cannot be confused with official releases", () => {
-  assert.equal(releaseArtifactBasename("v0.9.0-rc.1", false), "HermesProof-v0.9.0-rc.1-windows-x64");
+  assert.equal(releaseArtifactBasename("v0.9.0", false), "HermesProof-v0.9.0-windows-x64");
   assert.equal(
-    releaseArtifactBasename("v0.9.0-rc.1", true),
-    "HermesProof-v0.9.0-rc.1-windows-x64-UNSIGNED-DEVELOPMENT"
+    releaseArtifactBasename("v0.9.0", true),
+    "HermesProof-v0.9.0-windows-x64-UNSIGNED-DEVELOPMENT"
   );
   assert.equal(releaseSumsFilename(false), "SHA256SUMS.txt");
   assert.equal(releaseSumsFilename(true), "SHA256SUMS-UNSIGNED-DEVELOPMENT.txt");

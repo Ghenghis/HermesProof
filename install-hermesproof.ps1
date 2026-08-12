@@ -99,7 +99,7 @@ if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) { throw "release
 $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
 Verify-ReleaseManifest $bundleRoot $manifest
 . $pathHelperFile
-if ([string]$manifest.version -ne "0.9.0-rc.1") { throw "Unexpected release version" }
+if ([string]$manifest.version -ne "0.9.0") { throw "Unexpected release version" }
 $sha = [string]$manifest.sourceSha
 if ($sha -notmatch '^[0-9a-f]{40,64}$') { throw "Invalid source SHA in release manifest" }
 $nodeCommand = (Get-Command node.exe -ErrorAction Stop).Source

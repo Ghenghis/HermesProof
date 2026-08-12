@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { HermesLockManager } from "./lock-manager.mjs";
+import { assessWindowsCommandPath, HermesLockManager } from "./lock-manager.mjs";
 
 async function withManager(fn) {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hp-lock-manager-"));
@@ -15,6 +15,24 @@ async function withManager(fn) {
     await fs.rm(workspaceRoot, { recursive: true, force: true });
   }
 }
+
+test("Windows doctor rejects a PATH that cmd.exe will silently drop", () => {
+  assert.deepEqual(assessWindowsCommandPath({ platform: "win32", pathValue: "x".repeat(8191) }), {
+    ok: true,
+    length: 8191,
+    limit: 8191
+  });
+  assert.deepEqual(assessWindowsCommandPath({ platform: "win32", pathValue: "x".repeat(8192) }), {
+    ok: false,
+    length: 8192,
+    limit: 8191
+  });
+  assert.deepEqual(assessWindowsCommandPath({ platform: "linux", pathValue: "x".repeat(9000) }), {
+    ok: true,
+    length: 9000,
+    limit: null
+  });
+});
 
 test("legacy task and handoff path component IDs reject traversal characters", async () => {
   const invalidIds = ["/etc/passwd", "../escape", "id\0null", "id with space"];
