@@ -1,0 +1,21 @@
+---
+description: HermesProof coordination protocol. Apply when editing files in a workspace governed by the hermes3d-locks MCP server.
+globs:
+  - "**/*"
+alwaysApply: false
+---
+
+# HermesProof rules
+
+Before editing any file you do not currently hold a HermesProof lock on:
+
+1. Call `hermes_get_state` to see who owns what.
+2. Call `hermes_claim_task` and `hermes_lock_files` for your file set.
+3. If the file is locked by another agent, call `hermes_request_handoff` and wait.
+4. Edit only the locked files.
+5. After committing, call `hermes_append_evidence` with kind `edit` and a summary.
+6. Call `hermes_release_files` when done.
+
+Owner string format: `^[a-z][a-z0-9-]{1,63}$`. Use `cursor-<your-handle>`.
+
+Allowlisted gates: see `hermes_list_gates`. Never bypass via shell.

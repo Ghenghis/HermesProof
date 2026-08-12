@@ -1,0 +1,13 @@
+---
+description: HermesProof STREAM coordination protocol
+globs: handoffs/STREAM/**, .hermes3d_orchestrator/**
+alwaysApply: true
+---
+
+Before code changes, read `handoffs/STREAM/STATE.md` and the active inbox.
+Post `TASK_CLAIMED` before starting work, acquire HermesProof locks for every
+file you will edit, and append evidence when the change is verified.
+
+If another owner holds a lock, request handoff instead of editing. Never read
+secret files, never force-push, never use `--no-verify`, and never push
+directly to protected branches.

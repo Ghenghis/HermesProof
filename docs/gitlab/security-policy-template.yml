@@ -1,0 +1,34 @@
+# Optional GitLab security-policy project template. Do not link this file as a
+# policy configuration until it has been reviewed for the current GitLab tier.
+scan_execution_policy:
+  - name: HermesProof scheduled security scans
+    description: Run reviewed security scans from an isolated compatible runner.
+    enabled: false
+    rules:
+      - type: schedule
+        cadence: "0 3 * * 1"
+    actions:
+      - scan: sast
+      - scan: secret_detection
+
+approval_policy:
+  - name: HermesProof block critical security findings
+    description: Require owner review when a protected branch adds a critical finding.
+    enabled: false
+    rules:
+      - type: scan_finding
+        branches: []
+        scanners:
+          - sast
+          - secret_detection
+          - dependency_scanning
+        vulnerabilities_allowed: 0
+        severity_levels:
+          - critical
+        vulnerability_states:
+          - newly_detected
+    actions:
+      - type: require_approval
+        approvals_required: 1
+        user_approvers:
+          - Ghenghis

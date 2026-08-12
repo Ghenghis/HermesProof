@@ -1,0 +1,113 @@
+{
+  "$schema": "hermesproof.hp_mha.harness_card.v1",
+  "schema_version": 1,
+  "card_id": "hermesproof_v0.7.0_hp_mha_real",
+  "description": "Real harness card for the HermesProof v0.7.0 build at commit fae63a4 on branch codex/hermesproof-workspace-realtime-unlocks. Recorded under examples/hp-mha/harness-cards/ and consumed by the HP-HARNESS-ATTRIBUTION release sub-gate in scripts/truth-gates.mjs. Re-hash package.json + package-lock.json + the runner commit whenever any change ships; a stale hash causes evaluateHpMhaSubGate to FAIL on HP-MHA-001.",
+  "layers": {
+    "execution": {
+      "installed_commit": "fae63a403501727aa1484a681a00d070fd9117d5",
+      "package_sha256": "e47dd4b1a41eb9eb2fbefd7dcc325c325da960fa42470e56cb94d17e32acb328",
+      "dependency_lock_sha256": "22d5c7c543c34c769b6048bb226ec9ce825ae8e56333ef56293d913dd7952f26",
+      "container_digest": null,
+      "runner_identity": "local-node-stdio",
+      "os_arch": "win32-x64",
+      "repo_commit": "fae63a403501727aa1484a681a00d070fd9117d5",
+      "repo_dirty": true,
+      "per_step_timeout_s": 30,
+      "task_timeout_s": 1800,
+      "max_steps": 4096,
+      "token_budget": 2000000,
+      "cost_budget_usd": 5,
+      "wall_clock_budget_s": 7200,
+      "network_policy": "denylist_only",
+      "sandbox_policy": "workspace-only"
+    },
+    "model": {
+      "provider": "hermes-agent-bridge",
+      "model_id": "minimax-m3"
+    },
+    "tools": {
+      "tool_inventory": [
+        "hermes_claim_task",
+        "hermes_release_task",
+        "hermes_lock_files",
+        "hermes_release_files",
+        "hermes_request_handoff",
+        "hermes_approve_handoff",
+        "hermes_run_gate",
+        "hermes_append_evidence",
+        "hermes_verify_evidence",
+        "hermes_hp_mha_harness_card_record",
+        "hermes_hp_mha_experiment_plan_lock",
+        "hermes_hp_mha_benchmark_run_attest",
+        "hermes_hp_mha_trace_bundle_verify",
+        "hermes_hp_mha_trace_metrics",
+        "hermes_hp_mha_trace_prune",
+        "hermes_hp_mha_model_harness_attribution",
+        "hermes_hp_mha_promotion_evaluate",
+        "hermes_hp_mha_sub_gate"
+      ],
+      "tool_schema_hashes": [],
+      "mcp_servers": ["hermes3d-locks"],
+      "allowlist_sha256": null,
+      "denylist_sha256": null,
+      "tool_descriptions_sha256": null,
+      "tool_result_format": "json",
+      "error_response_contract": "code+message+data",
+      "shell_restrictions": "allowlisted-gates-only",
+      "write_boundaries": "workspace-root",
+      "destructive_op_policy": "approval-required"
+    },
+    "context": {
+      "system_prompt_sha256": null,
+      "project_contract_sha256": null,
+      "context_construction_rules": "explicit-pass",
+      "file_discovery": "indexed-on-demand",
+      "retrieval_policy": "by-path-or-id",
+      "summarization_policy": "none",
+      "persistent_memory_policy": "ledger-only",
+      "max_retained_history": 200,
+      "constraint_reminder_behavior": "every-step",
+      "failed_outputs_visible": true,
+      "test_output_injection": "raw"
+    },
+    "scheduling": {
+      "controller": "loop",
+      "planning_stage": false,
+      "retry_count": 2,
+      "backoff": "exponential",
+      "escalation_rules": "human-after-3",
+      "subagent_delegation": true,
+      "model_selection_policy": "single-with-failover",
+      "stop_conditions": ["task_done", "budget_exceeded", "approval_required"],
+      "checkpoint_rollback": false,
+      "doom_loop_threshold": 5,
+      "per_file_edit_limit": 3,
+      "pre_completion_checklist": true
+    },
+    "observability": {
+      "tool_call_sequence_capture": true,
+      "test_command_outcomes_capture": true,
+      "failed_validation_capture": true,
+      "patch_hashes": true,
+      "changed_file_inventory": true,
+      "timeout_cancellation_capture": true,
+      "verification_commands_capture": true,
+      "final_contract_check": true,
+      "rerere_check": false,
+      "trace_completeness_check": true,
+      "missing_event_count": 0
+    },
+    "governance": {
+      "workspace_scope": "single-workspace",
+      "side_effect_boundaries": "no-network-write",
+      "secret_access_policy": "deny",
+      "human_approval_points": ["destructive", "external_publish"],
+      "destructive_action_policy": "deny",
+      "redaction_policy": "redact-tokens",
+      "secret_values_returned": false,
+      "denied_action_attempts": [],
+      "candidate_agent_proof_only": true
+    }
+  }
+}

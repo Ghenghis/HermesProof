@@ -1,0 +1,1927 @@
+#!/usr/bin/env node
+/**
+ * Truth-gate harness — single-command attestation runner.
+ *
+ * Runs every safety- and functionality-relevant check, captures structured
+ * evidence, and writes:
+ *   - PROOF/latest.json         (machine-readable)
+ *   - PROOF_E2E_REPORT.md       (human-readable summary at repo root)
+ *
+ * Exits non-zero if any required gate fails.
+ *
+ * Each gate writes a record:
+ *   { id, level: "required" | "warn", ok: true|false, duration_ms, evidence, details? }
+ *
+ * Usage:
+ *   node scripts/truth-gates.mjs [--workspace G:\\Github\\Hermes3D]
+ *
+ * Env:
+ *   TRUTH_GATE_HERMES3D_WORKSPACE   (override --workspace)
+ */
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import url from "node:url";
+import crypto from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
+import { config as loadDotenv } from "dotenv";
+import { HermesLockManager } from "../src/core/lock-manager.mjs";
+import { statePaths } from "../src/core/fs-utils.mjs";
+import { resolveEnvFileCandidate } from "../src/core/env-file.mjs";
+import { createGitLabClient } from "../src/core/gitlab-client.mjs";
+import { ensureEventDirs } from "./generate-review-packet.mjs";
+import { checkSecretRotationEvidence } from "./secret-rotation-evidence.mjs";
+import { runMcpScanStaticGate } from "./mcp-scan-static-gate.mjs";
+import { writeSbomToProof } from "./sbom-generator.mjs";
+import {
+  runProviderRegistryValidate,
+  runLocalModelsCatalogValidate,
+  runContinueLlmClassesValidate,
+  runKilocodeProviderMappingValidate
+} from "./provider-registry-validate.mjs";
+import {
+  runLmstudioHealth,
+  runOllamaHealth,
+  LMSTUDIO_DEFAULT,
+  OLLAMA_DEFAULT
+} from "./local-providers-health.mjs";
+import {
+  runLicensesScanGate,
+  runDependencyFreshGate,
+  collectInstalledLicensesViaCheck,
+  fetchLatestFromNpm,
+  readPackageJson
+} from "./license-and-deps-gates.mjs";
+import { runWorkflowPinningGate } from "./workflow-pinning-gate.mjs";
+import { runAccessibilityWcagAaGate } from "./accessibility-wcag-gate.mjs";
+import { loadOrRunPerfReport } from "./perf-budget.mjs";
+import { runDocsChangesReflectedGate } from "./docs-changes-reflected.mjs";
+import { runReleaseChecksumGate } from "./release-checksum.mjs";
+import { runCoderabbitReviewGate, parseRemoteUrl } from "./coderabbit-review.mjs";
+import { evaluateWorkspaceHygiene } from "../src/core/workspace-hygiene.mjs";
+import { evaluateRequiredMcpConnections } from "../src/core/mcp-client-health.mjs";
+import { HP_HARNESS_ATTRIBUTION_GATE, evaluateHpMhaSubGate, evaluateHarnessCardFromManifest, assertLockFilesRespectHoldoutIsolation, writeTraceIndex, readTraceIndex, searchTraceIndex } from "../src/core/hp-mha.mjs";
+
+const here = path.dirname(url.fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "..");
+const envFileCandidate = resolveEnvFileCandidate({
+  cwd: repoRoot,
+  onMissing() {}
+});
+const loadedEnvFileInfo = envFileCandidate
+  ? (() => {
+      const loaded = loadDotenv({ path: envFileCandidate.path });
+      return {
+        loaded: !loaded.error,
+        source: envFileCandidate.source,
+        status: loaded.error ? "load_failed" : "loaded"
+      };
+    })()
+  : { loaded: false, source: null, status: "not_loaded" };
+
+function parseArgs(argv) {
+  const out = { skip: new Set() };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--workspace" || a === "-w") out.workspace = argv[++i];
+    else if (a === "--skip") {
+      const list = (argv[++i] || "").split(",").map((s) => s.trim()).filter(Boolean);
+      for (const s of list) out.skip.add(s);
+    } else if (a === "--ci") out.ci = true;
+    else if (a === "--help" || a === "-h") out.help = true;
+  }
+  return out;
+}
+const args = parseArgs(process.argv.slice(2));
+if (args.help) {
+  console.log(`Usage: node scripts/truth-gates.mjs [options]
+
+Options:
+  --workspace <path>   Hermes3D-style workspace to validate (default: G:\\Github\\Hermes3D
+                       on Windows, or current dir).
+  --skip <ids>         Comma-separated gate ids to skip (recorded as "skipped" in proof).
+  --ci                 Skip local-machine gates (clients.config_presence,
+                       clients.claude_code_live, doctor.hermes3d, workspace.integrity).
+                       Equivalent to:
+                         --skip clients.config_presence,clients.claude_code_live,
+                                doctor.hermes3d,workspace.integrity
+  --help               Show this help.
+
+Outputs:
+  PROOF/latest.json        machine-readable evidence
+  PROOF_E2E_REPORT.md      human-readable summary at repo root
+
+Exit code 0 = all required (non-skipped) gates pass, non-zero otherwise.`);
+  process.exit(0);
+}
+if (args.ci) {
+  for (const g of [
+    "clients.config_presence",
+    "clients.claude_code_live",
+    "doctor.hermes3d",
+    "workspace.integrity"
+  ]) {
+    args.skip.add(g);
+  }
+}
+const skip = args.skip;
+const isWindows = process.platform === "win32";
+const defaultWorkspace = isWindows ? "G:\\Github\\Hermes3D" : process.cwd();
+const hermes3dWorkspace = path.resolve(
+  args.workspace || process.env.TRUTH_GATE_HERMES3D_WORKSPACE || defaultWorkspace
+);
+
+const runStart = Date.now();
+const runIso = new Date().toISOString();
+const runId = `truth_${runIso.replace(/[:.]/g, "-")}`;
+const gates = [];
+
+function record(id, level, ok, evidence = {}, details = "", durationMs = 0) {
+  gates.push({ id, level, ok, duration_ms: durationMs, evidence, details });
+  const tag = level === "skipped" ? "SKIP" : ok ? "PASS" : level === "required" ? "FAIL" : "WARN";
+  console.log(`[${tag}] ${id}${details ? `  -- ${details}` : ""}`);
+}
+
+function shouldSkip(id) {
+  if (skip.has(id)) {
+    record(id, "skipped", true, { reason: "explicitly skipped via --skip or --ci" }, "skipped");
+    return true;
+  }
+  return false;
+}
+
+function commandExists(name) {
+  const cmd = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(cmd, [name], { encoding: "utf8", shell: false });
+  return result.status === 0;
+}
+
+function presentEnvNames(names) {
+  return names.filter((name) => Boolean(process.env[name]));
+}
+
+async function timed(fn) {
+  const t = Date.now();
+  try {
+    const result = await fn();
+    return { result, durationMs: Date.now() - t };
+  } catch (err) {
+    return { error: err, durationMs: Date.now() - t };
+  }
+}
+
+async function sha256(file) {
+  const buf = await fs.readFile(file);
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
+async function fileExists(file) {
+  try {
+    await fs.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function listFiles(dir) {
+  const out = [];
+  async function walk(d) {
+    let entries;
+    try { entries = await fs.readdir(d, { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+        await walk(full);
+      } else if (e.isFile()) {
+        out.push(full);
+      }
+    }
+  }
+  await walk(dir);
+  return out.sort();
+}
+
+// ----------------------------------------------------------------------------
+// Gate 1: source integrity manifest
+// ----------------------------------------------------------------------------
+if (!shouldSkip("source.integrity_manifest")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const dirs = ["src", "scripts"];
+    const files = [];
+    for (const d of dirs) {
+      const list = await listFiles(path.join(repoRoot, d));
+      for (const f of list) files.push(f);
+    }
+    const manifest = {};
+    for (const f of files) {
+      const rel = path.relative(repoRoot, f).replace(/\\/g, "/");
+      manifest[rel] = await sha256(f);
+    }
+    return { manifest, count: files.length };
+  });
+  if (error) {
+    record("source.integrity_manifest", "required", false, {}, error.message, durationMs);
+  } else {
+    record("source.integrity_manifest", "required", true, {
+      file_count: result.count,
+      manifest_sha256: crypto
+        .createHash("sha256")
+        .update(JSON.stringify(result.manifest))
+        .digest("hex")
+    }, `${result.count} files hashed`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 2: dependency parity (declared vs installed vs lockfile)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("deps.parity")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const pkg = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8"));
+    const declared = { ...pkg.dependencies };
+    const installed = {};
+    for (const dep of Object.keys(declared)) {
+      const ppath = path.join(repoRoot, "node_modules", ...dep.split("/"), "package.json");
+      try {
+        const pp = JSON.parse(await fs.readFile(ppath, "utf8"));
+        installed[dep] = pp.version;
+      } catch {
+        installed[dep] = null;
+      }
+    }
+    const missing = Object.entries(installed).filter(([, v]) => !v);
+    return { declared, installed, missing };
+  });
+  if (error) {
+    record("deps.parity", "required", false, {}, error.message, durationMs);
+  } else if (result.missing.length) {
+    record("deps.parity", "required", false, result, `missing: ${result.missing.map((m) => m[0]).join(", ")}`, durationMs);
+  } else {
+    record("deps.parity", "required", true, result, `all ${Object.keys(result.declared).length} deps installed`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 3: full unit suite via direct `node --test` subprocess.
+// We avoid `npm test` here because npm's pipe routing under some shells eats
+// the reporter output; calling node directly gives stable, parseable text.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("tests.unit")) {
+  // Audit P1-9 fix (2026-05-03): previously the unit gate's spawnSync arg
+  // list was a hardcoded subset of test files (5 of 12 at audit time, 6
+  // of ~20 today), so the truth-gate harness could pass even when the
+  // package-level `npm test` manifest had files the gate ignored.
+  // Now we parse `package.json`'s `scripts.test` at gate time and run
+  // exactly the files `npm test` runs — single source of truth, no drift.
+  //
+  // Earlier Codex audit fix (PR #32, 2026-05-03): the registry smoke test
+  // was shipped but never wired into the unit gate. That fix is preserved
+  // by deriving the list from package.json (which includes it).
+  const pkgJson = await readPackageJson(repoRoot);
+  const testScript = pkgJson?.scripts?.test || "";
+  // Expect `node --test <file1> <file2> ...`; extract every .mjs/.js arg.
+  const testFiles = testScript
+    .split(/\s+/)
+    .filter((tok) => tok.endsWith(".mjs") || tok.endsWith(".js"));
+  const { result, durationMs } = await timed(async () => {
+    if (testFiles.length === 0) {
+      return { status: 1, stdout: "", stderr: "tests.unit: package.json scripts.test contained no test files" };
+    }
+    return new Promise((resolve) => {
+      const r = spawnSync(
+        process.platform === "win32" ? "node.exe" : "node",
+        ["--test", ...testFiles],
+        { cwd: repoRoot, encoding: "utf8", shell: false }
+      );
+      resolve({ status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" });
+    });
+  });
+  const combined = result.stdout + result.stderr;
+  const passMatch = combined.match(/pass\s+(\d+)/i);
+  const failMatch = combined.match(/fail\s+(\d+)/i);
+  const passCount = passMatch ? Number(passMatch[1]) : 0;
+  const failCount = failMatch ? Number(failMatch[1]) : -1;
+  const ok = result.status === 0 && passCount > 0 && failCount === 0;
+  record("tests.unit", "required", ok, {
+    exit_code: result.status,
+    pass_count: passCount,
+    fail_count: failCount,
+    stdout_tail: result.stdout.slice(-2000),
+    stderr_tail: result.stderr.slice(-500)
+  }, `pass=${passCount}, fail=${failCount}, exit=${result.status}`, durationMs);
+}
+
+const expectedTools = [
+  "hermes_a2a_create_task",
+  "hermes_a2a_get_task",
+  "hermes_a2a_list_tasks",
+  "hermes_a2a_update_task",
+  "hermes_ack_message",
+  "hermes_agent_health",
+  "hermes_helper_runtime_evaluate",
+  "hermes_helper_runtime_evaluate_consensus",
+  "hermes_hp_mha_benchmark_run_attest",
+  "hermes_hp_mha_experiment_plan_lock",
+  "hermes_hp_mha_experiment_report",
+  "hermes_hp_mha_harness_card_record",
+  "hermes_hp_mha_model_harness_attribution",
+  "hermes_hp_mha_promotion_evaluate",
+  "hermes_hp_mha_sub_gate",
+  "hermes_hp_mha_trace_bundle_verify",
+  "hermes_hp_mha_trace_index_record",
+  "hermes_hp_mha_trace_metrics",
+  "hermes_hp_mha_trace_prune",
+  "hermes_hp_mha_trace_search",
+  "hermes_staleness_evaluate",
+  "hermes_storage_census",
+  "hermes_archive_plan",
+  "hermes_agent_watchdog",
+  "hermes_agentic_tick",
+  "hermes_agent_request_user_session",
+  "hermes_agent_resolve_blocked",
+  "hermes_agent_revoke_session",
+  "hermes_anonymous_claim",
+  "hermes_anonymous_release",
+  "hermes_anonymous_state",
+  "hermes_anti_slop_review",
+  "hermes_append_evidence",
+  "hermes_approve_handoff",
+  "hermes_audit_claims",
+  "hermes_backend_status",
+  "hermes_claim_task",
+  "hermes_create_blocked_handoff",
+  "hermes_decompose_claims",
+  "hermes_dispatch_recommend",
+  "hermes_doctor",
+  "hermes_enqueue_task",
+  "hermes_emit_event",
+  "hermes_complete_work",
+  "hermes_connect_project",
+  "hermes_find_agents",
+  "hermes_gitlab_create_merge_request",
+  "hermes_gitlab_bootstrap_ultimate",
+  "hermes_gitlab_ensure_project",
+  "hermes_gitlab_list_merge_requests",
+  "hermes_gitlab_status",
+  "hermes_gitlab_ultimate_status",
+  "hermes_get_agent_profile",
+  "hermes_get_inbox",
+  "hermes_get_state",
+  "hermes_get_test_mode",
+  "hermes_get_workspace",
+  "hermes_workspace_hygiene",
+  "hermes_heartbeat",
+  "hermes_join_project",
+  "hermes_kilocode_checkpoint_progress",
+  "hermes_kilocode_evaluate_agent_bus_event",
+  "hermes_kilocode_evaluate_installed_vsix_release_proof",
+  "hermes_kilocode_evaluate_roadmap_completion_proof",
+  "hermes_kilocode_evaluate_infrastructure_proof",
+  "hermes_kilocode_policy_check",
+  "hermes_kilocode_record_agent_bus_event",
+  "hermes_kilocode_record_delegation",
+  "hermes_kilocode_record_infrastructure_proof",
+  "hermes_kilocode_set_guardrails",
+  "hermes_kilocode_status",
+  "hermes_list_agents",
+  "hermes_list_events",
+  "hermes_list_agent_profiles",
+  "hermes_list_bug_tickets",
+  "hermes_list_claim_audits",
+  "hermes_list_contract_reviews",
+  "hermes_list_gates",
+  "hermes_list_locks",
+  "hermes_list_pending_tasks",
+  "hermes_list_presence",
+  "hermes_list_project_contracts",
+  "hermes_live_status",
+  "hermes_lock_files",
+  "hermes_mark_event_handled",
+  "hermes_pick_task",
+  "hermes_provider_rank",
+  "hermes_provider_record_outcome",
+  "hermes_provider_stats",
+  "hermes_read_policy",
+  "hermes_read_project_contract",
+  "hermes_record_outcome",
+  "hermes_record_task",
+  "hermes_recover_stale_locks",
+  "hermes_recover_stale_tasks",
+  "hermes_release_files",
+  "hermes_release_task",
+  "hermes_request_assistance",
+  "hermes_request_handoff",
+  "hermes_request_unlock",
+  "hermes_register_agent_profile",
+  "hermes_report_bug",
+  "hermes_run_gate",
+  "hermes_set_test_mode",
+  "hermes_set_workspace",
+  "hermes_send_message",
+  "hermes_submit_bug_fix",
+  "hermes_update_agent_capabilities",
+  "hermes_update_bug_ticket",
+  "hermes_update_presence",
+  "hermes_upsert_project_contract",
+  "hermes_user_check_authorization",
+  "hermes_user_grant_session",
+  "hermes_user_revoke_session",
+  "hermes_wait_for_assistance",
+  "hermes_wait_for_events",
+  "hermes_wait_for_inbox",
+  "hermes_wait_for_unlock",
+  "hermes_verify_evidence",
+  "hermes_winmerge_compare",
+  "hermes_winmerge_status"
+];
+
+// ----------------------------------------------------------------------------
+// Gate 4: stdio MCP handshake — initialize + tools/list shows expected tools
+// ----------------------------------------------------------------------------
+if (!shouldSkip("server.stdio_handshake")) {
+  const { result, error, durationMs } = await timed(() => stdioHandshake({}));
+  if (error) {
+    record("server.stdio_handshake", "required", false, {}, error.message, durationMs);
+  } else {
+    const got = result.tools.sort();
+    const missing = expectedTools.filter((t) => !got.includes(t));
+    const unexpected = got.filter((t) => !expectedTools.includes(t));
+    const ok = missing.length === 0 && unexpected.length === 0 && got.length === expectedTools.length;
+    record("server.stdio_handshake", "required", ok, {
+      protocol_version: result.protocolVersion,
+      server_name: result.serverInfo?.name,
+      server_version: result.serverInfo?.version,
+      tool_count: got.length,
+      expected_tool_count: expectedTools.length,
+      tools: got,
+      missing,
+      unexpected
+    }, ok ? `${got.length} tools` : `missing: ${missing.join(",") || "(none)"}; unexpected: ${unexpected.join(",") || "(none)"}`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 5: doctor against Hermes3D workspace (read-only, non-destructive)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("doctor.hermes3d")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const m = new HermesLockManager({ workspaceRoot: hermes3dWorkspace });
+    return await m.doctor();
+  });
+  if (error) {
+    record("doctor.hermes3d", "required", false, {}, error.message, durationMs);
+  } else {
+    const errs = result.findings.filter((f) => f.level === "error");
+    record("doctor.hermes3d", "required", errs.length === 0, result,
+      `ok=${result.ok}, ${result.findings.length} finding(s)`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 6: durable event directories are present after initialization
+// ----------------------------------------------------------------------------
+if (!shouldSkip("events.directory_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-events-dir-"));
+    try {
+      const m = new HermesLockManager({ workspaceRoot: sb });
+      await m.init();
+      const paths = await ensureEventDirs(sb);
+      const checks = {};
+      for (const [id, dir] of Object.entries({
+        outbox: paths.outboxDir,
+        handled: paths.handledDir,
+        failed: paths.failedDir
+      })) {
+        checks[id] = (await fs.stat(dir)).isDirectory();
+      }
+      return { sandbox: sb, checks };
+    } finally {
+      await fs.rm(sb, { recursive: true, force: true });
+    }
+  });
+  if (error) {
+    record("events.directory_present", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = Object.values(result.checks).every(Boolean);
+    record("events.directory_present", "required", ok, result,
+      ok ? "outbox/handled/failed present" : "one or more event dirs missing", durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 7: trigger doctor end-to-end sandbox probe
+// ----------------------------------------------------------------------------
+if (!shouldSkip("tasks.directory_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-tasks-dir-"));
+    try {
+      const m = new HermesLockManager({ workspaceRoot: sb });
+      await m.init();
+      const paths = statePaths(sb);
+      const checks = {};
+      for (const [id, dir] of Object.entries({
+        pending: paths.tasksPendingDir,
+        claimed: paths.tasksClaimedDir,
+        blocked: paths.tasksBlockedDir,
+        done: paths.tasksDoneDir
+      })) {
+        checks[id] = (await fs.stat(dir)).isDirectory();
+      }
+      return { sandbox: sb, checks };
+    } finally {
+      await fs.rm(sb, { recursive: true, force: true });
+    }
+  });
+  if (error) {
+    record("tasks.directory_present", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = Object.values(result.checks).every(Boolean);
+    record("tasks.directory_present", "required", ok, result,
+      ok ? "pending/claimed/blocked/done present" : "one or more task dirs missing", durationMs);
+  }
+}
+
+if (!shouldSkip("trigger.doctor_passes")) {
+  const { result, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-trigger-doctor-"));
+    const r = spawnSync(
+      process.platform === "win32" ? "node.exe" : "node",
+      [path.join(repoRoot, "scripts", "trigger-doctor.mjs"), "--workspace", sb],
+      { cwd: repoRoot, encoding: "utf8", shell: false }
+    );
+    let parsed = null;
+    try { parsed = JSON.parse(r.stdout || "{}"); } catch {}
+    await fs.rm(sb, { recursive: true, force: true });
+    return { exit_code: r.status, stdout: r.stdout, stderr: r.stderr, parsed };
+  });
+  const ok = result.exit_code === 0 && result.parsed?.ok === true && result.parsed?.trigger_doctor_schema_version === 1;
+  record("trigger.doctor_passes", "required", ok, {
+    exit_code: result.exit_code,
+    parsed: result.parsed,
+    stderr_tail: (result.stderr || "").slice(-500)
+  }, ok ? "trigger doctor ok" : `exit=${result.exit_code}`, durationMs);
+}
+
+if (!shouldSkip("queue.doctor_passes")) {
+  const { result, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-queue-doctor-"));
+    const r = spawnSync(
+      process.platform === "win32" ? "node.exe" : "node",
+      [path.join(repoRoot, "scripts", "queue-doctor.mjs"), "--workspace", sb],
+      { cwd: repoRoot, encoding: "utf8", shell: false }
+    );
+    let parsed = null;
+    try { parsed = JSON.parse(r.stdout || "{}"); } catch {}
+    await fs.rm(sb, { recursive: true, force: true });
+    return { exit_code: r.status, stdout: r.stdout, stderr: r.stderr, parsed };
+  });
+  const ok = result.exit_code === 0 && result.parsed?.ok === true && result.parsed?.queue_doctor_schema_version === 1;
+  record("queue.doctor_passes", "required", ok, {
+    exit_code: result.exit_code,
+    parsed: result.parsed,
+    stderr_tail: (result.stderr || "").slice(-500)
+  }, ok ? "queue doctor ok" : `exit=${result.exit_code}`, durationMs);
+}
+
+if (!shouldSkip("wizard.dry_run_passes")) {
+  const { result, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-wizard-"));
+    const r = spawnSync(
+      process.platform === "win32" ? "node.exe" : "node",
+      [
+        path.join(repoRoot, "scripts", "wizard.mjs"),
+        "--dry-run",
+        "--workspace", sb,
+        "--clients", "codex",
+        "--no-truth-gates",
+        "--yes"
+      ],
+      { cwd: repoRoot, encoding: "utf8", shell: false }
+    );
+    const stateDir = path.join(sb, ".hermes3d_orchestrator");
+    const wroteState = await fileExists(stateDir);
+    await fs.rm(sb, { recursive: true, force: true });
+    return { exit_code: r.status, stdout: r.stdout, stderr: r.stderr, wroteState };
+  });
+  const ok = result.exit_code === 0 &&
+    result.wroteState === false &&
+    result.stdout.includes("Detected:") &&
+    result.stdout.includes("Wire all detected?") &&
+    result.stdout.includes("Done");
+  record("wizard.dry_run_passes", "required", ok, {
+    exit_code: result.exit_code,
+    wrote_state: result.wroteState,
+    stdout_tail: (result.stdout || "").slice(-1000),
+    stderr_tail: (result.stderr || "").slice(-500)
+  }, ok ? "wizard dry-run ok" : `exit=${result.exit_code}`, durationMs);
+}
+
+// ----------------------------------------------------------------------------
+// Gate 8: end-to-end multi-agent integration on a fresh git-initialized sandbox
+// ----------------------------------------------------------------------------
+if (!shouldSkip("e2e.multi_agent_flow")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const sb = await fs.mkdtemp(path.join(os.tmpdir(), "truth-gate-sandbox-"));
+    await fs.mkdir(path.join(sb, "03_implementation/ui/src/tabs"), { recursive: true });
+    await fs.mkdir(path.join(sb, "contracts"), { recursive: true });
+    await fs.writeFile(path.join(sb, "03_implementation/ui/src/tabs/Dashboard.tsx"), "// dash\n");
+    await fs.writeFile(path.join(sb, "03_implementation/ui/src/tabs/Agents.tsx"), "// agents\n");
+    await fs.writeFile(path.join(sb, "contracts/CP-UX-A_SCOPE_LOCK.md"), "# scope\n");
+    await fs.writeFile(path.join(sb, "contracts/CP-UX-A_CODEX_IMPLEMENTATION.md"), "# codex\n");
+    spawnSync("git", ["init", "-q", "-b", "main"], { cwd: sb });
+    spawnSync("git", ["add", "-A"], { cwd: sb });
+    spawnSync(
+      "git",
+      ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+      { cwd: sb }
+    );
+
+    const checks = [];
+    await stdioHandshake({ MCP_LOCK_WORKSPACE: sb }, async (call) => {
+      const policy = await call("hermes_read_policy", {});
+      checks.push({ id: "policy.workspace_root", ok: policy.workspace_root === sb });
+
+      const claudeTask = await call("hermes_claim_task", {
+        owner: "claude-lead", taskId: "CP-UX-A-ARCHITECT", role: "architect",
+        files: ["contracts/CP-UX-A_SCOPE_LOCK.md", "contracts/CP-UX-A_CODEX_IMPLEMENTATION.md"]
+      });
+      checks.push({ id: "task.claim", ok: claudeTask.ok === true });
+
+      const claudeLock = await call("hermes_lock_files", {
+        owner: "claude-lead", role: "architect", taskId: "CP-UX-A-ARCHITECT",
+        files: ["contracts/CP-UX-A_SCOPE_LOCK.md", "contracts/CP-UX-A_CODEX_IMPLEMENTATION.md"]
+      });
+      checks.push({ id: "lock.docs", ok: claudeLock.ok === true });
+
+      const codexLock = await call("hermes_lock_files", {
+        owner: "codex-impl-01", role: "implementation", taskId: "CP-UX-A-CODEX",
+        files: ["03_implementation/ui/src/tabs/Dashboard.tsx", "03_implementation/ui/src/tabs/Agents.tsx"]
+      });
+      checks.push({ id: "lock.code", ok: codexLock.ok === true });
+
+      const blocked = await call("hermes_lock_files", {
+        owner: "claude-reviewer-ux", role: "reviewer",
+        files: ["03_implementation/ui/src/tabs/Dashboard.tsx"]
+      });
+      checks.push({
+        id: "lock.blocked_by_codex",
+        ok: blocked.ok === false &&
+            blocked.status === "blocked" &&
+            blocked.conflicts?.[0]?.current_owner === "codex-impl-01"
+      });
+
+      const handoff = await call("hermes_request_handoff", {
+        requester: "claude-reviewer-ux", currentOwner: "codex-impl-01",
+        files: ["03_implementation/ui/src/tabs/Dashboard.tsx"]
+      });
+      checks.push({ id: "handoff.requested", ok: handoff.ok === true });
+
+      const approved = await call("hermes_approve_handoff", {
+        owner: "codex-impl-01", requestId: handoff.handoff.id, decision: "approve"
+      });
+      checks.push({ id: "handoff.approved", ok: approved.ok === true && approved.status === "approved" });
+
+      const reblock = await call("hermes_lock_files", {
+        owner: "codex-impl-01", files: ["03_implementation/ui/src/tabs/Dashboard.tsx"]
+      });
+      checks.push({
+        id: "handoff.codex_cannot_silently_recapture",
+        ok: reblock.ok === false &&
+            reblock.conflicts?.[0]?.current_owner === "claude-reviewer-ux"
+      });
+
+      const gateStatus = await call("hermes_run_gate", {
+        owner: "claude-reviewer-ux", gateId: "git-status", cwd: "."
+      });
+      checks.push({ id: "gate.git_status", ok: gateStatus.ok === true });
+
+      const gateDiffCheck = await call("hermes_run_gate", {
+        owner: "claude-reviewer-ux", gateId: "git-diff-check", cwd: "."
+      });
+      checks.push({ id: "gate.git_diff_check", ok: gateDiffCheck.ok === true });
+
+      const bogus = await call("hermes_run_gate", {
+        owner: "claude-reviewer-ux", gateId: "definitely-not-a-real-gate", cwd: "."
+      });
+      checks.push({
+        id: "gate.unknown_rejected",
+        ok: bogus.ok === false && bogus.status === "rejected"
+      });
+
+      const escapedCwd = await call("hermes_run_gate", {
+        owner: "claude-reviewer-ux", gateId: "git-status", cwd: "../.."
+      });
+      checks.push({
+        id: "gate.escaped_cwd_rejected",
+        ok: escapedCwd.ok === false &&
+            (escapedCwd.message || "").toLowerCase().includes("escapes workspace")
+      });
+
+      const evidence = await call("hermes_append_evidence", {
+        owner: "claude-reviewer-ux", taskId: "CP-UX-A-REVIEW",
+        kind: "truth-gate", summary: "truth gate sandbox flow proved"
+      });
+      checks.push({ id: "evidence.appended", ok: evidence.ok === true });
+
+      // release
+      await call("hermes_release_files", {
+        owner: "claude-lead",
+        files: ["contracts/CP-UX-A_SCOPE_LOCK.md", "contracts/CP-UX-A_CODEX_IMPLEMENTATION.md"]
+      });
+      await call("hermes_release_files", {
+        owner: "codex-impl-01",
+        files: ["03_implementation/ui/src/tabs/Agents.tsx"]
+      });
+      await call("hermes_release_files", {
+        owner: "claude-reviewer-ux",
+        files: ["03_implementation/ui/src/tabs/Dashboard.tsx"]
+      });
+      const final = await call("hermes_get_state", {});
+      checks.push({ id: "final.zero_locks", ok: final.locks.length === 0 });
+    });
+
+    const stateDir = path.join(sb, ".hermes3d_orchestrator");
+    let ledgerLines = 0;
+    let eventLines = 0;
+    try {
+      ledgerLines = (await fs.readFile(path.join(stateDir, "evidence", "ledger.ndjson"), "utf8"))
+        .split("\n").filter(Boolean).length;
+      eventLines = (await fs.readFile(path.join(stateDir, "events.ndjson"), "utf8"))
+        .split("\n").filter(Boolean).length;
+    } catch { /* tolerate */ }
+
+    await fs.rm(sb, { recursive: true, force: true });
+    return { sandbox: sb, checks, ledger_entries: ledgerLines, event_entries: eventLines };
+  });
+  if (error) {
+    record("e2e.multi_agent_flow", "required", false, {}, error.message, durationMs);
+  } else {
+    const failed = result.checks.filter((c) => !c.ok);
+    record("e2e.multi_agent_flow", "required", failed.length === 0, result,
+      `${result.checks.length - failed.length}/${result.checks.length} checks; ` +
+      `${result.ledger_entries} ledger, ${result.event_entries} events`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 7: workspace integrity — Hermes3D's tracked tree is unmodified.
+//
+// We allow:
+//   - Untracked state dir (.hermes3d_orchestrator/ or whatever MCP_LOCK_STATE_DIR
+//     resolves to) — it is the orchestrator's own working data and is expected.
+//   - The expected state-dir line being added to .gitignore by init-project.
+//
+// We do NOT allow:
+//   - Probe files leaked into the workspace.
+//   - Any modification (M / A / D / R / C) to a tracked file.
+//   - Any UNEXPECTED untracked file (anything other than the state dir).
+// ----------------------------------------------------------------------------
+if (!shouldSkip("workspace.integrity")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const stateDirName = process.env.MCP_LOCK_STATE_DIR || ".hermes3d_orchestrator";
+    return evaluateWorkspaceHygiene({
+      workspaceRoot: hermes3dWorkspace,
+      stateDirName,
+      expectedManifestPath: process.env.HERMESPROOF_EXPECTED_DIFF_MANIFEST || "",
+      allowExpectedDirty: process.env.HERMESPROOF_ALLOW_EXPECTED_DIRTY === "1"
+    });
+  });
+  if (error) {
+    record("workspace.integrity", "required", false, {}, error.message, durationMs);
+  } else {
+    record("workspace.integrity", "required", result.release_ready === true, result,
+      `probes=${result.probe_files_left}, ` +
+      `install_mods=${result.install_related_modifications.length}, ` +
+      `expected_mods=${result.expected_modifications.length}, ` +
+      `unexpected_mods=${result.unexpected_modifications.length}, ` +
+      `unexpected_untracked=${result.unexpected_untracked.length}`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 8: client config presence (Claude Desktop, Codex, Windsurf)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("clients.config_presence")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const home = os.homedir();
+    const claudeDesktop = process.platform === "win32"
+      ? path.join(process.env.APPDATA || path.join(home, "AppData", "Roaming"), "Claude", "claude_desktop_config.json")
+      : process.platform === "darwin"
+        ? path.join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json")
+        : path.join(home, ".config", "Claude", "claude_desktop_config.json");
+    const windsurf = path.join(home, ".codeium", "windsurf", "mcp_config.json");
+    const codex = path.join(home, ".codex", "config.toml");
+    const claudeCode = path.join(home, ".claude.json");
+
+    async function jsonHasServer(file) {
+      try {
+        const j = JSON.parse(await fs.readFile(file, "utf8"));
+        const present = !!(j.mcpServers && j.mcpServers["hermes3d-locks"]);
+        return { exists: true, present, server_count: Object.keys(j.mcpServers || {}).length };
+      } catch (err) {
+        if (err.code === "ENOENT") return { exists: false, present: false };
+        return { exists: true, present: false, parse_error: err.message };
+      }
+    }
+    async function tomlHasStanza(file) {
+      try {
+        const raw = await fs.readFile(file, "utf8");
+        return { exists: true, present: raw.includes("[mcp_servers.hermes3d-locks]") };
+      } catch (err) {
+        if (err.code === "ENOENT") return { exists: false, present: false };
+        return { exists: true, present: false, error: err.message };
+      }
+    }
+    async function claudeCodeHasServer(file) {
+      try {
+        const raw = await fs.readFile(file, "utf8");
+        // Claude Code stores in JSON; do not parse the entire user file (huge).
+        // We just need the substring presence check, which is what `claude mcp add` writes.
+        return { exists: true, present: raw.includes('"hermes3d-locks"') };
+      } catch (err) {
+        if (err.code === "ENOENT") return { exists: false, present: false };
+        return { exists: true, present: false, error: err.message };
+      }
+    }
+
+    return {
+      claude_desktop: { path: claudeDesktop, ...(await jsonHasServer(claudeDesktop)) },
+      windsurf:       { path: windsurf,       ...(await jsonHasServer(windsurf)) },
+      codex:          { path: codex,          ...(await tomlHasStanza(codex)) },
+      claude_code:    { path: claudeCode,     ...(await claudeCodeHasServer(claudeCode)) }
+    };
+  });
+  if (error) {
+    record("clients.config_presence", "required", false, {}, error.message, durationMs);
+  } else {
+    const missing = Object.entries(result).filter(([, v]) => !v.present).map(([k]) => k);
+    record("clients.config_presence", "required", missing.length === 0, result,
+      missing.length ? `missing: ${missing.join(",")}` : "all 4 present", durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 9: live Claude Code connectivity via `claude mcp list`
+// ----------------------------------------------------------------------------
+if (!shouldSkip("clients.claude_code_live")) {
+  const { result, durationMs } = await timed(async () => {
+    const r = spawnSync(process.platform === "win32" ? "claude.exe" : "claude",
+      ["mcp", "list"], { encoding: "utf8" });
+    return { status: r.status, stdout: r.stdout || "", stderr: r.stderr || "", error: r.error?.code };
+  });
+  if (result.error === "ENOENT") {
+    record("clients.claude_code_live", "warn", false, result, "claude CLI not on PATH", durationMs);
+  } else {
+    const health = evaluateRequiredMcpConnections(result.stdout);
+    const connected = result.status === 0 && health.ok;
+    record("clients.claude_code_live", "required", connected, {
+      exit_code: result.status,
+      ...health
+    }, connected
+      ? `${health.required.length}/${health.required.length} connected`
+      : `missing=${health.missing.join(",") || "none"}; failed=${health.failed.join(",") || "none"}`,
+    durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 10: tool description hygiene — lints src/server.mjs for prompt-injection
+// markers in tool descriptions/titles (ignore previous, you must, base64
+// blobs, zero-width chars, HTML tags). OWASP MCP "tool poisoning" defense.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("server.tool_description_hygiene")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const src = await fs.readFile(path.join(repoRoot, "src", "server.mjs"), "utf8");
+    const patterns = [
+      { name: "ignore_previous", re: /ignore\s+(all\s+)?previous/i },
+      { name: "you_must", re: /\byou\s+must\b/i },
+      { name: "always_directive", re: /\byou\s+(should\s+)?always\b/i },
+      { name: "long_base64", re: /[A-Za-z0-9+/=]{60,}/ },
+      { name: "zero_width", re: /[​‌‍⁠﻿]/ },
+      { name: "html_executable", re: /<\s*(script|iframe|object|embed)\b/i }
+    ];
+    const findings = [];
+    for (const p of patterns) {
+      const m = src.match(p.re);
+      if (m) findings.push({ pattern: p.name, sample: m[0].slice(0, 80) });
+    }
+    return { findings, file: "src/server.mjs", bytes: Buffer.byteLength(src, "utf8") };
+  });
+  if (error) {
+    record("server.tool_description_hygiene", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = result.findings.length === 0;
+    record("server.tool_description_hygiene", "required", ok, result,
+      ok ? "0 suspicious patterns" : `${result.findings.length} pattern(s): ${result.findings.map((f) => f.pattern).join(", ")}`,
+      durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 10b: security.mcp_scan_pass — extended static analysis over
+// src/server.mjs. Superset of `server.tool_description_hygiene`: adds
+// hidden-content markers, authority-impersonation phrases, exfil
+// directives, hex/url-encoded payloads, RTL-override / bidi-isolate
+// unicode, and `<sysprompt>` / `<HIDDEN>` tags. OWASP MCP "tool poisoning"
+// + rug-pull defense, pure-regex, zero deps.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("security.mcp_scan_pass")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runMcpScanStaticGate({
+      serverPath: path.join(repoRoot, "src", "server.mjs")
+    });
+  });
+  if (error) {
+    record("security.mcp_scan_pass", "required", false, {}, error.message, durationMs);
+  } else {
+    record("security.mcp_scan_pass", "required", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 11: evidence hash-chain validity — round-trips appendChainedJsonLine
+// and verifyChainedLog through a positive case (3 valid entries) and a
+// negative case (mid-chain tamper detected at the right index).
+// ----------------------------------------------------------------------------
+if (!shouldSkip("evidence.hash_chain_valid")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const { appendChainedJsonLine, verifyChainedLog } = await import("../src/core/fs-utils.mjs");
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hp-chain-"));
+    const ledger = path.join(tmpDir, "ledger.ndjson");
+    try {
+      await appendChainedJsonLine(ledger, { id: "e1", note: "first" });
+      await appendChainedJsonLine(ledger, { id: "e2", note: "second" });
+      await appendChainedJsonLine(ledger, { id: "e3", note: "third" });
+
+      const verifyClean = await verifyChainedLog(ledger);
+      const positive =
+        verifyClean.ok === true &&
+        verifyClean.chained === 3 &&
+        verifyClean.unchained === 0 &&
+        verifyClean.first_break === null;
+
+      // Tamper: rewrite middle entry's note (entry_hash will no longer match canonical)
+      const raw = await fs.readFile(ledger, "utf8");
+      const lines = raw.split("\n").filter(Boolean);
+      const middle = JSON.parse(lines[1]);
+      middle.note = "FORGED";
+      lines[1] = JSON.stringify(middle);
+      await fs.writeFile(ledger, lines.join("\n") + "\n", "utf8");
+
+      const verifyTampered = await verifyChainedLog(ledger);
+      const negative =
+        verifyTampered.ok === false &&
+        verifyTampered.first_break !== null &&
+        verifyTampered.first_break.index === 1;
+
+      return { positive, negative, verifyClean, verifyTampered };
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+  if (error) {
+    record("evidence.hash_chain_valid", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = result.positive && result.negative;
+    record("evidence.hash_chain_valid", "required", ok, result,
+      `positive=${result.positive}, negative_detected_at_idx_1=${result.negative}`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 12: master-prompt deliverables present
+//
+// The master prompt (hermesproof_claude20_codex_handoff_master_prompt.md §3)
+// requires 10 deliverable files before Codex starts implementation. This gate
+// verifies they exist and are non-empty, so the design contract cannot silently
+// rot away from the artifact it justifies.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("docs.master_prompt_deliverables_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const required = [
+      "docs/README_MASTER_SPEC.md",
+      "docs/README_COVERAGE_MATRIX.md",
+      "docs/VISUAL_ASSET_SPEC.md",
+      "docs/SVG_ANIMATION_SPEC.md",
+      "docs/HERMES3D_SOURCE_AUDIT.md",
+      "docs/HERMESPROOF_SETUP_AUDIT.md",
+      "docs/CODEX_IMPLEMENTATION_HANDOFF.md",
+      "docs/CLAUDE_REVIEW_TEAM_PROMPT.md",
+      "docs/ACCEPTANCE_GATES.md",
+      "handoffs/HANDOFF_TO_CODEX_README_VISUALS.md"
+    ];
+    const minBytes = 256; // anything shorter is a placeholder, not a deliverable
+    const findings = [];
+    for (const rel of required) {
+      const full = path.join(repoRoot, rel);
+      try {
+        const buf = await fs.readFile(full, "utf8");
+        const size = Buffer.byteLength(buf, "utf8");
+        const hasH1 = /^# \S/m.test(buf);
+        findings.push({
+          path: rel,
+          ok: size >= minBytes && hasH1,
+          size_bytes: size,
+          has_h1: hasH1
+        });
+      } catch (err) {
+        findings.push({ path: rel, ok: false, error: err.code || err.message });
+      }
+    }
+    return { required_count: required.length, findings };
+  });
+  if (error) {
+    record("docs.master_prompt_deliverables_present", "required", false, {}, error.message, durationMs);
+  } else {
+    const failed = result.findings.filter((f) => !f.ok);
+    record("docs.master_prompt_deliverables_present", "required", failed.length === 0, result,
+      failed.length === 0
+        ? `${result.required_count}/${result.required_count} deliverables present`
+        : `missing/empty: ${failed.map((f) => f.path).join(", ")}`,
+      durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: provider.registry.validate — schema + completeness of registry.yaml
+// ----------------------------------------------------------------------------
+if (!shouldSkip("provider.registry.validate")) {
+  const { result, error, durationMs } = await timed(() => runProviderRegistryValidate());
+  if (error) {
+    record("provider.registry.validate", "required", false, {}, error.message, durationMs);
+  } else {
+    record("provider.registry.validate", "required", result.ok,
+      { ...result.evidence, finding_count: result.findings?.length ?? 0 },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: local.models.catalog.validate — lmstudio_local_models.csv hygiene
+// ----------------------------------------------------------------------------
+if (!shouldSkip("local.models.catalog.validate")) {
+  const { result, error, durationMs } = await timed(() => runLocalModelsCatalogValidate());
+  if (error) {
+    record("local.models.catalog.validate", "required", false, {}, error.message, durationMs);
+  } else {
+    record("local.models.catalog.validate", "required", result.ok,
+      { ...result.evidence, finding_count: result.findings?.length ?? 0 },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: continue.llm_classes.validate — 62 expected provider names present
+// ----------------------------------------------------------------------------
+if (!shouldSkip("continue.llm_classes.validate")) {
+  const { result, error, durationMs } = await timed(() => runContinueLlmClassesValidate());
+  if (error) {
+    record("continue.llm_classes.validate", "required", false, {}, error.message, durationMs);
+  } else {
+    record("continue.llm_classes.validate", "required", result.ok,
+      { ...result.evidence, finding_count: result.findings?.length ?? 0 },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: kilocode.provider.mapping.validate — stub (not_applicable)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("kilocode.provider.mapping.validate")) {
+  const { result, error, durationMs } = await timed(() => runKilocodeProviderMappingValidate());
+  if (error) {
+    record("kilocode.provider.mapping.validate", "warn", false, {}, error.message, durationMs);
+  } else {
+    // Stub gate: pass-through, marked warn so it's visible in the report.
+    record("kilocode.provider.mapping.validate", "warn", result.ok,
+      { ...result.evidence, status: result.status || "ok" },
+      result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: lmstudio.health — WARN on offline (local-only)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("lmstudio.health")) {
+  const { result, error, durationMs } = await timed(() => runLmstudioHealth());
+  if (error) {
+    record("lmstudio.health", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("lmstudio.health", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: ollama.health — WARN on offline (local-only)
+// ----------------------------------------------------------------------------
+if (!shouldSkip("ollama.health")) {
+  const { result, error, durationMs } = await timed(() => runOllamaHealth());
+  if (error) {
+    record("ollama.health", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("ollama.health", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: backend.api_config_presence — WARN inventory for AI and remote backend
+// API credentials/endpoints. Records env var NAMES only; never records values.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("backend.api_config_presence")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const cloudAi = [
+      "DEEPSEEK_API_KEY",
+      "MINIMAX_API_KEY",
+      "SILICONFLOW_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "GEMINI_API_KEY",
+      "COHERE_API_KEY",
+      "MISTRAL_API_KEY"
+    ];
+    const remoteGit = [
+      "GITLAB_TOKEN",
+      "GLAB_TOKEN",
+      "GITLAB_ACCESS_TOKEN",
+      "GITLAB_PRIVATE_TOKEN",
+      "GITLAB_PAT",
+      "GHENGHIS_GITLAB_TOKEN",
+      "GH_TOKEN",
+      "GITHUB_TOKEN"
+    ];
+    const localEndpoint = ["LMSTUDIO_BASE_URL", "OLLAMA_BASE_URL", "HIPFIRE_BASE_URL"];
+    const present = {
+      cloud_ai: presentEnvNames(cloudAi),
+      remote_git: presentEnvNames(remoteGit),
+      local_endpoint: presentEnvNames(localEndpoint)
+    };
+    const cli = {
+      gh: commandExists("gh"),
+      glab: commandExists("glab")
+    };
+    const configuredCount = present.cloud_ai.length + present.remote_git.length + present.local_endpoint.length;
+    const hasUsefulBackend = configuredCount > 0 || cli.gh || cli.glab;
+    return {
+      ok: hasUsefulBackend,
+      evidence: {
+        env_file: loadedEnvFileInfo,
+        present_env_names: present,
+        missing_recommended_env_names: {
+          cloud_ai_fast_path: ["DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "SILICONFLOW_API_KEY"].filter((name) => !process.env[name]),
+          gitlab: [
+            "GITLAB_TOKEN",
+            "GLAB_TOKEN",
+            "GITLAB_ACCESS_TOKEN",
+            "GITLAB_PRIVATE_TOKEN",
+            "GITLAB_PAT",
+            "GHENGHIS_GITLAB_TOKEN"
+          ].filter((name) => !process.env[name])
+        },
+        cli_present: cli,
+        local_defaults: {
+          lmstudio: LMSTUDIO_DEFAULT,
+          ollama: OLLAMA_DEFAULT
+        },
+        note: "Only env var names and booleans are recorded; secret values are never read into evidence."
+      },
+      details: hasUsefulBackend
+        ? `backend API inventory: envs=${configuredCount}, gh=${cli.gh}, glab=${cli.glab}`
+        : "no backend API env vars or GitHub/GitLab CLI detected"
+    };
+  });
+  if (error) {
+    record("backend.api_config_presence", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("backend.api_config_presence", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: gitlab.auth_probe — WARN auth probe for GitLab project/MR integration.
+// Uses token from env if configured. Records token source and API status only;
+// never records token values or identity by default.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("gitlab.auth_probe")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const client = createGitLabClient();
+    const status = await client.status({ probe: true, includeIdentity: false });
+    return {
+      ok: status.status === "authenticated",
+      evidence: {
+        env_file: loadedEnvFileInfo,
+        base_url: status.base_url,
+        configured: status.configured,
+        token_source: status.token_source,
+        authenticated: status.authenticated,
+        identity_returned: false,
+        http_status: status.http_status || null
+      },
+      details: status.status === "authenticated"
+        ? `GitLab authenticated via ${status.token_source}`
+        : status.status === "missing_token"
+          ? "GitLab token not configured (use a supported GitLab token env var or the dedicated GitLab env file)"
+          : `GitLab auth probe failed: ${status.error || status.status}`
+    };
+  });
+  if (error) {
+    record("gitlab.auth_probe", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("gitlab.auth_probe", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: secret.scan — surface gitleaks (or built-in fallback) as a first-class
+// gate. Tries `gitleaks detect --no-banner --redact -s . -r -` and parses any
+// findings; if gitleaks isn't on PATH, runs a tiny stdlib regex fallback over
+// the tracked tree so absence of gitleaks doesn't silently skip the gate.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("secret.scan")) {
+  // Codex audit fix (PR #32, 2026-05-03): the previous implementation
+  // returned `{ error, findings: [] }` on infrastructure errors (git
+  // ls-files failure, gitleaks parse failure) and the gate only checked
+  // findings.length — so a broken scanner false-passed. Now scanner
+  // execution errors fail the gate ("fail closed").
+  const { result, durationMs } = await timed(async () => {
+    const probe = spawnSync(
+      process.platform === "win32" ? "gitleaks.exe" : "gitleaks",
+      ["version"],
+      { encoding: "utf8" }
+    );
+    if (probe.error?.code === "ENOENT") {
+      // Fallback regex scan over tracked files (cheap, conservative).
+      const tracked = spawnSync("git", ["-C", repoRoot, "ls-files"], { encoding: "utf8" });
+      if (tracked.status !== 0) {
+        return {
+          mode: "fallback",
+          scanner_ok: false,
+          error: `git ls-files failed (status=${tracked.status}): ${(tracked.stderr || "").slice(0, 200)}`,
+          findings: [],
+        };
+      }
+      const files = tracked.stdout.split("\n").filter(Boolean).filter(
+        (p) => !p.startsWith("PROOF/") && !p.endsWith(".lock") && !p.endsWith(".png") && !p.endsWith(".jpg")
+      );
+      const patterns = [
+        { name: "aws_access_key", re: /AKIA[0-9A-Z]{16}/ },
+        { name: "aws_secret_key", re: /(?:^|[^A-Za-z0-9])([A-Za-z0-9/+=]{40})(?:[^A-Za-z0-9]|$)/ },
+        { name: "github_token", re: /gh[pousr]_[A-Za-z0-9]{36,}/ },
+        { name: "openai_key", re: /sk-[A-Za-z0-9_-]{32,}/ },
+        { name: "anthropic_key", re: /sk-ant-[A-Za-z0-9_-]{32,}/ },
+        { name: "private_key_pem", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |)PRIVATE KEY-----/ },
+      ];
+      const findings = [];
+      for (const rel of files) {
+        if (rel.endsWith("truth-gates.mjs")) continue;
+        try {
+          const buf = await fs.readFile(path.join(repoRoot, rel), "utf8");
+          for (const pat of patterns) {
+            if (pat.name === "aws_secret_key" && !/AKIA[0-9A-Z]{16}/.test(buf)) continue;
+            if (pat.re.test(buf)) {
+              findings.push({ file: rel, pattern: pat.name });
+            }
+          }
+        } catch {
+          /* skip unreadable */
+        }
+      }
+      return { mode: "fallback", scanner_ok: true, findings, file_count: files.length };
+    }
+    // gitleaks present — run it.
+    const r = spawnSync(
+      process.platform === "win32" ? "gitleaks.exe" : "gitleaks",
+      ["detect", "--no-banner", "--redact", "-s", repoRoot, "--report-format", "json", "--report-path", "-"],
+      { encoding: "utf8" }
+    );
+    // gitleaks exit codes per upstream docs: 0 = no leaks, 1 = leaks found,
+    // anything else = infrastructure error. Exit 1 means the gate must fail
+    // even if report parsing returns an empty array.
+    const exitCode = r.status;
+    const scannerOk = exitCode === 0 || exitCode === 1;
+    let parsed = [];
+    let parseError = null;
+    try {
+      parsed = JSON.parse(r.stdout || "[]");
+    } catch (err) {
+      parseError = err.message;
+    }
+    return {
+      mode: "gitleaks",
+      version: probe.stdout.trim(),
+      exit_code: exitCode,
+      scanner_ok: scannerOk && parseError === null,
+      parse_error: parseError,
+      stderr_tail: (r.stderr || "").slice(-500),
+      finding_count: Array.isArray(parsed) ? parsed.length : 0,
+      findings: Array.isArray(parsed) ? parsed.slice(0, 10) : [],
+    };
+  });
+  // Fail closed: scanner execution failures and gitleaks' leak-found exit
+  // code both block the gate. Previously exit 1 could false-pass when the
+  // JSON report was empty or not captured from stdout.
+  const findingCount = result.finding_count ?? result.findings?.length ?? 0;
+  const leaksFound = result.exit_code === 1 || findingCount > 0;
+  const ok = result.scanner_ok === true && !leaksFound;
+  const detailParts = [];
+  detailParts.push(result.mode);
+  if (!result.scanner_ok)
+    detailParts.push(`SCANNER ERROR: ${result.error || result.parse_error || `exit=${result.exit_code}`}`);
+  detailParts.push(`${findingCount} finding(s)`);
+  record("secret.scan", "required", ok, result, detailParts.join(": "), durationMs);
+}
+
+// ----------------------------------------------------------------------------
+// Gate: secrets.rotation_evidence_present — metadata-only check that the
+// configured Hermes3D env file (G:\private\.env or HERMES3D_ENV_FILE) has
+// been modified within HERMES_SECRET_MAX_AGE_DAYS (default 90). Never reads
+// the file's contents — only fs.stat.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("secrets.rotation_evidence_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await checkSecretRotationEvidence();
+  });
+  if (error) {
+    record("secrets.rotation_evidence_present", "warn", false, {}, error.message, durationMs);
+  } else {
+    const level = "warn";
+    record(
+      "secrets.rotation_evidence_present",
+      level,
+      result.ok,
+      result.evidence,
+      result.details,
+      durationMs
+    );
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: sbom.cyclonedx_generated — emit CycloneDX 1.5 SBOM at PROOF/sbom.json
+// ----------------------------------------------------------------------------
+if (!shouldSkip("sbom.cyclonedx_generated")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await writeSbomToProof(repoRoot);
+  });
+  if (error) {
+    record("sbom.cyclonedx_generated", "required", false, {}, error.message, durationMs);
+  } else if (!result.ok) {
+    record("sbom.cyclonedx_generated", "required", false, { reason: result.reason },
+      `sbom generation failed: ${result.reason}`, durationMs);
+  } else {
+    record("sbom.cyclonedx_generated", "required", true, {
+      path: result.path,
+      components: result.components,
+      sha256: result.sha256,
+      serial_number: result.serialNumber,
+      spec_version: "1.5"
+    }, `${result.components} components @ ${result.path}`, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: licenses.scan — every production dep on the SPDX allowlist
+//
+// Required gate. Pulls the live `npx --yes license-checker --production --json`
+// snapshot, normalises SPDX expressions, and fails on any GPL/AGPL/LGPL/SSPL/
+// EUPL/BUSL contact. Conservative-by-design: GPL family stays denied even
+// though it's a valid OSS license — HermesProof itself is MIT and we cannot
+// pull copyleft into the dependency closure without an explicit policy waiver.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("licenses.scan")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const collected = await collectInstalledLicensesViaCheck(repoRoot);
+    if (!collected.ok) {
+      return { collectError: collected.reason };
+    }
+    const gate = runLicensesScanGate({ packageList: collected.packageList });
+    return { gate, package_count: collected.packageList.length };
+  });
+  if (error) {
+    record("licenses.scan", "required", false, {}, error.message, durationMs);
+  } else if (result.collectError) {
+    record("licenses.scan", "required", false, { reason: result.collectError },
+      `license-checker unavailable: ${result.collectError}`, durationMs);
+  } else {
+    record("licenses.scan", "required", result.gate.ok, result.gate.evidence,
+      result.gate.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: dependency.fresh — direct deps published within 18 months
+//
+// Advisory (warn-level) gate. Skipped automatically when offline (npm
+// registry unreachable) so CI without net does not flap. FAIL ages at 18mo,
+// WARN between 12-18mo, PASS otherwise. Threshold tunable via
+// HERMES3D_DEP_FRESH_MONTHS / HERMES3D_DEP_WARN_MONTHS env vars.
+// Registry queries are bounded by the helper's per-request 5s timeout and
+// the full pass exits early on the first ENETWORK to keep CI flap-free.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("dependency.fresh")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const pkgJson = await readPackageJson(repoRoot);
+    return await runDependencyFreshGate({
+      pkgJson,
+      fetchLatest: (name) => fetchLatestFromNpm(name)
+    });
+  });
+  if (error) {
+    record("dependency.fresh", "warn", false, {}, error.message, durationMs);
+  } else if (result.skip) {
+    // Skipped at gate level (offline) — surface as skipped, not warn-fail.
+    record("dependency.fresh", "skipped", true, result.evidence, result.details, durationMs);
+  } else {
+    record("dependency.fresh", "warn", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: security.workflow_actions_sha_pinned — every `uses:` in
+// .github/workflows/*.yml is pinned to a 40-char hex SHA (or sha256 digest
+// for docker:// actions, or a local ./path for reusable workflows). Mutable
+// tags like @v4 / @main are rejected — they are how supply-chain swaps slip
+// in (CVE-2024-25638 class). Pure-regex; zero deps.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("security.workflow_actions_sha_pinned")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runWorkflowPinningGate({ repoRoot });
+  });
+  if (error) {
+    record("security.workflow_actions_sha_pinned", "required", false, {}, error.message, durationMs);
+  } else {
+    record("security.workflow_actions_sha_pinned", "required", result.ok,
+      result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: accessibility.wcag_aa_pass — runs axe-core (via JSDOM, no
+// browser) over site/index.html and asserts 0 critical / 0 serious WCAG 2.1
+// AA violations. axe-core + jsdom are devDependencies; the gate degrades to
+// a clean failure (with details) if either is unavailable so a stripped
+// `npm ci --omit=dev` host doesn't get a confusing crash.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("accessibility.wcag_aa_pass")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const htmlPath = path.join(repoRoot, "site", "index.html");
+    return await runAccessibilityWcagAaGate({ htmlPath });
+  });
+  if (error) {
+    record("accessibility.wcag_aa_pass", "required", false, {}, error.message, durationMs);
+  } else {
+    record("accessibility.wcag_aa_pass", "required", result.ok, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate: perf.budgets_pass — micro-bench p95 budgets for hot ops
+//
+// Required gate. Reads or generates PERF/latest.json (see scripts/perf-budget.mjs).
+// p95 budgets:
+//   - hermes_doctor cold start  < 300 ms
+//   - lock acquire              <  50 ms
+//   - heartbeat                 <  20 ms
+// ----------------------------------------------------------------------------
+if (!shouldSkip("perf.budgets_pass")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await loadOrRunPerfReport({
+      // Inside CI we fall back to a smaller iteration count to keep the
+      // truth-gate run snappy. A dedicated `npm run perf` job populates
+      // PERF/latest.json with the full 1000-iter sample.
+      minIterations: 100,
+      fastIterations: Number(process.env.HP_PERF_GATE_ITERATIONS) || 200
+    });
+  });
+  if (error) {
+    record("perf.budgets_pass", "required", false, {}, error.message, durationMs);
+  } else {
+    const ok = result.ok === true;
+    const summary = Object.entries(result.benches || {})
+      .map(([k, b]) => `${k}=${b.stats.p95_ms.toFixed(1)}ms<${b.budget.budget_ms}ms? ${b.budget.pass ? "Y" : "N"}`)
+      .join("; ");
+    record("perf.budgets_pass", "required", ok, result, summary || "no benches", durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 14: docs.reflects_changes — README/CHANGELOG must reflect version+ADR diffs
+//
+// Advisory (warn) gate. If `package.json` version bumped or an ADR was
+// added/changed in the comparison range and README/CHANGELOG were not
+// updated correspondingly, we surface the unreflected change.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("docs.reflects_changes")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runDocsChangesReflectedGate({});
+  });
+  if (error) {
+    record("docs.reflects_changes", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("docs.reflects_changes", "warn", result.ok === true, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 15: release.checksums_present — every release artifact has SHA-256 + sig
+//
+// Advisory (warn) gate. Inert when no `dist/` or `release/` directory has
+// any artifacts. When artifacts are present, fail any that lack a `.sha256`
+// sidecar OR a signature sidecar (.sig / .asc / .cosign.bundle).
+// ----------------------------------------------------------------------------
+if (!shouldSkip("release.checksums_present")) {
+  const { result, error, durationMs } = await timed(async () => {
+    return await runReleaseChecksumGate({ root: repoRoot });
+  });
+  if (error) {
+    record("release.checksums_present", "warn", false, {}, error.message, durationMs);
+  } else {
+    record("release.checksums_present", "warn", result.ok === true, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Gate 16: quality.coderabbit_reviewed — CodeRabbit posted >=1 comment on PR
+//
+// Advisory (warn) gate. Skipped automatically when GH_TOKEN is absent or
+// when no PR_NUMBER is provided. Detects coderabbitai bot comments on
+// both /issues/{n}/comments and /pulls/{n}/comments endpoints.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("quality.coderabbit_reviewed")) {
+  const { result, error, durationMs } = await timed(async () => {
+    const remote = spawnSync("git", ["-C", repoRoot, "remote", "get-url", "origin"], { encoding: "utf8" });
+    const parsed = remote.status === 0 ? parseRemoteUrl(remote.stdout) : null;
+    const pr = Number(process.env.PR_NUMBER) || null;
+    const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || null;
+    return await runCoderabbitReviewGate({
+      owner: parsed?.owner,
+      repo: parsed?.repo,
+      pr,
+      token
+    });
+  });
+  if (error) {
+    record("quality.coderabbit_reviewed", "warn", false, {}, error.message, durationMs);
+  } else if (result.skip) {
+    record("quality.coderabbit_reviewed", "skipped", true, result.evidence, result.details, durationMs);
+  } else {
+    record("quality.coderabbit_reviewed", "warn", result.ok === true, result.evidence, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Sub-gate: HP-HARNESS-ATTRIBUTION — HP-MHA Model–Harness Attribution contract.
+//
+// Implements the HP-MHA-001..010 requirements from docs/48-Point Lever.md.
+// Reads every real harness card under examples/hp-mha/harness-cards/ and runs
+// evaluateHpMhaSubGate against each. Asserts:
+//   1. Adversarial missing-input bundle returns FAIL with HP-MHA-missing-input.
+//   2. Every real card PASSES all 10 contract requirements (verifies HP-MHA-001
+//      binding, HP-MHA-002 factorial design, HP-MHA-003 held-constant, etc.).
+//   3. A non-NaN attribution triple is reported (HP-MHA-007).
+//
+// HermesProof MUST NOT modify a candidate harness or certify its own change
+// (HP-MHA-009); this gate uses the real cards on the workspace side. It is
+// promoted to `required` now that two real cards are committed.
+//
+// This is added as a sub-gate rather than renumbering the existing gates.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("harness_attribution.contract")) {
+  const { result, error, durationMs } = await timed(async () => {
+    // 1. Adversarial missing-input bundle must return FAIL HP-MHA-missing-input.
+    const adversarial = evaluateHpMhaSubGate({});
+    if (adversarial.ok || !adversarial.reason_codes.includes("HP-MHA-missing-input")) {
+      return {
+        ok: false,
+        details: `adversarial missing-input fixture did not return HP-MHA-missing-input FAIL (got ${adversarial.verdict})`,
+        result: adversarial
+      };
+    }
+    // 2. Load every committed harness card and run the full HP-MHA contract.
+    //    Templates under examples/hp-mha/harness-cards/templates/ are loaded
+    //    too — they validate the schema but their hashes are placeholders that
+    //    must be replaced once the upstream harness is installed.
+    const cardsDir = path.join(repoRoot, "examples", "hp-mha", "harness-cards");
+    let cardFiles = [];
+    async function collectJson(dir) {
+      const out = [];
+      let entries = [];
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return out; }
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          out.push(...(await collectJson(full)));
+        } else if (e.name.endsWith(".json")) {
+          out.push(full);
+        }
+      }
+      return out;
+    }
+    try {
+      cardFiles = (await collectJson(cardsDir)).sort();
+    } catch (err) {
+      return {
+        ok: false,
+        details: `failed to read ${path.relative(repoRoot, cardsDir)}: ${err.message}`,
+        result: null
+      };
+    }
+    if (cardFiles.length === 0) {
+      return {
+        ok: false,
+        details: `no harness cards committed under ${path.relative(repoRoot, cardsDir)}`,
+        result: null
+      };
+    }
+    // Shared smoke helper from hp-mha.mjs computes manifests + smoke plan +
+    // attribution triple and runs the sub-gate, so load-card.mjs and this gate
+    // can never drift apart.
+    const cardResults = [];
+    for (const file of cardFiles) {
+      const cardPath = path.isAbsolute(file) ? file : path.join(cardsDir, file);
+      try {
+        const cardRaw = JSON.parse(await fs.readFile(cardPath, "utf8"));
+        const ev = evaluateHarnessCardFromManifest(cardRaw);
+        cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: cardRaw.card_id, verdict: ev.verdict, ok: ev.ok });
+      } catch (err) {
+        cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: file.replace(/\.json$/, ""), verdict: "FAIL", ok: false, error: err.message });
+      }
+    }
+    const allOk = cardResults.every((r) => r.ok);
+    return {
+      ok: allOk,
+      details: `cards=${cardResults.length} (${cardResults.map((r) => `${r.card_id}=${r.verdict}`).join(", ")}) | ` +
+        `adversarial=${adversarial.verdict}(${adversarial.reason_codes.join(",")})`,
+      result: { adversarial, cardResults }
+    };
+  });
+  if (error) {
+    record("harness_attribution.contract", "required", false, {}, error.message, durationMs);
+  } else {
+    record("harness_attribution.contract", "required", result.ok === true, { gate: HP_HARNESS_ATTRIBUTION_GATE }, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Sub-gate: holdout_isolation_at_queue — HP-MHA-006 lock-time enforcement.
+//
+// Asserts that the standalone helper assertLockFilesRespectHoldoutIsolation
+// behaves correctly: optimizer role on hp_mha.holdout is rejected; allow-listed
+// roles pass; mixed tag bundles are rejected; non-holdout task sets pass.
+// Also exercises the trailing path of
+// `hermes_hp_mha_trace_index_record + trace_search` to confirm the v4 index
+// surface round-trips through a real ledger on disk.
+//
+// HermesProof MUST NOT modify a candidate harness or certify its own change
+// (HP-MHA-009). This gate is promoted to `required` because (a) the v3 change
+// already binds the rule into the hermes_lock_files MCP tool and (b) every
+// real harness card set the gate iterates must move through this helper
+// without regressing.
+// ----------------------------------------------------------------------------
+if (!shouldSkip("harness_attribution.holdout_isolation_at_queue")) {
+  const { result, error, durationMs } = await timed(async () => {
+    // 1. Run the four core cases through the standalone helper.
+    const optimizerOnHoldout = assertLockFilesRespectHoldoutIsolation({
+      files: ["hp-mha-holdout/run-001.json"],
+      role: "optimizer",
+      task_set_manifest: { tags: ["hp_mha.holdout"] }
+    });
+    const agentOnHoldout = assertLockFilesRespectHoldoutIsolation({
+      files: ["hp-mha-holdout/run-001.json"],
+      role: "agent",
+      task_set_manifest: { tags: ["hp_mha.holdout"] }
+    });
+    const optimizerOnOptimization = assertLockFilesRespectHoldoutIsolation({
+      files: ["hp-mha-optimization/run-001.json"],
+      role: "optimizer",
+      task_set_manifest: { tags: ["hp_mha.optimization"] }
+    });
+    const optimizerOnMixed = assertLockFilesRespectHoldoutIsolation({
+      files: ["x.ts"],
+      role: "optimizer",
+      task_set_manifest: { tags: ["hp_mha.holdout", "hp_mha.optimization"] }
+    });
+
+    const cases = {
+      optimizer_on_holdout: { expect_ok: false, actual: optimizerOnHoldout.ok, codes: optimizerOnHoldout.reason_codes },
+      agent_on_holdout: { expect_ok: true, actual: agentOnHoldout.ok, codes: agentOnHoldout.reason_codes },
+      optimizer_on_optimization: { expect_ok: true, actual: optimizerOnOptimization.ok, codes: optimizerOnOptimization.reason_codes },
+      optimizer_on_mixed: { expect_ok: false, actual: optimizerOnMixed.ok, codes: optimizerOnMixed.reason_codes }
+    };
+    const mismatches = [];
+    for (const [name, c] of Object.entries(cases)) {
+      if (c.actual !== c.expect_ok) {
+        mismatches.push({ name, expect_ok: c.expect_ok, actual_ok: c.actual, codes: c.codes });
+      }
+    }
+    if (mismatches.length > 0) {
+      return {
+        ok: false,
+        details: `holdout_isolation_at_queue assertion mismatches: ${JSON.stringify(mismatches)}`,
+        cases
+      };
+    }
+
+    // 2. Round-trip the v4 trace index end-to-end through the disk ledger.
+    const os = await import("node:os");
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "holdout-gate-"));
+    try {
+      const hashA = "a".repeat(64);
+      const hashB = "b".repeat(64);
+      const indexWrite = await writeTraceIndex({
+        workspaceRoot: tmp, stateDirName: ".hermes3d_orchestrator",
+        bundle: {
+          bundle_id: "tb_holdout_smoke",
+          retention: "release_pinned",
+          chunks: [
+            { sha256: hashA, bytes: 100, kind: "tool_ok", signals: ["artifact_path"] },
+            { sha256: hashB, bytes: 200, kind: "test_passed" }
+          ]
+        }
+      });
+      const rows = await readTraceIndex({ workspaceRoot: tmp, stateDirName: ".hermes3d_orchestrator", bundle_id: "tb_holdout_smoke" });
+      const range = searchTraceIndex(rows, { byte_start: 80, byte_end: 220, signals: ["artifact_path"] });
+      const index_ok = indexWrite.row_count === 2 && rows.length === 2 && range.length === 1;
+      if (!index_ok) {
+        return {
+          ok: false,
+          details: `trace index round-trip failed: write=${JSON.stringify(indexWrite)} read=${rows.length} range=${range.length}`,
+          cases
+        };
+      }
+      return {
+        ok: true,
+        details: `cases=ok|4/4 (optimizer_on_holdout=FAIL, agent_on_holdout=PASS, optimizer_on_optimization=PASS, optimizer_on_mixed=FAIL) | index rows=${rows.length} range-match=${range.length}`,
+        cases,
+        index: { row_count: indexWrite.row_count, read_count: rows.length, range_count: range.length }
+      };
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+  if (error) {
+    record("harness_attribution.holdout_isolation_at_queue", "required", false, {}, error.message, durationMs);
+  } else {
+    record("harness_attribution.holdout_isolation_at_queue", "required", result.ok === true, { gate: "HP-HARNESS-ATTRIBUTION" }, result.details, durationMs);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Helper: spawn the MCP server, perform initialize, and optionally make tool calls.
+// ----------------------------------------------------------------------------
+async function stdioHandshake(extraEnv, withCalls) {
+  const serverEntry = path.join(repoRoot, "src", "server.mjs");
+  return new Promise((resolve, reject) => {
+    const proc = spawn(process.platform === "win32" ? "node.exe" : "node", [serverEntry], {
+      env: { ...process.env, ...extraEnv },
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let buf = "";
+    let id = 0;
+    const queue = [];
+    const stderrChunks = [];
+    proc.stderr.on("data", (d) => stderrChunks.push(d.toString()));
+    proc.on("error", (err) => reject(err));
+    proc.stdout.on("data", (chunk) => {
+      buf += chunk.toString();
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line) continue;
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        const next = queue.shift();
+        if (next) next(msg);
+      }
+    });
+    function request(method, params) {
+      id++;
+      return new Promise((r) => {
+        queue.push(r);
+        proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      });
+    }
+    function notify(method, params) {
+      proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n");
+    }
+    async function call(name, args) {
+      const resp = await request("tools/call", { name, arguments: args });
+      const text = resp?.result?.content?.[0]?.text;
+      if (!text) throw new Error(`no text content for tool ${name}: ${JSON.stringify(resp)}`);
+      return JSON.parse(text);
+    }
+
+    (async () => {
+      try {
+        const init = await request("initialize", {
+          protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "truth-gate", version: "0.0.1" }
+        });
+        notify("notifications/initialized", {});
+        const list = await request("tools/list", {});
+        const tools = list?.result?.tools?.map((t) => t.name) || [];
+        if (withCalls) await withCalls(call);
+        proc.stdin.end();
+        proc.kill("SIGTERM");
+        resolve({
+          protocolVersion: init?.result?.protocolVersion,
+          serverInfo: init?.result?.serverInfo,
+          tools
+        });
+      } catch (err) {
+        proc.kill("SIGKILL");
+        reject(new Error(`${err.message}; stderr=${stderrChunks.join("").slice(-500)}`));
+      }
+    })();
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Final report
+// ----------------------------------------------------------------------------
+const totalMs = Date.now() - runStart;
+const failures = gates.filter((g) => !g.ok && g.level === "required");
+const warnings = gates.filter((g) => !g.ok && g.level === "warn");
+const skipped = gates.filter((g) => g.level === "skipped");
+const passed = gates.filter((g) => g.ok && g.level !== "skipped");
+
+const report = {
+  run_id: runId,
+  ts_utc: runIso,
+  duration_ms: totalMs,
+  ok: failures.length === 0,
+  pass_count: passed.length,
+  fail_count: failures.length,
+  warn_count: warnings.length,
+  skip_count: skipped.length,
+  hermes3d_workspace: hermes3dWorkspace,
+  node_version: process.version,
+  platform: process.platform,
+  repo_root: repoRoot,
+  gates
+};
+
+const proofDir = path.join(repoRoot, "PROOF");
+await fs.mkdir(proofDir, { recursive: true });
+await fs.writeFile(
+  path.join(proofDir, "latest.json"),
+  JSON.stringify(report, null, 2) + "\n",
+  "utf8"
+);
+
+// Render markdown summary
+function levelTag(g) {
+  if (g.ok) return "✅ pass";
+  if (g.level === "required") return "❌ fail";
+  return "⚠️ warn";
+}
+const md = [
+  `# End-to-End Truth-Gate Report`,
+  ``,
+  `- **Run id**: \`${runId}\``,
+  `- **Timestamp (UTC)**: ${runIso}`,
+  `- **Duration**: ${(totalMs / 1000).toFixed(2)}s`,
+  `- **Hermes3D workspace**: \`${hermes3dWorkspace}\``,
+  `- **Node**: ${process.version} on ${process.platform}`,
+  `- **Result**: ${report.ok ? "✅ ALL REQUIRED GATES PASS" : `❌ ${failures.length} REQUIRED GATE(S) FAILED`}`,
+  ``,
+  `Pass / Fail / Warn / Skip: **${report.pass_count} / ${failures.length} / ${warnings.length} / ${skipped.length}**`,
+  ``,
+  `## Gate results`,
+  ``,
+  `| Gate | Level | Result | Duration | Detail |`,
+  `| --- | --- | --- | --- | --- |`,
+  ...gates.map((g) =>
+    `| \`${g.id}\` | ${g.level} | ${levelTag(g)} | ${g.duration_ms} ms | ${(g.details || "").replace(/\|/g, "\\|") || "—"} |`
+  ),
+  ``,
+  `## Machine-readable report`,
+  ``,
+  `Full evidence including evidence ledgers, tool call shapes, manifest hashes, and config snapshots is in:`,
+  ``,
+  `\`PROOF/latest.json\``,
+  ``,
+  `## Reproduce`,
+  ``,
+  `\`\`\`powershell`,
+  `cd ${repoRoot.replace(/\\/g, "\\\\")}`,
+  `npm install`,
+  `node scripts/truth-gates.mjs --workspace "${hermes3dWorkspace}"`,
+  `\`\`\``,
+  ``,
+  `Exit code 0 means every required gate passed; non-zero means at least one required gate failed.`,
+  ``
+].join("\n");
+
+await fs.writeFile(path.join(repoRoot, "PROOF_E2E_REPORT.md"), md, "utf8");
+
+console.log("");
+console.log(`PROOF/latest.json     written (${(JSON.stringify(report).length / 1024).toFixed(1)} KB)`);
+console.log(`PROOF_E2E_REPORT.md   written`);
+console.log("");
+console.log(`Pass: ${report.pass_count}   Fail: ${failures.length}   Warn: ${warnings.length}   Skip: ${skipped.length}   Duration: ${(totalMs / 1000).toFixed(2)}s`);
+process.exit(failures.length === 0 ? 0 : 1);

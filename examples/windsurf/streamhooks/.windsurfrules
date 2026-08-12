@@ -1,0 +1,15 @@
+# HermesProof STREAM Rules for Windsurf
+
+When this workspace contains `handoffs/STREAM/`, Cascade participates in the
+HermesProof loop:
+
+- Read `handoffs/STREAM/PROTOCOL.md`, `STATE.md`, and the active inbox at
+  session start.
+- Poll every 3-5 minutes when idle.
+- Claim a task before editing and lock all files through HermesProof.
+- On conflicts, request handoff instead of overwriting another agent.
+- Append evidence after tests, gates, commits, and handoffs.
+- Release owned locks when the task is done or blocked.
+
+Do not read private environment files or secret directories. Do not force-push,
+skip hooks, cut release tags, or push directly to protected branches.

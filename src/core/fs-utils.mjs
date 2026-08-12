@@ -1,0 +1,443 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import crypto from "node:crypto";
+import { makeMutex } from "./mutex.mjs";
+
+export const DEFAULT_STATE_DIR_NAME = ".hermes3d_orchestrator";
+
+// Per-file shared mutex for `appendChainedJsonLine`. The chain is read +
+// hashed + appended in one logical operation; without serialization, two
+// callers in the same process can both read the same `prev_hash`, both
+// hash, and both append, forking the chain. The 2026-05-03 audit P0-3
+// (`ev_47347bd34f9a282d`) was a real-world manifestation of this race.
+//
+// Keyed by absolute file path so independent ledgers (different workspaces
+// in the same Node process) don't unnecessarily serialize against each
+// other; a single workspace gets exactly one mutex queue regardless of
+// how many caller modules invoke appendChainedJsonLine.
+const _evidenceLedgerMutexes = new Map();
+function getLedgerMutex(file) {
+  const key = path.resolve(file);
+  let mutex = _evidenceLedgerMutexes.get(key);
+  if (!mutex) {
+    mutex = makeMutex();
+    _evidenceLedgerMutexes.set(key, mutex);
+  }
+  return mutex;
+}
+// Backwards-compat alias kept for any external import sites.
+export const STATE_DIR_NAME = DEFAULT_STATE_DIR_NAME;
+
+export function resolveStateDirName(stateDirName) {
+  const fromEnv = (process.env.MCP_LOCK_STATE_DIR || "").trim();
+  const candidate = (stateDirName || fromEnv || DEFAULT_STATE_DIR_NAME).trim();
+  if (!candidate) return DEFAULT_STATE_DIR_NAME;
+  if (candidate.includes("/") || candidate.includes("\\") || candidate.includes("..") || candidate.includes("\0")) {
+    throw new Error(`MCP_LOCK_STATE_DIR must be a single directory name, got: ${candidate}`);
+  }
+  return candidate;
+}
+
+export function utcNow() {
+  return new Date().toISOString();
+}
+
+export function addMinutesIso(minutes) {
+  return new Date(Date.now() + minutes * 60_000).toISOString();
+}
+
+export function isExpired(iso) {
+  return typeof iso === "string" && new Date(iso).getTime() < Date.now();
+}
+
+export async function ensureDir(dir) {
+  await fs.mkdir(dir, { recursive: true });
+}
+
+export async function pathExists(p) {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function readJson(file, fallback = undefined) {
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    return JSON.parse(raw);
+  } catch (err) {
+    if (arguments.length >= 2 && (err.code === "ENOENT" || err instanceof SyntaxError)) return fallback;
+    throw err;
+  }
+}
+
+async function renameAtomicWithRetry(tmp, file) {
+  let delayMs = 5;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      await fs.rename(tmp, file);
+      return;
+    } catch (err) {
+      if (!["EPERM", "EACCES"].includes(err.code) || attempt === 9) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs *= 2;
+    }
+  }
+}
+
+export async function writeJsonAtomic(file, value) {
+  await ensureDir(path.dirname(file));
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(16).toString("hex")}.tmp`;
+  try {
+    await fs.writeFile(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
+    await renameAtomicWithRetry(tmp, file);
+  } catch (err) {
+    try { await fs.rm(tmp, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
+  }
+}
+
+export async function appendJsonLine(file, value) {
+  await ensureDir(path.dirname(file));
+  await fs.appendFile(file, JSON.stringify(value) + "\n", "utf8");
+}
+
+// Deterministic, key-sorted JSON for hash pre-image. Matches the canonical
+// encoding rule used by Hermes3D's PROOF_PROTOCOL.md (UTF-8, sorted keys, no
+// whitespace) so HermesProof attestations interop with Hermes3D ones.
+export function canonicalJSON(obj) {
+  if (obj === null || typeof obj !== "object") return JSON.stringify(obj);
+  if (Array.isArray(obj)) return "[" + obj.map(canonicalJSON).join(",") + "]";
+  const keys = Object.keys(obj).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJSON(obj[k])).join(",") + "}";
+}
+
+export function sha256Hex(input) {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+// Append a hash-chained entry to an NDJSON log. Each entry includes
+// `prev_hash` (sha256 of the previous chained entry's `entry_hash`, or null
+// for the first chained entry) and `entry_hash` (sha256 of the canonical
+// pre-image including `prev_hash` but excluding `entry_hash` itself).
+//
+// Tampering with any entry (or splicing out a middle entry) breaks the chain
+// and is detected by verifyChainedLog.
+//
+// Concurrent appenders on the same file are SERIALIZED via a per-file
+// process-shared mutex (see `_evidenceLedgerMutexes` above). Two simultaneous
+// callers in the same Node process now produce two linear chained entries,
+// not a fork. This closes the race that produced the chain break at
+// `ev_47347bd34f9a282d` (audit P0-3, 2026-05-03).
+//
+// Cross-process appenders (multiple Node processes hitting the same file)
+// are STILL UNSAFE — that requires file-system-level locking, a separate
+// problem. HermesProof's design assumes one MCP server process per workspace,
+// so the per-process boundary is correct.
+export async function appendChainedJsonLine(file, value) {
+  return getLedgerMutex(file)(async () => {
+    await ensureDir(path.dirname(file));
+    let prevHash = null;
+    let prevId = null;
+    try {
+      const raw = await fs.readFile(file, "utf8");
+      const lines = raw.split("\n").filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const last = JSON.parse(lines[i]);
+          if (last && typeof last.entry_hash === "string") {
+            prevHash = last.entry_hash;
+            prevId = last.id || null;
+            break;
+          }
+        } catch { /* skip malformed */ }
+      }
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+    }
+    const withChain = { ...value, prev_entry_id: prevId, prev_hash: prevHash };
+    const entryHash = sha256Hex(canonicalJSON(withChain));
+    const final = { ...withChain, entry_hash: entryHash };
+    await fs.appendFile(file, JSON.stringify(final) + "\n", "utf8");
+    return final;
+  });
+}
+
+// Walk an NDJSON log, validate each entry's hash matches its canonical
+// pre-image, and verify each `prev_hash` links to the previous chained
+// entry. Pre-chain entries (those lacking `entry_hash`) are tolerated and
+// counted as `unchained` — useful when migrating an existing ledger.
+export async function verifyChainedLog(file, { acceptedBreaks = [] } = {}) {
+  let raw;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return {
+        ok: true,
+        strict_ok: true,
+        total: 0,
+        chained: 0,
+        unchained: 0,
+        accepted_break_count: 0,
+        accepted_breaks: [],
+        first_break: null,
+        breaks: []
+      };
+    }
+    throw err;
+  }
+  const accepted = normalizeAcceptedBreaks(acceptedBreaks);
+  const lines = raw.split("\n").filter(Boolean);
+  let chained = 0;
+  let unchained = 0;
+  let lastHash = null;
+  let firstBreak = null;
+  const breaks = [];
+  const acceptedHits = [];
+  for (let i = 0; i < lines.length; i++) {
+    let entry;
+    try {
+      entry = JSON.parse(lines[i]);
+    } catch (err) {
+      const item = { index: i, reason: `parse error: ${err.message}` };
+      breaks.push(item);
+      if (firstBreak === null) firstBreak = item;
+      continue;
+    }
+    if (!entry || typeof entry.entry_hash !== "string" || !("prev_hash" in entry)) {
+      unchained++;
+      continue;
+    }
+    const { entry_hash: stored, ...preimage } = entry;
+    const computed = sha256Hex(canonicalJSON(preimage));
+    if (computed !== stored) {
+      const item = { index: i, reason: "entry_hash mismatch", id: entry.id || null };
+      breaks.push(item);
+      if (firstBreak === null) firstBreak = item;
+      continue;
+    }
+    if (lastHash !== null && entry.prev_hash !== lastHash) {
+      const item = {
+        index: i,
+        reason: "prev_hash does not link to previous chained entry",
+        id: entry.id || null,
+        prev_entry_id: entry.prev_entry_id || null
+      };
+      const acceptedBreak = acceptedBreakFor(accepted, item, entry);
+      if (acceptedBreak) {
+        acceptedHits.push({
+          index: i,
+          id: entry.id || null,
+          reason: item.reason,
+          prev_entry_id: entry.prev_entry_id || null,
+          accepted_by: acceptedBreak.accepted_by || acceptedBreak.id || null
+        });
+      } else {
+        breaks.push(item);
+        if (firstBreak === null) firstBreak = item;
+      }
+    }
+    chained++;
+    lastHash = stored;
+  }
+  return {
+    ok: firstBreak === null,
+    strict_ok: breaks.length === 0 && acceptedHits.length === 0,
+    total: lines.length,
+    chained,
+    unchained,
+    accepted_break_count: acceptedHits.length,
+    accepted_breaks: acceptedHits,
+    first_break: firstBreak,
+    breaks
+  };
+}
+
+function normalizeAcceptedBreaks(value) {
+  const items = Array.isArray(value) ? value : [];
+  return items
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : null,
+      index: Number.isInteger(item.index) ? item.index : null,
+      reason: typeof item.reason === "string" ? item.reason : "prev_hash",
+      prev_entry_id: typeof item.prev_entry_id === "string" ? item.prev_entry_id : null,
+      ts_utc: typeof item.ts_utc === "string" ? item.ts_utc : null,
+      accepted_by: typeof item.accepted_by === "string" ? item.accepted_by : null
+    }));
+}
+
+function acceptedBreakFor(accepted, item, entry) {
+  return accepted.find((candidate) => {
+    if (candidate.reason !== "prev_hash") return false;
+    if (candidate.id && candidate.id !== item.id) return false;
+    if (candidate.index !== null && candidate.index !== item.index) return false;
+    if (candidate.prev_entry_id && candidate.prev_entry_id !== item.prev_entry_id) return false;
+    if (candidate.ts_utc && candidate.ts_utc !== entry.ts_utc) return false;
+    return Boolean(candidate.id || candidate.index !== null);
+  });
+}
+
+export async function readEvidenceCheckpointManifest(file) {
+  let manifest;
+  try {
+    manifest = await readJson(file);
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    return {
+      ok: false,
+      path: file,
+      reason: "checkpoint manifest is not an object",
+      accepted_breaks: []
+    };
+  }
+  const { checkpoint_hash: checkpointHash, ...payload } = manifest;
+  const computed = sha256Hex(canonicalJSON(payload));
+  const hashOk = typeof checkpointHash === "string" && checkpointHash === computed;
+  return {
+    ok: hashOk,
+    path: file,
+    reason: hashOk ? null : "checkpoint_hash mismatch",
+    checkpoint_hash: checkpointHash || null,
+    computed_hash: computed,
+    schema: manifest.schema ?? null,
+    kind: manifest.kind ?? null,
+    created_utc: manifest.created_utc ?? null,
+    incident_doc: manifest.incident_doc ?? null,
+    accepted_breaks: hashOk && Array.isArray(manifest.accepted_breaks) ? manifest.accepted_breaks : []
+  };
+}
+
+export function shaId(input, len = 24) {
+  return crypto.createHash("sha256").update(input).digest("hex").slice(0, len);
+}
+
+/**
+ * Resolves the workspace root the MCP server should govern.
+ * Priority:
+ *   1. Explicit argument
+ *   2. MCP_LOCK_WORKSPACE env var (project-agnostic name)
+ *   3. HERMES3D_WORKSPACE env var (legacy/back-compat for the original Hermes3D scaffold)
+ *   4. Current working directory
+ *
+ * The path is always resolved to an absolute path so subsequent path-escape
+ * checks can be applied uniformly across platforms.
+ */
+export function safeWorkspaceRoot(workspaceRoot) {
+  const candidate =
+    workspaceRoot ||
+    process.env.MCP_LOCK_WORKSPACE ||
+    process.env.HERMES3D_WORKSPACE ||
+    process.cwd();
+  return path.resolve(candidate);
+}
+
+export function normalizeWorkspacePath(workspaceRoot, requestedPath) {
+  if (typeof requestedPath !== "string" || requestedPath.trim() === "") {
+    throw new Error("file path must be a non-empty string");
+  }
+  const trimmed = requestedPath.trim().replace(/\\/g, "/");
+  if (trimmed.includes("\0")) throw new Error("file path contains null byte");
+  if (/[\x01-\x1f\x7f]/.test(trimmed)) throw new Error("file path contains control characters");
+  if (trimmed.includes("~")) throw new Error("file path may not contain '~'");
+
+  // Reject NTFS Alternate Data Stream syntax (filename:stream). The drive
+  // letter case (e.g. `C:/foo`) is handled by `path.isAbsolute` and the
+  // workspace-escape check below — here we look for `:` AFTER the leading
+  // path component, which on POSIX is also nonsense.
+  const afterDrive = trimmed.replace(/^[A-Za-z]:/, "");
+  if (afterDrive.includes(":")) {
+    throw new Error(`file path contains ':' (NTFS ADS or invalid POSIX): ${requestedPath}`);
+  }
+
+  const absolute = path.isAbsolute(trimmed)
+    ? path.resolve(trimmed)
+    : path.resolve(workspaceRoot, trimmed);
+
+  const rel = path.relative(workspaceRoot, absolute).replace(/\\/g, "/");
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(
+      `file path escapes workspace: requested="${requestedPath}" resolved="${absolute}" workspace="${workspaceRoot}"`
+    );
+  }
+  if (rel === "") throw new Error("workspace root itself cannot be locked");
+  return rel;
+}
+
+export function statePaths(workspaceRoot, stateDirName) {
+  const dirName = resolveStateDirName(stateDirName);
+  const stateDir = path.join(workspaceRoot, dirName);
+  const eventsDir = path.join(stateDir, "events");
+  const tasksDir = path.join(stateDir, "tasks");
+  return {
+    root: workspaceRoot,
+    stateDirName: dirName,
+    stateDir,
+    locksDir: path.join(stateDir, "locks"),
+    tasksDir,
+    tasksPendingDir: path.join(tasksDir, "pending"),
+    tasksClaimedDir: path.join(tasksDir, "claimed"),
+    tasksBlockedDir: path.join(tasksDir, "blocked"),
+    tasksDoneDir: path.join(tasksDir, "done"),
+    handoffsDir: path.join(stateDir, "handoffs"),
+    evidenceDir: path.join(stateDir, "evidence"),
+    gatesDir: path.join(stateDir, "gates"),
+    eventsDir,
+    presenceDir: path.join(stateDir, "presence"),
+    inboxDir: path.join(stateDir, "inbox"),
+    agentProfilesDir: path.join(stateDir, "agent_profiles"),
+    bugTicketsDir: path.join(stateDir, "bug_tickets"),
+    contractsDir: path.join(stateDir, "contracts"),
+    contractReviewsDir: path.join(stateDir, "contract_reviews"),
+    eventsOutboxDir: path.join(eventsDir, "outbox"),
+    eventsHandledDir: path.join(eventsDir, "handled"),
+    eventsFailedDir: path.join(eventsDir, "failed"),
+    reviewPacketsDir: path.join(stateDir, "review_packets"),
+    testModeFile: path.join(stateDir, "test_mode.json"),
+    eventsFile: path.join(stateDir, "events.ndjson"),
+    evidenceFile: path.join(stateDir, "evidence", "ledger.ndjson"),
+    configFile: path.join(stateDir, "config.json")
+  };
+}
+
+export async function initStateDirs(paths) {
+  await ensureDir(paths.stateDir);
+  await ensureDir(paths.locksDir);
+  await ensureDir(paths.tasksDir);
+  await ensureDir(paths.tasksPendingDir);
+  await ensureDir(paths.tasksClaimedDir);
+  await ensureDir(paths.tasksBlockedDir);
+  await ensureDir(paths.tasksDoneDir);
+  await ensureDir(paths.handoffsDir);
+  await ensureDir(paths.evidenceDir);
+  await ensureDir(paths.gatesDir);
+  await ensureDir(paths.eventsOutboxDir);
+  await ensureDir(paths.eventsHandledDir);
+  await ensureDir(paths.eventsFailedDir);
+  await ensureDir(paths.presenceDir);
+  await ensureDir(paths.inboxDir);
+  await ensureDir(paths.agentProfilesDir);
+  await ensureDir(paths.bugTicketsDir);
+  await ensureDir(paths.contractsDir);
+  await ensureDir(paths.contractReviewsDir);
+  await ensureDir(paths.reviewPacketsDir);
+}
+
+export async function moveFileAtomic(source, destination) {
+  await ensureDir(path.dirname(destination));
+  await fs.rename(source, destination);
+}
+
+export function lockDirForPath(paths, normalizedPath) {
+  return path.join(paths.locksDir, `${shaId(normalizedPath)}.lockdir`);
+}
+
+export function lockMetadataFile(lockDir) {
+  return path.join(lockDir, "metadata.json");
+}

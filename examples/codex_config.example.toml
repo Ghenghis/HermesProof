@@ -1,0 +1,10 @@
+[mcp_servers.hermes3d-locks]
+command = "node"
+args = ["G:\\Github\\Hermes3D\\tools\\hermes3d-mcp-lock-orchestrator\\src\\server.mjs"]
+env = { MCP_LOCK_WORKSPACE = "G:\\Github\\Hermes3D" }
+enabled = true
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+# Important for lock correctness: keep this server serialized.
+# Do not set supports_parallel_tool_calls = true for this server.
+# Note: HERMES3D_WORKSPACE remains supported as a backwards-compatible alias.

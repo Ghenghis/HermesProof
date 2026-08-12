@@ -1,0 +1,14 @@
+# HermesProof protected ownership.
+* @Ghenghis
+
+/src/ @Ghenghis
+/scripts/ @Ghenghis
+/docs/ @Ghenghis
+/.gitlab-ci.yml @Ghenghis
+/.gitlab/ @Ghenghis
+/CODEOWNERS @Ghenghis
+/PROOF/ @Ghenghis
+/config/ @Ghenghis
+/policies/ @Ghenghis
+/install-hermesproof.ps1 @Ghenghis
+/uninstall-hermesproof.ps1 @Ghenghis

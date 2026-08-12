@@ -1,0 +1,104 @@
+stages:
+  - validate
+  - test
+  - proof
+  - deploy
+
+default:
+  tags:
+    - hermesproof-local
+  interruptible: true
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+
+variables:
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  HERMESPROOF_CI_WORKSPACE: "$CI_PROJECT_DIR/.ci-workspace"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .npm/
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "release/hp-mha-serena-shippable"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - when: never
+
+.release-rules:
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "release/hp-mha-serena-shippable"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+validate:
+  stage: validate
+  extends: .release-rules
+  script:
+    - node --version
+    - npm --version
+    - npm ci
+    - node --check src/server.mjs
+    - node --check src/hp-mha-serena/server.mjs
+    - npm run docs:check
+    - node --test scripts/gitlab-ci-policy.test.mjs scripts/release-docs-drift.test.mjs
+
+updater-and-clients:
+  stage: test
+  extends: .release-rules
+  script:
+    - npm ci
+    - npm run test:updater
+
+full-suite:
+  stage: test
+  extends: .release-rules
+  script:
+    - npm ci
+    - npm test
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - reports/
+
+truth-gates:
+  stage: proof
+  extends: .release-rules
+  script:
+    - npm ci
+    - node scripts/truth-gates.mjs --ci --workspace "$HERMESPROOF_CI_WORKSPACE"
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - PROOF/latest.json
+      - PROOF_E2E_REPORT.md
+      - PROOF/sbom.json
+      - PERF/latest.json
+    reports:
+      cyclonedx: PROOF/sbom.json
+
+pages:
+  stage: deploy
+  extends: .release-rules
+  needs:
+    - full-suite
+    - truth-gates
+  script:
+    - New-Item -ItemType Directory -Force public | Out-Null
+    - Copy-Item -Path site\* -Destination public -Recurse -Force
+  pages:
+    publish: public
+  artifacts:
+    paths:
+      - public
+  environment:
+    name: gitlab-pages
+    url: https://ghenghis.gitlab.io/HermesProof

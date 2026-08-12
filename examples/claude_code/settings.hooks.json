@@ -1,0 +1,60 @@
+{
+  "_comment": "HermesProof hooks for Claude Code. Drop into ~/.claude/settings.json under the hooks key. Wires hermes3d-locks MCP tools as automatic responses to session lifecycle and edit events.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "hermes3d-locks",
+            "tool": "hermes_doctor",
+            "input": {}
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "hermes3d-locks",
+            "tool": "hermes_get_state",
+            "input": {}
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "hermes3d-locks",
+            "tool": "hermes_append_evidence",
+            "input": {
+              "kind": "edit",
+              "summary": "${tool_input.file_path}"
+            }
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "hermes3d-locks",
+            "tool": "hermes_release_files",
+            "input": {}
+          }
+        ]
+      }
+    ]
+  }
+}

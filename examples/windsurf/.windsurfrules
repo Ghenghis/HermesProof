@@ -1,0 +1,48 @@
+# HermesProof rules for Windsurf / Cascade
+#
+# Drop-in coordination protocol. Activate by placing this file at the
+# workspace root (.windsurfrules) when Windsurf is opening a workspace
+# governed by the hermes3d-locks MCP server.
+
+When the user is working in a workspace that has the `hermes3d-locks` MCP server wired in (see `~/.codeium/windsurf/mcp_config.json`), Cascade MUST follow this coordination protocol before editing any file:
+
+1. **Pre-flight (every session start):**
+   - Call `mcp__hermes3d-locks__hermes_doctor` and confirm `ok: true`.
+   - Call `mcp__hermes3d-locks__hermes_read_policy` to surface `workspace_root`.
+   - Call `mcp__hermes3d-locks__hermes_get_state` to see active locks/tasks/handoffs.
+
+2. **Pickup discipline:**
+   - If a task is already claimed by an owner matching `windsurf-cascade-*`, RESUME it (do not start fresh).
+   - Else if HermesProof v0.5+ is available, call `mcp__hermes3d-locks__hermes_pick_task` with `owner=windsurf-cascade-<handle>` to claim the highest-priority queued task.
+   - Else read `handoffs/HANDOFF_TO_WINDSURF_*.md` (or the most recent generic handoff) and follow it.
+
+3. **Lock before edit:**
+   - Use `mcp__hermes3d-locks__hermes_claim_task` then `mcp__hermes3d-locks__hermes_lock_files` with the file paths you intend to modify.
+   - If a lock returns `blocked` (someone else owns it), call `mcp__hermes3d-locks__hermes_request_handoff`. NEVER overwrite a locked file. NEVER create a parallel `*-v2.md` file to bypass a lock.
+
+4. **During work:**
+   - Call `mcp__hermes3d-locks__hermes_heartbeat` every 20 minutes for sessions running longer than 10 minutes.
+   - Run shell commands ONLY through `mcp__hermes3d-locks__hermes_run_gate` (allowlisted gates such as `git-status`, `git-diff-check`, `npm-test`). Never invoke `bash` / `pwsh` directly through Cascade for state-changing operations.
+
+5. **Close out:**
+   - Call `mcp__hermes3d-locks__hermes_append_evidence` with `kind: "edit"` and a concise summary of what changed.
+   - Call `mcp__hermes3d-locks__hermes_release_files` for every file you locked.
+   - Call `mcp__hermes3d-locks__hermes_release_task` when the task is fully done.
+   - If blocked: use `mcp__hermes3d-locks__hermes_create_blocked_handoff` (HermesProof v0.4+) which writes the handoff file, releases your locks, and emits a `task.blocked` event.
+
+## Owner string format
+
+Use `windsurf-cascade-<your-handle>`. The pattern is enforced server-side: `^[a-z][a-z0-9-]{1,63}$`. Lowercase, digits, and hyphens only.
+
+## Hard rules (no exceptions)
+
+- DO NOT edit any file you do not currently hold a HermesProof lock on.
+- DO NOT bypass via parallel files, `--no-verify` git flags, or shell scripts that hit the filesystem outside the gate runner.
+- DO NOT change MCP server config files (`~/.codeium/windsurf/mcp_config.json`) without an explicit user request.
+- If you cannot complete a task, write `handoffs/HANDOFF_TO_CLAUDE_<TASK>_BLOCKED.md` with branch, locks, files attempted, exact error, and suggested next prompt. Then release locks. Stop.
+
+## Cross-reference
+
+- Full discipline rules: `examples/QUEUE_DISCIPLINE.md`
+- Architect/implementer split: HermesProof's role-boundary docs (Claude = brain, Codex = hands, Cascade = scoped helper)
+- Parallel sub-agent rules: `docs/PARALLEL_SUBAGENT_DISCIPLINE.md`

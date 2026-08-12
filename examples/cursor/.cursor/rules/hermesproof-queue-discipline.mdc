@@ -1,0 +1,69 @@
+---
+description: HermesProof v0.5+ task-queue pickup discipline. Companion to hermesproof.mdc. Use when starting a Cursor session in a workspace governed by the hermes3d-locks MCP server.
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# HermesProof — task-queue pickup discipline (v0.5+)
+
+This rule extends `hermesproof.mdc` with v0.5 task-queue behavior. If HermesProof is at v0.4 or earlier, fall back to the handoffs-folder pickup pattern.
+
+## Step 0 — every session start
+
+1. Call `mcp__hermes3d-locks__hermes_doctor` (confirm ok=true).
+2. Call `mcp__hermes3d-locks__hermes_get_state`.
+3. **If any task in `tasks` has `owner` matching `cursor-<your-handle>` and `status: "claimed"`** → resume it. Don't start fresh.
+
+## Step 1 — pick up new work (HermesProof v0.5+)
+
+If `mcp__hermes3d-locks__hermes_pick_task` is exposed (server reports v0.5+):
+
+```text
+hermes_pick_task
+  owner: cursor-<your-handle>
+  prefer_task_id: <if-user-named-one>
+```
+
+This atomically claims the highest-priority pending task whose `target_owner_pattern` matches your owner. If `no_pending_tasks_for_owner`, ask the user what to pick up.
+
+If HermesProof is at v0.4 or earlier (no `hermes_pick_task` tool surfacing), fall back to:
+
+```text
+ls handoffs/HANDOFF_TO_CURSOR_*.md
+ls handoffs/HANDOFF_TO_<GENERIC>_*.md
+```
+
+Pick the most recent unclaimed one and run its protocol.
+
+## Step 2 — lock + edit (unchanged from hermesproof.mdc)
+
+Once you have a task, follow `hermesproof.mdc` step-by-step: claim → lock → edit → evidence → release.
+
+## Step 3 — close out
+
+After all changes commit + push + PR open:
+
+```text
+hermes_append_evidence  kind=checkpoint  summary=<what landed in PR #N>
+hermes_release_files    files=[the locked file list]
+hermes_release_task     taskId=<task_id>
+```
+
+If blocked: `hermes_create_blocked_handoff` (HermesProof v0.4+) writes the handoff, releases locks, emits a `task.blocked` event in one call. Then stop.
+
+## Owner-string format
+
+`cursor-<your-handle>`. Lowercase + digits + hyphens. Matches the server-side regex `^[a-z][a-z0-9-]{1,63}$`. Pick a handle once and reuse it across every Cursor session bound to this workspace.
+
+## Hard rules
+
+- DO NOT call `hermes_pick_task` if the server doesn't expose it (rejects with tool-not-found). Use the handoff-folder fallback instead.
+- DO NOT pick a task whose `target_owner_pattern` doesn't match your owner — the server returns `task_owner_mismatch` and you should accept that, not retry with a different owner.
+- DO NOT release a task another agent claimed. `hermes_release_task` is owner-checked server-side; don't try to override.
+
+## Cross-reference
+
+- Companion rule: `hermesproof.mdc` (the lock + edit protocol)
+- Cross-client discipline: `examples/QUEUE_DISCIPLINE.md`
+- v0.5 task-queue spec: `handoffs/HANDOFF_TO_CODEX_CP-HERMESPROOF-0.5.md`

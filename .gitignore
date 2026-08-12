@@ -1,0 +1,60 @@
+node_modules/
+.hermes3d_orchestrator/
+.mcp_lock_orchestrator/
+coverage/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+.kilo/
+.idea/
+.vscode/
+.claude/
+
+# Sample VS Code config inside examples/ is intentional — track it.
+!examples/**/.vscode/
+!examples/**/.vscode/*
+*.log
+*.tmp
+*.swp
+*~
+
+# Local environment files — never commit secrets
+.env
+.env.*
+!.env.example
+
+# 2026-05-03 hardening: explicit local env variants plus catch-all suffixes
+.env.txt
+.env.bak
+.env.old
+.env.swp
+.env~
+.env.deploy
+.env2
+.env.production
+.env.staging
+.env.vps
+*.env
+!.env.example
+!.env.vps.example
+!.env.deploy.example
+!.env.production.example
+!.env.staging.example
+
+# STREAM/ local snapshots (LEDGER.md is the durable history; backups are local rotation)
+handoffs/STREAM/backups/
+
+# 2026-05-03 hardening v2: paranoid blocklist for accidental Notepad-saved-as variants
+*.env.notepad
+*.env.copy
+*.env.bak2
+.env_old
+secrets.txt
+secrets.json
+# Never check in shadows of G:\private\.
+G_private/
+private_keys/
