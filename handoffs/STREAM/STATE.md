@@ -1,3 +1,26 @@
+<!-- stream-state-snapshot:start -->
+# STREAM/STATE.md — Live snapshot (Ghenghis/HermesProof)
+
+## Last update
+- **UTC:** 2026-08-12T19:47:18.722Z
+- **By role:** WATCHDOG (auto-cron)
+
+## Open PRs
+
+| PR | Title | Branch | CI |
+|---|---|---|---|
+| #59 | Ship HP-MHA, Serena, and capability orchestration | release/hp-mha-serena-shippable | 🟢 0 ok / 0 skip |
+| #50 | fix(P1): hermes_list_agents shows roles + CapabilityDispatch DI | fix/p1-list-agents-and-dispatch-di | 🟢 2 ok / 0 skip |
+| #49 | feat(P1): stdio round-trip smoke test for all v0.7 MCP tools | feat/p1-v07-stdio-roundtrip-tests | 🟢 3 ok / 0 skip |
+
+## Health
+- snapshot type: cron-auto
+- gh availability: ok
+
+_Refreshed by stream-state-snapshot at 2026-08-12T19:47:18.722Z._
+
+<!-- stream-state-snapshot:end -->
+
 # STREAM/STATE.md — Live snapshot (HermesProof side)
 
 ---
