@@ -11,6 +11,12 @@ function assertId(value, label) {
   }
 }
 
+function sameWorkspace(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
 function defaultAdapter() {
   const unavailable = async () => {
     throw new Error("No process adapter is configured; runtime mutation is fail-closed");
@@ -106,9 +112,21 @@ export class RuntimeLifecycleManager {
     return runtime;
   }
 
-  activeLease(leaseId, runtimeId) {
+  leaseForPrincipal(leaseId, { workspace, owner } = {}) {
+    if (typeof workspace !== "string" || workspace.length === 0 ||
+        typeof owner !== "string" || owner.length === 0) {
+      throw new Error("A matching active runtime lease is required");
+    }
     const lease = this.state.leases.find((item) => item.id === leaseId);
-    if (!lease || lease.runtime_id !== runtimeId || lease.status !== "active" ||
+    if (!lease || lease.owner !== owner || !sameWorkspace(lease.workspace, workspace)) {
+      throw new Error("A matching active runtime lease is required");
+    }
+    return lease;
+  }
+
+  activeLease(leaseId, runtimeId, principal) {
+    const lease = this.leaseForPrincipal(leaseId, principal);
+    if (lease.runtime_id !== runtimeId || lease.status !== "active" ||
         lease.expires_at_ms <= this.now()) {
       throw new Error("A matching active runtime lease is required");
     }
@@ -161,10 +179,13 @@ export class RuntimeLifecycleManager {
     }
   }
 
-  async enable({ runtimeId, leaseId } = {}) {
+  async enable({ runtimeId, leaseId, workspace, owner } = {}) {
     this.assertInitialized();
     const runtime = this.runtimeById(runtimeId);
-    const lease = this.activeLease(leaseId, runtimeId);
+    const lease = this.activeLease(leaseId, runtimeId, { workspace, owner });
+    if (runtime.enabled && runtime.active_lease_id !== lease.id) {
+      throw new Error("The active lease owns the runtime; revoke or expire it before another lease can enable the runtime");
+    }
     if (!runtime.enabled) await this.startRuntime(runtime, lease);
     await this.persist();
     return { ok: true, runtime: clone(runtime) };
@@ -179,20 +200,22 @@ export class RuntimeLifecycleManager {
     runtime.active_lease_id = null;
   }
 
-  async cycle({ runtimeId, leaseId } = {}) {
+  async cycle({ runtimeId, leaseId, workspace, owner } = {}) {
     this.assertInitialized();
     const runtime = this.runtimeById(runtimeId);
-    const lease = this.activeLease(leaseId, runtimeId);
+    const lease = this.activeLease(leaseId, runtimeId, { workspace, owner });
+    if (runtime.enabled && runtime.active_lease_id !== lease.id) {
+      throw new Error("The active lease owns the runtime; revoke or expire it before another lease can cycle the runtime");
+    }
     await this.stopRuntime(runtime, lease);
     await this.startRuntime(runtime, lease);
     await this.persist();
     return { ok: true, runtime: clone(runtime) };
   }
 
-  async revokeLease({ leaseId } = {}) {
+  async revokeLease({ leaseId, workspace, owner } = {}) {
     this.assertInitialized();
-    const lease = this.state.leases.find((item) => item.id === leaseId);
-    if (!lease) throw new Error("Unknown runtime lease: " + leaseId);
+    const lease = this.leaseForPrincipal(leaseId, { workspace, owner });
     lease.status = "revoked";
     lease.revoked_at_ms = this.now();
     const runtime = this.state.runtimes.find((item) => item.active_lease_id === leaseId);
@@ -219,8 +242,23 @@ export class RuntimeLifecycleManager {
     return { ok: true, disabled };
   }
 
-  async status() {
+  async status({ workspace, owner } = {}) {
     this.assertInitialized();
-    return { ok: true, runtimes: clone(this.state.runtimes), leases: clone(this.state.leases) };
+    if (workspace === undefined && owner === undefined) {
+      return { ok: true, runtimes: clone(this.state.runtimes), leases: clone(this.state.leases) };
+    }
+    if (typeof workspace !== "string" || workspace.length === 0 ||
+        typeof owner !== "string" || owner.length === 0) {
+      throw new Error("workspace and owner are required to scope runtime status");
+    }
+    const leases = this.state.leases.filter((lease) =>
+      lease.owner === owner && sameWorkspace(lease.workspace, workspace)
+    );
+    const visibleLeaseIds = new Set(leases.map((lease) => lease.id));
+    const runtimes = clone(this.state.runtimes).map((runtime) => ({
+      ...runtime,
+      active_lease_id: visibleLeaseIds.has(runtime.active_lease_id) ? runtime.active_lease_id : null
+    }));
+    return { ok: true, runtimes, leases: clone(leases) };
   }
 }

@@ -32,8 +32,10 @@ import {
   buildTaskSetManifest,
   evaluateHarnessCardFromManifest,
   HP_MHA_CONTRACT_VERSION,
-  validateTaskSetTagUniqueness
+  validateTaskSetTagUniqueness,
+  validateHarnessCardFromManifest
 } from "../../src/core/hp-mha.mjs";
+import { loadMeasuredMatrixEvidence } from "../../src/core/hp-mha-benchmark.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -41,7 +43,7 @@ const cardsDir = path.join(here, "harness-cards");
 const taskSetsDir = path.join(here, "task-sets");
 
 function parseArgs(argv) {
-  const out = { card: "hermesproof", matrix: [0.2, 0.2, 0.1, 0.8], all: false, taskSets: false };
+  const out = { card: "hermesproof", matrix: null, all: false, taskSets: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--card") out.card = argv[++i];
@@ -58,12 +60,14 @@ function parseArgs(argv) {
   return out;
 }
 
-async function evaluateCard(cardPathOrName, args) {
+async function evaluateCard(cardPathOrName, matrix) {
   const cardPath = path.isAbsolute(cardPathOrName)
     ? cardPathOrName
     : path.join(cardsDir, `${cardPathOrName}.json`);
   const cardRaw = JSON.parse(await fs.readFile(cardPath, "utf8"));
-  const result = evaluateHarnessCardFromManifest(cardRaw, { matrix: { s11: args.matrix[0], s12: args.matrix[1], s21: args.matrix[2], s22: args.matrix[3] } });
+  const result = matrix
+    ? evaluateHarnessCardFromManifest(cardRaw, { matrix })
+    : validateHarnessCardFromManifest(cardRaw);
   return {
     card_id: cardRaw.card_id,
     card_path: path.relative(repoRoot, cardPath),
@@ -151,11 +155,22 @@ async function main() {
     process.exitCode = 2;
     return;
   }
+  const measured = args.matrix
+    ? null
+    : await loadMeasuredMatrixEvidence(path.join(here, "measured-matrix.json"), {
+        scorerFile: path.join(repoRoot, "src", "core", "hp-mha-benchmark.mjs")
+      });
+  const matrix = args.matrix
+    ? { s11: args.matrix[0], s12: args.matrix[1], s21: args.matrix[2], s22: args.matrix[3] }
+    : null;
+  summary.matrix_source = measured
+    ? { kind: "retained-benchmark-only", benchmark: measured.benchmark, evidence_sha256: measured.evidence_sha256 }
+    : { kind: "explicit-override" };
   const results = [];
   for (const file of files) {
     const cardName = path.basename(file).replace(/\.json$/, "");
     try {
-      results.push(await evaluateCard(file, args));
+      results.push(await evaluateCard(file, matrix));
     } catch (err) {
       results.push({
         card_id: cardName,

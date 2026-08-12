@@ -13,7 +13,7 @@ The current monorepo ships two MCP servers: 121 core tools in `hermes3d-locks` a
 | Managed updates | `hp_mha_update_status`, `hp_mha_update_check`, `hp_mha_update_evidence`, `hp_mha_update_apply`, `hp_mha_update_rollback`, `hp_mha_update_channel`, `hp_mha_update_auto`, `hp_mha_update_cleanup` |
 | Governed Serena | `hp_mha_serena_bind_workspace`, `hp_mha_serena_catalog`, `hp_mha_serena_claim_and_lock`, `hp_mha_serena_health`, `hp_mha_serena_semantic_inspect`, `hp_mha_serena_guarded_create`, `hp_mha_serena_guarded_replace`, `hp_mha_serena_status`, `hp_mha_serena_release` |
 
-Every mutation in these groups requires workspace binding, owner/task context, the exact operation or file lock, and an idempotency key. Raw Serena mutations are not registered.
+Governed Serena file mutations require workspace binding, owner/task context, the exact file lock, and an idempotency key. Runtime and scheduler mutations instead require the exact active owner/workspace/task/time lease and recheck the task before execution. Read-only status and planning tools do not require mutation locks. Raw Serena mutations are not registered.
 
 ## hermes3d-locks core server (121 tools)
 

@@ -13,7 +13,8 @@ test("system scheduler adapter executes exact Windows plan and disables without 
   await adapter.enable(plan);
   await adapter.disable(plan);
   assert.deepEqual(calls[0], ["schtasks.exe", plan.arguments]);
-  assert.deepEqual(calls[1], ["schtasks.exe", ["/Change", "/TN", plan.task_name, "/DISABLE"]]);
+  assert.deepEqual(calls[1], ["schtasks.exe", ["/End", "/TN", plan.task_name]]);
+  assert.deepEqual(calls[2], ["schtasks.exe", ["/Change", "/TN", plan.task_name, "/DISABLE"]]);
 });
 
 test("system scheduler adapter writes and controls user systemd units", async () => {
@@ -26,6 +27,7 @@ test("system scheduler adapter writes and controls user systemd units", async ()
     assert.equal((await fs.stat(path.join(unitDir, plan.service_name))).isFile(), true);
     assert.deepEqual(calls.at(-1), ["systemctl", ["--user", "enable", "--now", plan.timer_name]]);
     await adapter.disable(plan);
+    assert.deepEqual(calls.at(-2), ["systemctl", ["--user", "stop", plan.service_name]]);
     assert.deepEqual(calls.at(-1), ["systemctl", ["--user", "disable", "--now", plan.timer_name]]);
   } finally {
     await fs.rm(unitDir, { recursive: true, force: true });

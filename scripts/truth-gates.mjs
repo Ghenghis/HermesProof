@@ -60,7 +60,8 @@ import { runReleaseChecksumGate } from "./release-checksum.mjs";
 import { runCoderabbitReviewGate, parseRemoteUrl } from "./coderabbit-review.mjs";
 import { evaluateWorkspaceHygiene } from "../src/core/workspace-hygiene.mjs";
 import { evaluateRequiredMcpConnections } from "../src/core/mcp-client-health.mjs";
-import { HP_HARNESS_ATTRIBUTION_GATE, evaluateHpMhaSubGate, evaluateHarnessCardFromManifest, assertLockFilesRespectHoldoutIsolation, writeTraceIndex, readTraceIndex, searchTraceIndex } from "../src/core/hp-mha.mjs";
+import { HP_HARNESS_ATTRIBUTION_GATE, evaluateHpMhaSubGate, validateHarnessCardFromManifest, assertLockFilesRespectHoldoutIsolation, writeTraceIndex, readTraceIndex, searchTraceIndex } from "../src/core/hp-mha.mjs";
+import { loadMeasuredMatrixEvidence } from "../src/core/hp-mha-benchmark.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -1640,23 +1641,53 @@ if (!shouldSkip("harness_attribution.contract")) {
     // Shared smoke helper from hp-mha.mjs computes manifests + smoke plan +
     // attribution triple and runs the sub-gate, so load-card.mjs and this gate
     // can never drift apart.
+    const measured = await loadMeasuredMatrixEvidence(
+      path.join(repoRoot, "examples", "hp-mha", "measured-matrix.json"),
+      { scorerFile: path.join(repoRoot, "src", "core", "hp-mha-benchmark.mjs") }
+    );
     const cardResults = [];
     for (const file of cardFiles) {
       const cardPath = path.isAbsolute(file) ? file : path.join(cardsDir, file);
       try {
         const cardRaw = JSON.parse(await fs.readFile(cardPath, "utf8"));
-        const ev = evaluateHarnessCardFromManifest(cardRaw);
+        const ev = validateHarnessCardFromManifest(cardRaw);
         cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: cardRaw.card_id, verdict: ev.verdict, ok: ev.ok });
       } catch (err) {
         cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: file.replace(/\.json$/, ""), verdict: "FAIL", ok: false, error: err.message });
       }
     }
-    const allOk = cardResults.every((r) => r.ok);
+    const benchmark = evaluateHpMhaSubGate({
+      harness_card: { card_id: measured.harnesses[1].id, contract_sha256: measured.harnesses[1].contract_sha256 },
+      experiment_plan: {
+        experiment_id: measured.benchmark,
+        design: "factorial_2x2",
+        held_constant: {
+          model: true, inference_settings: true, task_set: true, environment: true,
+          evaluator: true, permissions: true, budgets: true, stopping_rules: true
+        },
+        model_manifest_sha256: crypto.createHash("sha256").update(JSON.stringify(measured.models)).digest("hex"),
+        harness_manifest_sha256: measured.harnesses[1].contract_sha256,
+        task_set_manifest_sha256: measured.held_constant.task_sha256,
+        evaluator_manifest_sha256: measured.held_constant.scorer_source_sha256,
+        environment_manifest_sha256: crypto.createHash("sha256").update(measured.endpoint).digest("hex"),
+        trace_root_sha256: measured.evidence_sha256
+      },
+      run_attestations: measured.runs.map((run) => ({
+        outcome: run.score >= 0.5 ? "passed" : "failed",
+        trace_root_sha256: run.response_sha256
+      })),
+      matrix: measured.matrix,
+      holdout_visible_to_optimizer: false,
+      execution_real: measured.execution_real,
+      fake_signals: [],
+      evidence_ids: ["ev_" + measured.evidence_sha256]
+    });
+    const allOk = cardResults.every((r) => r.ok) && benchmark.ok && adversarial.verdict === "FAIL";
     return {
       ok: allOk,
       details: `cards=${cardResults.length} (${cardResults.map((r) => `${r.card_id}=${r.verdict}`).join(", ")}) | ` +
-        `adversarial=${adversarial.verdict}(${adversarial.reason_codes.join(",")})`,
-      result: { adversarial, cardResults }
+        `benchmark=${benchmark.verdict}:${measured.evidence_sha256} | adversarial=${adversarial.verdict}(${adversarial.reason_codes.join(",")})`,
+      result: { adversarial, benchmark, measured_matrix_evidence_sha256: measured.evidence_sha256, cardResults }
     };
   });
   if (error) {
@@ -1670,8 +1701,9 @@ if (!shouldSkip("harness_attribution.contract")) {
 // Sub-gate: holdout_isolation_at_queue — HP-MHA-006 lock-time enforcement.
 //
 // Asserts that the standalone helper assertLockFilesRespectHoldoutIsolation
-// behaves correctly: optimizer role on hp_mha.holdout is rejected; allow-listed
-// roles pass; mixed tag bundles are rejected; non-holdout task sets pass.
+// behaves correctly: every public lock request for reserved holdout scope is
+// rejected regardless of the caller-supplied role; mixed tag bundles are
+// rejected; non-holdout task sets pass.
 // Also exercises the trailing path of
 // `hermes_hp_mha_trace_index_record + trace_search` to confirm the v4 index
 // surface round-trips through a real ledger on disk.
@@ -1684,13 +1716,13 @@ if (!shouldSkip("harness_attribution.contract")) {
 // ----------------------------------------------------------------------------
 if (!shouldSkip("harness_attribution.holdout_isolation_at_queue")) {
   const { result, error, durationMs } = await timed(async () => {
-    // 1. Run the four core cases through the standalone helper.
+    // 1. Run the five core cases through the standalone helper.
     const optimizerOnHoldout = assertLockFilesRespectHoldoutIsolation({
       files: ["hp-mha-holdout/run-001.json"],
       role: "optimizer",
       task_set_manifest: { tags: ["hp_mha.holdout"] }
     });
-    const agentOnHoldout = assertLockFilesRespectHoldoutIsolation({
+    const publicRoleSpoofOnHoldout = assertLockFilesRespectHoldoutIsolation({
       files: ["hp-mha-holdout/run-001.json"],
       role: "agent",
       task_set_manifest: { tags: ["hp_mha.holdout"] }
@@ -1705,12 +1737,17 @@ if (!shouldSkip("harness_attribution.holdout_isolation_at_queue")) {
       role: "optimizer",
       task_set_manifest: { tags: ["hp_mha.holdout", "hp_mha.optimization"] }
     });
+    const optimizerWithoutManifest = assertLockFilesRespectHoldoutIsolation({
+      files: ["hp-mha-holdout/run-002.json"],
+      role: "optimizer"
+    });
 
     const cases = {
       optimizer_on_holdout: { expect_ok: false, actual: optimizerOnHoldout.ok, codes: optimizerOnHoldout.reason_codes },
-      agent_on_holdout: { expect_ok: true, actual: agentOnHoldout.ok, codes: agentOnHoldout.reason_codes },
+      public_role_spoof_on_holdout: { expect_ok: false, actual: publicRoleSpoofOnHoldout.ok, codes: publicRoleSpoofOnHoldout.reason_codes },
       optimizer_on_optimization: { expect_ok: true, actual: optimizerOnOptimization.ok, codes: optimizerOnOptimization.reason_codes },
-      optimizer_on_mixed: { expect_ok: false, actual: optimizerOnMixed.ok, codes: optimizerOnMixed.reason_codes }
+      optimizer_on_mixed: { expect_ok: false, actual: optimizerOnMixed.ok, codes: optimizerOnMixed.reason_codes },
+      optimizer_without_manifest: { expect_ok: false, actual: optimizerWithoutManifest.ok, codes: optimizerWithoutManifest.reason_codes }
     };
     const mismatches = [];
     for (const [name, c] of Object.entries(cases)) {
@@ -1755,7 +1792,7 @@ if (!shouldSkip("harness_attribution.holdout_isolation_at_queue")) {
       }
       return {
         ok: true,
-        details: `cases=ok|4/4 (optimizer_on_holdout=FAIL, agent_on_holdout=PASS, optimizer_on_optimization=PASS, optimizer_on_mixed=FAIL) | index rows=${rows.length} range-match=${range.length}`,
+        details: `cases=ok|5/5 (optimizer_on_holdout=DENY, public_role_spoof_on_holdout=DENY, optimizer_on_optimization=ALLOW, optimizer_on_mixed=DENY, optimizer_without_manifest=DENY) | index rows=${rows.length} range-match=${range.length}`,
         cases,
         index: { row_count: indexWrite.row_count, read_count: rows.length, range_count: range.length }
       };

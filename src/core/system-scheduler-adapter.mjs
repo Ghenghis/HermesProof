@@ -39,11 +39,15 @@ export function createSystemSchedulerAdapter({ execFileFn = execFileAsync, userU
     async disable(plan) {
       if (plan.adapter === "windows-task-scheduler") {
         if (!plan.task_name) throw new Error("Windows task name is required");
+        await execFileFn("schtasks.exe", ["/End", "/TN", plan.task_name], { windowsHide: true, timeout: 30_000 }).catch(() => {});
         await execFileFn("schtasks.exe", ["/Change", "/TN", plan.task_name, "/DISABLE"], { windowsHide: true, timeout: 30_000 });
         return { ok: true, disabled: plan.task_name };
       }
       if (plan.adapter === "systemd-timer") {
         if (!plan.timer_name) throw new Error("systemd timer name is required");
+        if (plan.service_name) {
+          await execFileFn("systemctl", ["--user", "stop", plan.service_name], { timeout: 30_000 }).catch(() => {});
+        }
         await execFileFn("systemctl", ["--user", "disable", "--now", plan.timer_name], { timeout: 30_000 });
         return { ok: true, disabled: plan.timer_name };
       }

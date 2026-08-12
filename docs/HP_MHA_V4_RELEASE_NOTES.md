@@ -3,25 +3,25 @@
 | Field | Value |
 |---|---|
 | **Version** | `hermesproof.hp_mha.2026-08-06` (HP-MHA v4-STABLE) |
-| **Release date** | 2026-08-06 |
-| **Cut commit** | working tree as of this file's mtime |
-| **Stable?** | **YES** for the HP-MHA surface; see "Remaining work" below for items that require external input |
+| **Release date** | 2026-08-12 (v0.9.2 hardening refresh) |
+| **Cut commit** | recorded by the v0.9.2 release proof and harness cards |
+| **Stable?** | **YES** for the shipped HP-MHA surface after strict gates; evaluator-process separation remains an explicitly unclaimed hardening item |
 | **Codename** | Model–Harness Attribution — Phase 4 |
 | **Spec** | [`docs/48-Point Lever.md`](./48-Point%20Lever.md) sections 1-10 |
 
 ## TL;DR
 
-HermesProof now has a complete, end-to-end Model–Harness Attribution (HP-MHA) pipeline that independently measures whether a performance change came from the model, the harness, the runtime configuration, or an interaction among them. Twelve MCP tools, two `required`-level truth-gates, 76 unit tests, and an 11-step end-to-end smoke runner over real stdio JSON-RPC.
+HermesProof has an end-to-end Model–Harness Attribution (HP-MHA) pipeline that measures whether a benchmark change came from the model, the exact benchmark harness, or their interaction. Twelve MCP tools, two `required` truth gates, and an 11-step smoke runner operate over real stdio JSON-RPC. Harness cards are separately validated for schema and installed provenance; an unrelated benchmark result is never attributed to them.
 
-## Verification (all green at release time)
+## Verification contract
 
 | Check | Result |
 |---|---|
-| HP-MHA unit tests | **76 / 76 pass** in 0.42 s |
-| `npm test` | **441 pass / 0 fail / 1 skip** (intentional `doctor.hermes3d` skip) |
+| HP-MHA unit tests | Must pass at the release commit; exact totals are recorded in generated proof rather than frozen in this document |
+| `npm test` | Must pass at the release commit; exact totals are recorded in generated proof |
 | `server.stdio_handshake` | PASS — **121 MCP tools** registered |
-| `harness_attribution.contract` | PASS at `required` — **5 / 5 harness cards PASS** (hermesagent, hermesproof, aider_v0_template, goose_v0_template, openhands_v0_template) |
-| `harness_attribution.holdout_isolation_at_queue` | PASS at `required` — 4 / 4 cases + trace-index round-trip |
+| `harness_attribution.contract` | PASS at `required` only when every discovered card has valid schema and installed provenance and the exact Kilo benchmark v2 evidence re-scores and verifies |
+| `harness_attribution.holdout_isolation_at_queue` | PASS at `required` — 5 / 5 public-boundary cases + trace-index round-trip |
 | `npm run hp-mha:smoke-e2e` | **END-TO-END PASS** — 11 steps, 12 ev_* chained on disk, hash chain verified |
 
 ## Key changes by version
@@ -36,7 +36,7 @@ HermesProof now has a complete, end-to-end Model–Harness Attribution (HP-MHA) 
 
 ### v2 (v1 polish + features) — held in tandem with v1.5 (audit polish)
 
-- Extracted shared `evaluateHarnessCardFromManifest(cardRaw)` so the truth-gate and `load-card.mjs` cannot drift apart
+- Extracted shared card validation so the truth-gate and `load-card.mjs` cannot drift apart; v0.9.2 now uses provenance-only `validateHarnessCardFromManifest` by default and reserves attribution for an explicitly supplied exact benchmark matrix
 - **2 new MCP tools**: `hermes_hp_mha_trace_metrics` (recovery rate / control lag / context retention) and `hermes_hp_mha_trace_prune` (retention-class policy)
 - **1 new MCP tool**: `hermes_hp_mha_experiment_report` (read-only aggregator)
 - New helpers: `classifyTaskSetTag`, `validateTaskSetTagUniqueness`, `buildExperimentReport`, `readExperimentReport`
@@ -48,7 +48,7 @@ HermesProof now has a complete, end-to-end Model–Harness Attribution (HP-MHA) 
 
 ### v3 (contract close-outs) — 3 concrete gaps closed
 
-- **HP-MHA-006 queue-level enforcement**: new `assertLockFilesRespectHoldoutIsolation({ files, role, task_set_manifest })` rejects `optimizer` role on `hp_mha.holdout` task sets; `hermes_lock_files` MCP tool handler consults the helper before `manager.lockFiles`. Roles `agent / auditor / reviewer / human / system` are allow-listed.
+- **HP-MHA-006 queue-level enforcement**: `assertLockFilesRespectHoldoutIsolation({ files, role, task_set_manifest })` is consulted before `manager.lockFiles`. The v0.9.2 public boundary denies every reserved holdout path or tag regardless of the untrusted caller-supplied role, including the real `task-sets/holdout.json` filename.
 - **Contract version bump**: `hermesproof.hp_mha.2026-08-05` → `hermesproof.hp_mha.2026-08-06`; all 13 schema literals bumped from `v1` to `v2`.
 - **Pre-existing baseline test fix**: `DEFAULT_FAILOVER` in `src/core/hermes-agent-bridge.mjs` aligned with the six-provider expectation in `scripts/anonymous-orchestrator-smoke-test.mjs` (was `["minimax","deepseek"]`, now `["minimax","deepinfra","deepseek","siliconflow","lm_studio","ollama"]`). `npm test` failures dropped 2 → 1.
 
@@ -58,8 +58,9 @@ HermesProof now has a complete, end-to-end Model–Harness Attribution (HP-MHA) 
 |---|---|
 | **ev_trace searchable index** (HP-MHA spec §8.1) — `buildTraceIndexRows`, `writeTraceIndex`, `readTraceIndex`, `searchTraceIndex` helpers. Index at `<workspace>/<stateDir>/evidence/hp_mha_trace_index.ndjson`, sorted by `(bundle_id, byte_start)`. | `src/core/hp-mha.mjs` |
 | **2 new MCP tools**: `hermes_hp_mha_trace_index_record` (ingest) + `hermes_hp_mha_trace_search` (range query by byte_start / byte_end / signals / kind) | `src/server.mjs` |
-| **`harness_attribution.holdout_isolation_at_queue` sub-gate promoted to `required`**: 4 lock-guard cases + trace-index round-trip | `scripts/truth-gates.mjs` |
-| **3 template harness cards** at `examples/hp-mha/harness-cards/templates/{openhands,aider,goose}.json` + `examples/hp-mha/CONTRIBUTING.md` onboarding guide with the 4-step onboarding | `examples/hp-mha/` |
+| **`harness_attribution.holdout_isolation_at_queue` sub-gate promoted to `required`**: 5 public-boundary lock-guard cases + trace-index round-trip | `scripts/truth-gates.mjs` |
+| **3 verified installed-reference harness cards** at `examples/hp-mha/harness-cards/templates/{openhands,aider,goose}.json` + `examples/hp-mha/CONTRIBUTING.md` onboarding guide | `examples/hp-mha/` |
+| **Measured-matrix v2 evidence binding**: exact cell/model/harness contract checks, task/scorer source hashes, retained raw responses, deterministic re-scoring, and a digest over the complete evidence | `src/core/hp-mha-benchmark.mjs`, `examples/hp-mha/measured-matrix.json` |
 | **Pre-existing KiloCode stdio round-trip failure fixed**: `startServer` in `scripts/v07-stdio-roundtrip-smoke-test.mjs` now passes `HERMES_AGENT_ENABLED:""`; companion assertion in `src/core/hermes-agent-bridge.test.mjs` switched to a slice check that doesn't pin a position | `scripts/v07-stdio-roundtrip-smoke-test.mjs`, `src/core/hermes-agent-bridge.test.mjs` |
 | **`npm test` failures dropped from 1 → 0** | — |
 | Audit note updated: `docs/audits/2026-08-06-hp-mha-phase3.codex.md` post-scriptum through v4 + stable-release declaration table | `docs/audits/` |
@@ -81,17 +82,19 @@ hermes_hp_mha_experiment_report        read-only
 hermes_hp_mha_sub_gate                 read-only
 ```
 
-## Harness cards (5 / 5 root cards PASS at `required`)
+## Harness cards and benchmark evidence
 
 | Card id | Kind | Installed identity |
 |---|---|---|
-| `hermesproof_v0.7.0_hp_mha_real` | Real | `fae63a40` |
-| `hermesagent_bridge_2026-08-05` | Real | `fae63a40` |
+| HermesProof card | Real | Exact v0.9.2 implementation commit and package/lock hashes recorded in the card |
+| HermesAgent card | Real | Exact v0.9.2 implementation commit plus bridge-source and lock hashes recorded in the card |
 | `openhands_cli_1_16_0_windows_installed` | Real | `package:openhands-cli@1.16.0+openhands-sdk@1.21.0` |
 | `aider_0_86_2_windows_installed` | Real | `package:aider-chat@0.86.2` |
 | `goose_1_27_2_windows_installed` | Real | `package:goose@1.27.2-static-windows-x64` |
 
-See `examples/hp-mha/CONTRIBUTING.md` for onboarding: probe the installed version, hash the executable/package and dependency receipt or lock, materialize a unique card from a verified reference, then run `npm run hp-mha:load-all`.
+The three files under `harness-cards/templates/` are verified installed references and are also validated, for eight discovered manifests in total. See `examples/hp-mha/CONTRIBUTING.md` for onboarding: probe the installed version, hash the executable/package and dependency receipt or lock, materialize a unique card from a verified reference, then run `npm run hp-mha:load-all`.
+
+The measured matrix is a separate exact Kilo backend safety benchmark. It is not evidence for the quality of the eight cards. Its four raw model responses are retained and re-scored against the bound scorer source before the attribution triple is accepted.
 
 ## Contract requirements (HP-MHA-001..010) — enforcement status
 
@@ -149,7 +152,8 @@ package.json                                       4 npm scripts
 
 1. **Installed harness provenance** — OpenHands 1.16.0, Aider 0.86.2, and Goose 1.27.2 now have real Windows cards with executable/package and dependency-receipt hashes.
 2. **Real measured 2×2 matrix** — a fixed-seed local Ollama run is retained in `examples/hp-mha/measured-matrix.json`, with digest and tamper verification in `hp-mha-benchmark.test.mjs`.
-3. **Scheduler-level isolation** — optimizer claims on holdout-tagged tasks fail closed, auditor claims are allowed, and mixed holdout/optimization tags are rejected.
+3. **Lock-time isolation** — every public MCP lock request for server-derived holdout paths or holdout-tagged task sets fails closed regardless of the caller-supplied role, and mixed holdout/optimization tags are rejected. A separately owned evaluator process and result partition remain future hardening.
+4. **Evidence binding** — measured-matrix v2 binds exact cell semantics, task, benchmark harness contract, scorer source, raw responses, deterministic re-scoring, and the complete evidence digest. Unrelated cards receive provenance validation only.
 4. **Independent review remains additive governance** — another human or separately controlled reviewer can still strengthen confidence, but it is not represented as completed evidence by this release.
 
 ## Reproduction recipe

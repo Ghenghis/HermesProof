@@ -39,11 +39,11 @@ Capability installs are workspace-local and content-addressed. They never perfor
 
 The production server now wires real adapters rather than plan-only stubs:
 
-- The npm adapter installs with `--ignore-scripts --save-exact` inside the versioned pack sandbox and verifies the registry integrity from `package-lock.json`.
+- The npm adapter installs with `--ignore-scripts --save-exact` inside a versioned workspace-local install directory and verifies the registry integrity from `package-lock.json`. This directory is not an OS sandbox.
 - The process adapter accepts absolute executables only, verifies the declared SHA-256 before spawn, strips secret-bearing environment variables, and stops the exact owned child on lease expiry or revocation.
 - The live server reaps expired or unused runtimes every 60 seconds.
 - The Windows adapter uses `schtasks.exe` without a shell; the VPS adapter writes user-level systemd service/timer units and calls `systemctl --user`.
-- Scheduled jobs invoke the allowlisted `scripts/automation-runner.mjs`; no arbitrary command string or secret can be stored in a job.
+- Scheduled jobs invoke the allowlisted `scripts/automation-runner.mjs`; the runner rechecks the persisted owner, task, and active lease before every execution, and no arbitrary command string or secret can be stored in a job. Desired state is durable, but v0.9.2 does not inventory or recover native scheduler jobs whose state record was lost.
 
 Run an allowlisted recipe directly before scheduling it:
 

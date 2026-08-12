@@ -19,7 +19,7 @@ test("generated release documentation matches the canonical facts", async () => 
   assert.deepEqual(result, { ok: true, drift: [] });
 });
 
-test("README and Pages site publish the stable dual-remote release and current diagrams", async () => {
+test("README and Pages site publish the GitLab-primary release and current diagrams", async () => {
   const currentReleaseTag = (await renderReleaseDocs({ root })).json.releaseTag;
   const [readme, page, styles, currentStatus] = await Promise.all([
     readFile(path.join(root, "README.md"), "utf8"),
@@ -30,12 +30,12 @@ test("README and Pages site publish the stable dual-remote release and current d
 
   for (const content of [readme, page]) {
     assert.match(content, /gitlab\.com\/Ghenghis\/HermesProof/i);
-    assert.match(content, /github\.com\/Ghenghis\/HermesProof/i);
     assert.match(content, /ecosystem-e2e\.svg/);
     assert.match(content, /updater-lifecycle-animated\.svg/);
   }
+  assert.match(readme, /github\.com\/Ghenghis\/HermesProof/i);
   const userFacingReleaseTags = [...page.matchAll(/\bv\d+\.\d+\.\d+\b/g)].map((match) => match[0]);
-  assert.equal(userFacingReleaseTags.length, 3);
+  assert.ok(userFacingReleaseTags.length >= 3);
   assert.deepEqual([...new Set(userFacingReleaseTags)], [currentReleaseTag]);
   assert.doesNotMatch(page, /0\.9\.0-rc\.1/);
   assert.match(page, /121/);

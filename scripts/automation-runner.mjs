@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { HpMhaSerenaService } from "../src/hp-mha-serena/service.mjs";
+import { verifyAutomationExecutionAuthorization } from "../src/core/automation-manager.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,6 +36,7 @@ const args = parseArgs(process.argv.slice(2));
 const workspaceRoot = await fs.realpath(path.resolve(args.workspace));
 const packageJson = JSON.parse(await fs.readFile(path.join(workspaceRoot, "package.json"), "utf8"));
 if (packageJson.name !== "hermesproof") throw new Error("automation workspace is not HermesProof");
+await verifyAutomationExecutionAuthorization({ workspaceRoot, jobId: args.job });
 
 if (args.job === "deep-doctor") {
   await runNode(path.join(workspaceRoot, "scripts", "doctor.mjs"), ["--workspace", workspaceRoot]);

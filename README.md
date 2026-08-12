@@ -23,12 +23,12 @@
 
 </div>
 
-HermesProof turns a requested outcome into an acceptance graph, gives every agent only the authority it needs, prevents colliding edits, proves the result, and preserves a known-good rollback path. It ships as **two MCP servers in one monorepo**:
+HermesProof turns a requested outcome into an acceptance graph, scopes operations that pass through its control plane, prevents colliding edits, proves the result, and preserves a known-good release rollback path. It ships as **two MCP servers in one monorepo**:
 
 - `hermes3d-locks` — **121 tools** for tasks, file locks, handoffs, gates, evidence, releases, clients, GitLab, diagnostics, queues, agent communication, and project hygiene.
 - `hp-mha-serena` — **34 governed tools** for HP-MHA harness execution, Serena semantic intelligence, capability packs, backend recovery, automation, MCP lifecycle management, and safe updates.
 
-Serena **1.7.0** is pinned by immutable commit and integrated using its current `language_servers:` project schema. Its 52-tool catalog is policy-filtered: 29 are available in the desktop context, 15 semantic/LSP operations are exposed behind Hermes claims and locks, and **zero raw mutation tools** bypass coordination. The 1.7 runtime adds parallel-client race fixes, timeout recovery, surfaced activation errors, language-server health status, and safer localhost/template handling.
+Serena **1.7.0** is pinned by immutable commit and integrated using its current `language_servers:` project schema. Its 52-tool catalog is policy-filtered: 29 are available in the upstream desktop context, 15 semantic/LSP operations are selectable through the governed adapter, and **zero raw mutation tools** are active there. Semantic reads require a workspace-bound handle; Hermes mutations additionally require a claimed task, exact locks, source hashes, one-use receipts, evidence, and rollback. The 1.7 runtime adds parallel-client race fixes, timeout recovery, surfaced activation errors, language-server health status, and safer localhost/template handling.
 
 ![HermesProof ecosystem architecture](docs/diagrams/ecosystem-e2e.svg)
 
@@ -36,9 +36,9 @@ Serena **1.7.0** is pinned by immutable commit and integrated using its current 
 
 - Multiple agents can work in one repository without silently overwriting one another.
 - Kilo Code and other clients get a dependable backend/tooling fallback when their built-in toolchain is incomplete.
-- Missing capabilities can be resolved just in time as signed, pinned, least-privilege packs instead of permanently exposing every MCP server.
+- The current local capability resolver selects pinned, integrity-checked packs instead of permanently exposing every MCP server.
 - Serena supplies symbol-aware navigation, diagnostics, references, implementations, and refactors without bypassing Hermes locks.
-- HP-MHA compares harness/tooling outcomes with measured evidence and scheduler-level holdout isolation.
+- HP-MHA compares harness/tooling outcomes with retained hash-bound measurements, tag checks, and server-derived holdout-path guards.
 - User-facing progress can be backed by live MCP probes, tests, visual evidence, a hash-chained ledger, and 37 truth gates.
 - Updates stage immutably, snapshot client configs, probe both servers, quarantine failures, and roll back to a known-good release.
 
@@ -128,20 +128,24 @@ The Windows scheduler runs at most every six hours with jitter, backoff, a maint
 
 ![Capability pack lifecycle](docs/diagrams/capability-pack-flow.svg)
 
-HermesProof does **not** enable every shell, filesystem, package, and MCP server at once. The resolver compares the acceptance graph with installed abilities, chooses the minimum pack, verifies its signature/hash/SBOM, grants a workspace-owner-task-time scoped lease, health-probes it, records outcomes, and disables or quarantines it when unused.
+HermesProof does **not** enable every shell, filesystem, package, and MCP server at once. v0.9.2 ships a two-entry local catalog, a minimum-pack resolver, one apply-capable pinned npm path, package-lock/integrity/executable/SBOM checks, health probes, owner/workspace/task/time leases, and default-disabled runtime lifecycle controls. Publisher-signature/transparency verification, registry discovery, multi-format adapters, and pack rollback execution are planned controls, not v0.9.2 claims.
 
-Included control-plane capabilities cover:
+The implemented boundary is:
 
-- MCP install, enable, disable, refresh, cycle, health, rollback, and idle shutdown.
-- Package and dependency inventory, lockfile parity, missing backend dependency detection, and pinned installation.
-- One-time and recurring automation with local scheduler adapters.
-- Kilo backend recovery for runtimes, databases, API testing, migrations, containers, diagnostics, and browser proof.
-- Authorized reverse-engineering inventory for owned or permitted targets, with local tools disabled until explicitly leased.
+- register, lease, enable, cycle, revoke, health-check, and idle-disable hash-bound local runtimes;
+- install the pinned Kilo npm capability into a workspace-local directory with scripts disabled;
+- plan the reverse-engineering inventory pack (its non-npm apply adapter is not shipped yet);
+- persist desired state for three fixed recurring recipes through Windows Task Scheduler or Linux user timers, then reauthorize the owner/task/lease before every run;
+- diagnose Kilo/Node/Bun/Git/GitLab/Docker/Ollama/LM Studio/indexing/integration gaps without claiming database, API, migration, container, or browser recovery packs;
 - LM Studio LM Link preference with Ollama fallback for private/local inference.
+
+### Sandboxing status
+
+v0.9.2 does **not** claim a real OS sandbox. `sandbox_path` is a workspace-local install directory; `shell:false`, sanitized child environments, hashes, leases, and default-disabled state are process hardening, not filesystem or network confinement. Capability children still run as the current OS user. Untrusted execution therefore remains disabled by policy until a separately reviewed Windows WSL2/Hyper-V and Linux namespace/microVM broker is implemented. External filesystem or shell MCP servers can also bypass Hermes locks if a client invokes them directly; see [interop limitations](docs/INTEROP_WITH_OTHER_MCP.md).
 
 ## HP-MHA harness
 
-HP-MHA is a real, fail-closed harness layer. A run records installed package and executable hashes, uses scheduler-level holdouts, builds a measured 2×2 attribution matrix, computes the trace Merkle root, and fails if trace verification fails. It never prints a success marker after a failed proof.
+HP-MHA is a real, fail-closed harness layer. Harness cards are validated for schema and installed provenance; they are not assigned results from an unrelated benchmark. The exact Kilo backend benchmark separately loads, cell-binds, re-scores, and digest-verifies its retained 2×2 raw responses. Public MCP lock requests are denied for reserved holdout paths or tags regardless of a caller-supplied role. A run computes the trace Merkle root and fails if trace verification fails; it never prints a success marker after a failed proof. A separately owned evaluator process and result channel remain future hardening and are not claimed by v0.9.2.
 
 Harness evidence and ordinary HermesProof coordination evidence remain distinct but linkable. The composite server can use measured outcomes to prefer the tool chain that actually completes a project type.
 

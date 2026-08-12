@@ -464,9 +464,22 @@ test("service registers, leases, starts, cycles, and revokes a real hash-bound r
     assert.equal(registered.runtime.enabled, false);
     assert.equal(registered.evidence.kind, "runtime.register");
     const issued = await service.runtimeIssueLease({ ...auth, taskId: "runtime-e2e", runtimeId: "fixture-runtime", permissions: ["workspace:read"], ttlSeconds: 60 });
+    const otherBinding = await service.bindWorkspace({ owner: "other-owner", ttlMs: 60_000 });
+    const otherAuth = { workspaceHandle: otherBinding.token, owner: "other-owner" };
+    assert.deepEqual((await service.runtimeStatus(otherAuth)).leases, []);
+    await assert.rejects(
+      service.runtimeEnable({ ...otherAuth, runtimeId: "fixture-runtime", leaseId: issued.lease.id }),
+      /matching active runtime lease/i
+    );
     const enabled = await service.runtimeEnable({ ...auth, runtimeId: "fixture-runtime", leaseId: issued.lease.id });
     assert.equal(enabled.runtime.enabled, true);
     assert.ok(Number.isInteger(enabled.runtime.pid));
+    await service.manager.releaseTask({ owner: "codex-test", taskId: "runtime-e2e", note: "task finished" });
+    await assert.rejects(
+      service.runtimeCycle({ ...auth, runtimeId: "fixture-runtime", leaseId: issued.lease.id }),
+      (error) => error instanceof HpMhaSerenaError && error.code === "ACTIVE_TASK_REQUIRED"
+    );
+    await service.manager.claimTask({ owner: "codex-test", taskId: "runtime-e2e", files: ["src/runtime.mjs"] });
     const cycled = await service.runtimeCycle({ ...auth, runtimeId: "fixture-runtime", leaseId: issued.lease.id });
     assert.equal(cycled.runtime.generation, 2);
     const revoked = await service.runtimeRevokeLease({ ...auth, leaseId: issued.lease.id });

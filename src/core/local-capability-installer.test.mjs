@@ -4,7 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createLocalCapabilityInstaller } from "./local-capability-installer.mjs";
+import {
+  createLocalCapabilityInstaller,
+  defaultCapabilityCommandRunner
+} from "./local-capability-installer.mjs";
 
 const integrity = "sha512-" + Buffer.from("fixture-integrity").toString("base64");
 
@@ -46,4 +49,26 @@ test("local installer rejects path escape before invoking npm", async () => {
   } finally {
     await fs.rm(workspaceRoot, { recursive: true, force: true });
   }
+});
+
+test("default capability installer routes Windows npm through the shell-free process runner", async () => {
+  const calls = [];
+  await defaultCapabilityCommandRunner({
+    cwd: process.cwd(),
+    packageSpec: "fixture@1.2.3",
+    processRunner: async (request) => {
+      calls.push(request);
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, process.platform === "win32" ? "npm.cmd" : "npm");
+  assert.deepEqual(calls[0].args, [
+    "install",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--save-exact",
+    "fixture@1.2.3"
+  ]);
 });
