@@ -13,6 +13,7 @@ No unreleased changes.
 ### Fixed
 - The managed Windows OTA updater now runs npm and npx candidate gates through the active Node runtime instead of asking Node to spawn `.cmd` shims with `shell: false`. This removes the `spawn EINVAL` quarantine failure while preserving exact argv handling, command-shell isolation, fail-closed gates, rollback, and signed candidate verification.
 - Added a real Windows regression test that executes `npm.cmd --version` through the production updater process runner and fails if the shell-free translation is removed.
+- The Windows installer now validates the archive manifest version against bundled canonical release facts instead of hardcoding v0.9.0, so signed patch releases install while internal version/tag mismatches still fail closed.
 
 ## [0.9.0] — 2026-08-12
 

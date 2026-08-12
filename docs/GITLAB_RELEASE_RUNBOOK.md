@@ -10,7 +10,7 @@ npm run docs:generate
 npm run docs:check
 npm run test:updater
 npm test
-npm run truth-gates
+node .\scripts\truth-gates.mjs --workspace .
 $env:HERMESPROOF_RELEASE_SIGNING_KEY_FILE = 'C:\private\HermesProof-release-ed25519-private.pem'
 npm run build:windows-release
 npm run release:verify
