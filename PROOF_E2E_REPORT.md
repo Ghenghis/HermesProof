@@ -1,8 +1,8 @@
 # End-to-End Truth-Gate Report
 
-- **Run id**: `truth_2026-08-12T20-19-43-281Z`
-- **Timestamp (UTC)**: 2026-08-12T20:19:43.281Z
-- **Duration**: 50.09s
+- **Run id**: `truth_2026-08-12T20-43-08-860Z`
+- **Timestamp (UTC)**: 2026-08-12T20:43:08.860Z
+- **Duration**: 48.55s
 - **Hermes3D workspace**: `C:\Users\Admin\Documents\Codex\2026-08-08\g-github-hermes3d-mcp-lock-orchestrator-2\work\hermesproof-release`
 - **Node**: v22.16.0 on win32
 - **Result**: ✅ ALL REQUIRED GATES PASS
@@ -13,44 +13,44 @@ Pass / Fail / Warn / Skip: **37 / 0 / 1 / 1**
 
 | Gate | Level | Result | Duration | Detail |
 | --- | --- | --- | --- | --- |
-| `source.integrity_manifest` | required | ✅ pass | 54 ms | 190 files hashed |
+| `source.integrity_manifest` | required | ✅ pass | 51 ms | 190 files hashed |
 | `deps.parity` | required | ✅ pass | 3 ms | all 7 deps installed |
-| `tests.unit` | required | ✅ pass | 31283 ms | pass=497, fail=0, exit=0 |
-| `server.stdio_handshake` | required | ✅ pass | 468 ms | 121 tools |
-| `doctor.hermes3d` | required | ✅ pass | 3 ms | ok=true, 0 finding(s) |
-| `events.directory_present` | required | ✅ pass | 20 ms | outbox/handled/failed present |
-| `tasks.directory_present` | required | ✅ pass | 17 ms | pending/claimed/blocked/done present |
+| `tests.unit` | required | ✅ pass | 31338 ms | pass=497, fail=0, exit=0 |
+| `server.stdio_handshake` | required | ✅ pass | 370 ms | 121 tools |
+| `doctor.hermes3d` | required | ✅ pass | 4 ms | ok=true, 0 finding(s) |
+| `events.directory_present` | required | ✅ pass | 19 ms | outbox/handled/failed present |
+| `tasks.directory_present` | required | ✅ pass | 16 ms | pending/claimed/blocked/done present |
 | `trigger.doctor_passes` | required | ✅ pass | 238 ms | trigger doctor ok |
-| `queue.doctor_passes` | required | ✅ pass | 461 ms | queue doctor ok |
-| `wizard.dry_run_passes` | required | ✅ pass | 542 ms | wizard dry-run ok |
-| `e2e.multi_agent_flow` | required | ✅ pass | 787 ms | 14/14 checks; 15 ledger, 11 events |
-| `workspace.integrity` | required | ✅ pass | 144 ms | probes=0, install_mods=0, expected_mods=0, unexpected_mods=0, unexpected_untracked=0 |
+| `queue.doctor_passes` | required | ✅ pass | 451 ms | queue doctor ok |
+| `wizard.dry_run_passes` | required | ✅ pass | 480 ms | wizard dry-run ok |
+| `e2e.multi_agent_flow` | required | ✅ pass | 785 ms | 14/14 checks; 15 ledger, 11 events |
+| `workspace.integrity` | required | ✅ pass | 142 ms | probes=0, install_mods=0, expected_mods=0, unexpected_mods=0, unexpected_untracked=0 |
 | `clients.config_presence` | required | ✅ pass | 2 ms | all 4 present |
-| `clients.claude_code_live` | required | ✅ pass | 6223 ms | 2/2 connected |
-| `server.tool_description_hygiene` | required | ✅ pass | 9 ms | 0 suspicious patterns |
-| `security.mcp_scan_pass` | required | ✅ pass | 133 ms | 0 suspicious patterns across 16 signatures |
-| `evidence.hash_chain_valid` | required | ✅ pass | 36 ms | positive=true, negative_detected_at_idx_1=true |
-| `docs.master_prompt_deliverables_present` | required | ✅ pass | 2 ms | 10/10 deliverables present |
+| `clients.claude_code_live` | required | ✅ pass | 4982 ms | 2/2 connected |
+| `server.tool_description_hygiene` | required | ✅ pass | 7 ms | 0 suspicious patterns |
+| `security.mcp_scan_pass` | required | ✅ pass | 118 ms | 0 suspicious patterns across 16 signatures |
+| `evidence.hash_chain_valid` | required | ✅ pass | 27 ms | positive=true, negative_detected_at_idx_1=true |
+| `docs.master_prompt_deliverables_present` | required | ✅ pass | 3 ms | 10/10 deliverables present |
 | `provider.registry.validate` | required | ✅ pass | 3 ms | 62 entries, 62 unique provider_names |
 | `local.models.catalog.validate` | required | ✅ pass | 1 ms | schema ok; 91 valid rows |
 | `continue.llm_classes.validate` | required | ✅ pass | 0 ms | all 62 expected provider names present (62 total) |
 | `kilocode.provider.mapping.validate` | warn | ✅ pass | 1 ms | kilocode_mapping.csv not in pack — gate stub running as not_applicable |
-| `lmstudio.health` | warn | ⚠️ warn | 5005 ms | LM Studio offline: ECONNREFUSED |
-| `ollama.health` | warn | ✅ pass | 5 ms | Ollama reachable (200) |
-| `backend.api_config_presence` | warn | ✅ pass | 251 ms | backend API inventory: envs=8, gh=true, glab=false |
-| `gitlab.auth_probe` | warn | ✅ pass | 292 ms | GitLab authenticated via gitlab_env_file:GITLAB_TOKEN |
-| `secret.scan` | required | ✅ pass | 145 ms | fallback: 0 finding(s) |
+| `lmstudio.health` | warn | ⚠️ warn | 5017 ms | LM Studio offline: ECONNREFUSED |
+| `ollama.health` | warn | ✅ pass | 3 ms | Ollama reachable (200) |
+| `backend.api_config_presence` | warn | ✅ pass | 225 ms | backend API inventory: envs=8, gh=true, glab=false |
+| `gitlab.auth_probe` | warn | ✅ pass | 301 ms | GitLab authenticated via gitlab_env_file:GITLAB_TOKEN |
+| `secret.scan` | required | ✅ pass | 197 ms | fallback: 0 finding(s) |
 | `secrets.rotation_evidence_present` | warn | ✅ pass | 0 ms | env mtime 2026-08-08T19:54:02.512Z (age 4.0d <= max 90d) |
-| `sbom.cyclonedx_generated` | required | ✅ pass | 40 ms | 96 components @ C:/Users/Admin/Documents/Codex/2026-08-08/g-github-hermes3d-mcp-lock-orchestrator-2/work/hermesproof-release/PROOF/sbom.json |
-| `licenses.scan` | required | ✅ pass | 1545 ms | 99 packages scanned; unknown=0, review=1 |
-| `dependency.fresh` | warn | ✅ pass | 1062 ms | 7/7 direct deps within 12mo |
-| `security.workflow_actions_sha_pinned` | required | ✅ pass | 0 ms | 0 workflow(s), 0 uses-ref(s), all SHA-pinned |
-| `accessibility.wcag_aa_pass` | required | ✅ pass | 1072 ms | 0 critical/serious violations across 21 passing rule(s) (1 non-blocking warning(s)) |
-| `perf.budgets_pass` | required | ✅ pass | 6 ms | hermes_doctor_cold_start=1.5ms<300ms? Y; lock_acquire=6.5ms<50ms? Y; heartbeat=6.9ms<20ms? Y |
-| `docs.reflects_changes` | warn | ✅ pass | 103 ms | no version bump or ADR change in range; gate is inert |
+| `sbom.cyclonedx_generated` | required | ✅ pass | 39 ms | 96 components @ C:/Users/Admin/Documents/Codex/2026-08-08/g-github-hermes3d-mcp-lock-orchestrator-2/work/hermesproof-release/PROOF/sbom.json |
+| `licenses.scan` | required | ✅ pass | 1469 ms | 99 packages scanned; unknown=0, review=1 |
+| `dependency.fresh` | warn | ✅ pass | 948 ms | 7/7 direct deps within 12mo |
+| `security.workflow_actions_sha_pinned` | required | ✅ pass | 1 ms | 0 workflow(s), 0 uses-ref(s), all SHA-pinned |
+| `accessibility.wcag_aa_pass` | required | ✅ pass | 1051 ms | 0 critical/serious violations across 21 passing rule(s) (1 non-blocking warning(s)) |
+| `perf.budgets_pass` | required | ✅ pass | 0 ms | hermes_doctor_cold_start=1.5ms<300ms? Y; lock_acquire=6.5ms<50ms? Y; heartbeat=6.9ms<20ms? Y |
+| `docs.reflects_changes` | warn | ✅ pass | 193 ms | 1 trigger(s) all reflected in README/CHANGELOG |
 | `release.checksums_present` | warn | ✅ pass | 12 ms | 1 artifact(s) have verified sha256+Ed25519 signatures |
-| `quality.coderabbit_reviewed` | skipped | ✅ pass | 91 ms | no PR context (owner/repo/pr); gate inert |
-| `harness_attribution.contract` | required | ✅ pass | 9 ms | cards=8 (aider_0_86_2_windows_installed=PASS, goose_1_27_2_windows_installed=PASS, hermesagent_bridge_2026-08-05=PASS, hermesproof_v0.7.0_hp_mha_real=PASS, openhands_cli_1_16_0_windows_installed=PASS, aider_0_86_2_windows_installed_reference=PASS, goose_1_27_2_windows_installed_reference=PASS, openhands_cli_1_16_0_windows_installed_reference=PASS) \| adversarial=FAIL(HP-MHA-missing-input) |
+| `quality.coderabbit_reviewed` | skipped | ✅ pass | 31 ms | no PR context (owner/repo/pr); gate inert |
+| `harness_attribution.contract` | required | ✅ pass | 7 ms | cards=8 (aider_0_86_2_windows_installed=PASS, goose_1_27_2_windows_installed=PASS, hermesagent_bridge_2026-08-05=PASS, hermesproof_v0.7.0_hp_mha_real=PASS, openhands_cli_1_16_0_windows_installed=PASS, aider_0_86_2_windows_installed_reference=PASS, goose_1_27_2_windows_installed_reference=PASS, openhands_cli_1_16_0_windows_installed_reference=PASS) \| adversarial=FAIL(HP-MHA-missing-input) |
 | `harness_attribution.holdout_isolation_at_queue` | required | ✅ pass | 11 ms | cases=ok\|4/4 (optimizer_on_holdout=FAIL, agent_on_holdout=PASS, optimizer_on_optimization=PASS, optimizer_on_mixed=FAIL) \| index rows=2 range-match=1 |
 
 ## Machine-readable report
