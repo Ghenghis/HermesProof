@@ -5,13 +5,13 @@
   "description": "Real provenance card for the HermesAgent bridge shipped in the HermesProof v0.9.2 implementation commit. The configured failover order is MiniMax, DeepInfra, DeepSeek, SiliconFlow, LM Studio, then Ollama. This card is schema/provenance evidence; only an exact separately measured benchmark can support HP-MHA-007 attribution.",
   "layers": {
     "execution": {
-      "installed_commit": "3150c930fa2bda1da4d43a024a34f5a24c4556a6",
+      "installed_commit": "3a8e91f42ee6471d955a2a9d38cab50be7c69e68",
       "package_sha256": "e9eccf73ad8f1326e8c97db7c077c0bdc9afe98a0b9e49e9e2c3f3e6d3e8bfe7",
       "dependency_lock_sha256": "42b928849ab4ef2aa6bf061225fa30b76499ee97db56956e12d79a21d3b3f7b7",
       "container_digest": null,
       "runner_identity": "hermes-agent-bridge-process",
       "os_arch": "win32-x64",
-      "repo_commit": "3150c930fa2bda1da4d43a024a34f5a24c4556a6",
+      "repo_commit": "3a8e91f42ee6471d955a2a9d38cab50be7c69e68",
       "repo_dirty": false,
       "per_step_timeout_s": 25,
       "task_timeout_s": 60,
