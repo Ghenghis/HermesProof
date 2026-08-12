@@ -11,7 +11,7 @@
 
 ## TL;DR
 
-HermesProof has an end-to-end Model–Harness Attribution (HP-MHA) pipeline that measures whether a benchmark change came from the model, the exact benchmark harness, or their interaction. Twelve MCP tools, two `required` truth gates, and an 11-step smoke runner operate over real stdio JSON-RPC. Harness cards are separately validated for schema and installed provenance; an unrelated benchmark result is never attributed to them.
+HermesProof has an end-to-end Model–Harness Attribution (HP-MHA) pipeline that measures whether a benchmark change came from the model, the exact benchmark harness, or their interaction. Twelve MCP tools, two `required` truth gates, and an 11-step smoke runner operate over real stdio JSON-RPC. Local Hermes cards are checked against their real implementation commit and current hashes; external cards are retained declarations and schema-checked. An unrelated benchmark result is never attributed to any card.
 
 ## Verification contract
 
@@ -20,7 +20,7 @@ HermesProof has an end-to-end Model–Harness Attribution (HP-MHA) pipeline that
 | HP-MHA unit tests | Must pass at the release commit; exact totals are recorded in generated proof rather than frozen in this document |
 | `npm test` | Must pass at the release commit; exact totals are recorded in generated proof |
 | `server.stdio_handshake` | PASS — **121 MCP tools** registered |
-| `harness_attribution.contract` | PASS at `required` only when every discovered card has valid schema and installed provenance and the exact Kilo benchmark v2 evidence re-scores and verifies |
+| `harness_attribution.contract` | PASS at `required` only when every discovered card has valid schema, both local Hermes cards match an unchanged implementation commit and current hashes, and the exact Kilo benchmark v2 evidence re-scores and verifies |
 | `harness_attribution.holdout_isolation_at_queue` | PASS at `required` — 5 / 5 public-boundary cases + trace-index round-trip |
 | `npm run hp-mha:smoke-e2e` | **END-TO-END PASS** — 11 steps, 12 ev_* chained on disk, hash chain verified |
 
@@ -59,7 +59,7 @@ HermesProof has an end-to-end Model–Harness Attribution (HP-MHA) pipeline that
 | **ev_trace searchable index** (HP-MHA spec §8.1) — `buildTraceIndexRows`, `writeTraceIndex`, `readTraceIndex`, `searchTraceIndex` helpers. Index at `<workspace>/<stateDir>/evidence/hp_mha_trace_index.ndjson`, sorted by `(bundle_id, byte_start)`. | `src/core/hp-mha.mjs` |
 | **2 new MCP tools**: `hermes_hp_mha_trace_index_record` (ingest) + `hermes_hp_mha_trace_search` (range query by byte_start / byte_end / signals / kind) | `src/server.mjs` |
 | **`harness_attribution.holdout_isolation_at_queue` sub-gate promoted to `required`**: 5 public-boundary lock-guard cases + trace-index round-trip | `scripts/truth-gates.mjs` |
-| **3 verified installed-reference harness cards** at `examples/hp-mha/harness-cards/templates/{openhands,aider,goose}.json` + `examples/hp-mha/CONTRIBUTING.md` onboarding guide | `examples/hp-mha/` |
+| **3 retained installed-reference declarations** at `examples/hp-mha/harness-cards/templates/{openhands,aider,goose}.json` + `examples/hp-mha/CONTRIBUTING.md` onboarding guide | `examples/hp-mha/` |
 | **Measured-matrix v2 evidence binding**: exact cell/model/harness contract checks, task/scorer source hashes, retained raw responses, deterministic re-scoring, and a digest over the complete evidence | `src/core/hp-mha-benchmark.mjs`, `examples/hp-mha/measured-matrix.json` |
 | **Pre-existing KiloCode stdio round-trip failure fixed**: `startServer` in `scripts/v07-stdio-roundtrip-smoke-test.mjs` now passes `HERMES_AGENT_ENABLED:""`; companion assertion in `src/core/hermes-agent-bridge.test.mjs` switched to a slice check that doesn't pin a position | `scripts/v07-stdio-roundtrip-smoke-test.mjs`, `src/core/hermes-agent-bridge.test.mjs` |
 | **`npm test` failures dropped from 1 → 0** | — |
@@ -92,7 +92,7 @@ hermes_hp_mha_sub_gate                 read-only
 | `aider_0_86_2_windows_installed` | Real | `package:aider-chat@0.86.2` |
 | `goose_1_27_2_windows_installed` | Real | `package:goose@1.27.2-static-windows-x64` |
 
-The three files under `harness-cards/templates/` are verified installed references and are also validated, for eight discovered manifests in total. See `examples/hp-mha/CONTRIBUTING.md` for onboarding: probe the installed version, hash the executable/package and dependency receipt or lock, materialize a unique card from a verified reference, then run `npm run hp-mha:load-all`.
+The three files under `harness-cards/templates/` are retained installed-reference declarations and are schema-checked, for eight discovered manifests in total. They are not re-probed at gate time. See `examples/hp-mha/CONTRIBUTING.md` for onboarding: probe the installed version, hash the executable/package and dependency receipt or lock, materialize a unique card from a reference, then run `npm run hp-mha:load-all`.
 
 The measured matrix is a separate exact Kilo backend safety benchmark. It is not evidence for the quality of the eight cards. Its four raw model responses are retained and re-scored against the bound scorer source before the attribution triple is accepted.
 
@@ -136,7 +136,7 @@ examples/hp-mha/task-sets/optimization.json        new fixture
 examples/hp-mha/harness-cards/hermesproof.json     real v0.9.2 implementation provenance
 examples/hp-mha/harness-cards/hermesagent.json     real v0.9.2 bridge provenance
 examples/hp-mha/harness-cards/{openhands,aider,goose}.json  installed cards
-examples/hp-mha/harness-cards/templates/...    3 verified references
+examples/hp-mha/harness-cards/templates/...    3 retained external declarations
 examples/hp-mha/measured-matrix.json                real hash-bound 2×2 evidence
 scripts/hp-mha-measure-2x2.mjs                      reproducible local runner
 examples/hp-mha/CONTRIBUTING.md                    new onboarding guide
@@ -150,7 +150,7 @@ package.json                                       4 npm scripts
 
 ## Shippability remediation completed
 
-1. **Installed harness provenance** — OpenHands 1.16.0, Aider 0.86.2, and Goose 1.27.2 now have real Windows cards with executable/package and dependency-receipt hashes.
+1. **Retained external harness identities** — OpenHands 1.16.0, Aider 0.86.2, and Goose 1.27.2 have Windows cards with recorded executable/package and dependency-receipt hashes. They remain declarations unless re-probed in the current environment.
 2. **Real measured 2×2 matrix** — a fixed-seed local Ollama run is retained in `examples/hp-mha/measured-matrix.json`, with digest and tamper verification in `hp-mha-benchmark.test.mjs`.
 3. **Lock-time isolation** — every public MCP lock request for server-derived holdout paths or holdout-tagged task sets fails closed regardless of the caller-supplied role, and mixed holdout/optimization tags are rejected. A separately owned evaluator process and result partition remain future hardening.
 4. **Evidence binding** — measured-matrix v2 binds exact cell semantics, task, benchmark harness contract, scorer source, raw responses, deterministic re-scoring, and the complete evidence digest. Unrelated cards receive provenance validation only.

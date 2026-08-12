@@ -27,14 +27,14 @@ If the harness is not packaged, hash the source archive you would `tar -czf` to 
 
 ## 2. Materialize installed evidence
 
-The files under `harness-cards/templates/` are verified installed reference manifests, not placeholders. Copy the closest reference to `harness-cards/<name>.json`, assign a unique card id, then replace its package binding and SHA-256 fields with values from the actual installed runtime. Never reuse the reference hashes for a different installation.
+The files under `harness-cards/templates/` are retained installed-reference declarations, not placeholder/FIXME manifests. HermesProof schema-checks them but does not re-probe those external packages on every release. Copy the closest reference to `harness-cards/<name>.json`, assign a unique card id, then replace its package binding and SHA-256 fields with values from the actual installed runtime. Never reuse the reference hashes for a different installation.
 
 The 7 layers (Execution, Model & inference, Tools, Context, Scheduling, Observability, Governance) come from `docs/48-Point Lever.md` §4. Each layer's required field list is enforced by `validateHarnessCard(card)` in `src/core/hp-mha.mjs`. Cards that omit a required field, add an unknown field, or skip a layer will be rejected by the sub-gate.
 
 ## 3. Verify the contract
 
 ```bash
-npm run hp-mha:load-all                              # validates every card's schema and provenance
+npm run hp-mha:load-all                              # schema-checks all cards; fully verifies local Hermes cards
 node --test src/core/hp-mha-benchmark.test.mjs       # verifies evidence digest + tamper rejection
 node scripts/truth-gates.mjs --ci
 ```
