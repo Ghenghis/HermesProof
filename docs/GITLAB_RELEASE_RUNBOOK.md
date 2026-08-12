@@ -24,7 +24,7 @@ Create reviewed commits with the configured author email, then push every GitLab
 
 ## Pipeline policy
 
-The v0.9.0 publication does not start a GitLab pipeline. If a project-owned runner is restored later, its jobs must retain the `hermesproof-local` tag and no untagged shared-runner job may be enabled. A local signed proof bundle is the release gate while the project has no usable GitLab compute allowance.
+The v0.9.0 publication does not start a GitLab pipeline. If a project-owned runner is restored later, its jobs must retain the `hermesproof-local` tag and no untagged shared-runner job may be enabled. Locally verified proof inside the offline Ed25519-signed release archive is the release gate while the project has no usable GitLab compute allowance. Never publish a Sigstore bundle unless its embedded digest matches the exact proof file.
 
 ## Publish
 

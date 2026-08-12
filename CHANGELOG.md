@@ -35,6 +35,7 @@ No unreleased changes.
 ### Fixed
 - All supported client writers now provide `HERMES_WORKSPACE_ROOT` to `hp-mha-serena` while preserving the core server's narrower environment, so the composite server starts correctly in Claude Code, Codex, Kilo Code, VS Code, Windsurf, Cursor, LM Studio, and Devin exports.
 - The live-client truth gate now requires both `hermes3d-locks` and `hp-mha-serena` to report connected; a core-only connection can no longer produce release proof.
+- A stale Sigstore bundle from earlier history was removed, and pretests now fail if any retained bundle's embedded digest differs from `PROOF/latest.json`; v0.9.0 uses the offline Ed25519-signed archive as its authoritative cryptographic release boundary.
 
 ## [0.6.0] — 2026-05-03
 
