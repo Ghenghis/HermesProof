@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  cleanWindowsReleaseOutput,
   finalizeWindowsReleaseArtifact,
   createReleaseManifest,
   filterReleasePaths,
@@ -76,6 +77,38 @@ test("unsigned development artifact names cannot be confused with official relea
   );
   assert.equal(releaseSumsFilename(false), "SHA256SUMS.txt");
   assert.equal(releaseSumsFilename(true), "SHA256SUMS-UNSIGNED-DEVELOPMENT.txt");
+});
+
+test("release output cleanup removes only prior HermesProof-owned artifacts", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "hp-release-clean-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const outputRoot = path.join(root, "dist");
+  await fs.mkdir(path.join(outputRoot, "HermesProof-v0.9.0-rc.1-windows-x64"), { recursive: true });
+  await fs.writeFile(path.join(outputRoot, "HermesProof-v0.9.0-rc.1-windows-x64", "old.txt"), "old");
+  for (const name of [
+    "HermesProof-v0.9.0-rc.1-windows-x64.zip",
+    "HermesProof-v0.9.0-rc.1-windows-x64.zip.sha256",
+    "HermesProof-v0.9.0-rc.1-windows-x64.zip.sig",
+    "SHA256SUMS.txt"
+  ]) {
+    await fs.writeFile(path.join(outputRoot, name), "old");
+  }
+  await fs.writeFile(path.join(outputRoot, "keep.txt"), "keep");
+  await fs.writeFile(path.join(outputRoot, "HermesProof-not-a-release-windows-x64.zip"), "keep");
+
+  const removed = await cleanWindowsReleaseOutput({ outputRoot });
+
+  assert.deepEqual(removed, [
+    "HermesProof-v0.9.0-rc.1-windows-x64",
+    "HermesProof-v0.9.0-rc.1-windows-x64.zip",
+    "HermesProof-v0.9.0-rc.1-windows-x64.zip.sha256",
+    "HermesProof-v0.9.0-rc.1-windows-x64.zip.sig",
+    "SHA256SUMS.txt"
+  ]);
+  assert.deepEqual((await fs.readdir(outputRoot)).sort(), [
+    "HermesProof-not-a-release-windows-x64.zip",
+    "keep.txt"
+  ]);
 });
 
 test("finalizes an official ZIP with exact sidecars and self-verification", async (t) => {

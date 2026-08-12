@@ -22,6 +22,7 @@ const EXCLUDED = [
   /(?:^|\/)\.env(?:\..*)?$/i,
   /\.(?:log|tmp|swp)$/i,
 ];
+const OWNED_RELEASE_OUTPUT = /^(?:HermesProof-v[0-9][0-9A-Za-z.-]*-windows-x64(?:-UNSIGNED-DEVELOPMENT)?(?:\.zip(?:\.sha256|\.sig)?)?|SHA256SUMS(?:-UNSIGNED-DEVELOPMENT)?\.txt)$/;
 
 function normalized(relative) {
   return String(relative).replaceAll("\\", "/").replace(/^\.\//, "");
@@ -62,6 +63,20 @@ export function releaseArtifactBasename(releaseTag, unsignedDevelopment = false)
 
 export function releaseSumsFilename(unsignedDevelopment = false) {
   return unsignedDevelopment ? "SHA256SUMS-UNSIGNED-DEVELOPMENT.txt" : "SHA256SUMS.txt";
+}
+
+export async function cleanWindowsReleaseOutput({ outputRoot }) {
+  const resolved = path.resolve(outputRoot);
+  await fs.mkdir(resolved, { recursive: true });
+  const entries = await fs.readdir(resolved, { withFileTypes: true });
+  const removed = entries
+    .map((entry) => entry.name)
+    .filter((name) => OWNED_RELEASE_OUTPUT.test(name))
+    .sort();
+  for (const name of removed) {
+    await fs.rm(path.join(resolved, name), { recursive: true, force: true });
+  }
+  return removed;
 }
 
 export async function finalizeWindowsReleaseArtifact({
@@ -182,7 +197,7 @@ export async function buildWindowsRelease({
   const stage = path.resolve(outputRoot, name);
   const relative = path.relative(path.resolve(root), stage);
   if (!relative || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) throw new Error("output must stay inside repository");
-  await fs.rm(stage, { recursive: true, force: true });
+  await cleanWindowsReleaseOutput({ outputRoot });
   await fs.mkdir(stage, { recursive: true });
   await copyPayload({ root, stage, files });
   const manifest = await createReleaseManifest({ root: stage, files, version: facts.version, sourceSha: sha });
