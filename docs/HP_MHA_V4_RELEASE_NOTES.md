@@ -133,8 +133,8 @@ examples/hp-mha/status.mjs                        CLI
 examples/hp-mha/smoke-e2e.mjs                      11-step end-to-end MCP smoke
 examples/hp-mha/task-sets/holdout.json             new fixture
 examples/hp-mha/task-sets/optimization.json        new fixture
-examples/hp-mha/harness-cards/hermesproof.json     real (fae63a4)
-examples/hp-mha/harness-cards/hermesagent.json     real (fae63a4)
+examples/hp-mha/harness-cards/hermesproof.json     real v0.9.2 implementation provenance
+examples/hp-mha/harness-cards/hermesagent.json     real v0.9.2 bridge provenance
 examples/hp-mha/harness-cards/{openhands,aider,goose}.json  installed cards
 examples/hp-mha/harness-cards/templates/...    3 verified references
 examples/hp-mha/measured-matrix.json                real hash-bound 2×2 evidence

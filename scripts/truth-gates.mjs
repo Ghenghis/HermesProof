@@ -62,6 +62,7 @@ import { evaluateWorkspaceHygiene } from "../src/core/workspace-hygiene.mjs";
 import { evaluateRequiredMcpConnections } from "../src/core/mcp-client-health.mjs";
 import { HP_HARNESS_ATTRIBUTION_GATE, evaluateHpMhaSubGate, validateHarnessCardFromManifest, assertLockFilesRespectHoldoutIsolation, writeTraceIndex, readTraceIndex, searchTraceIndex } from "../src/core/hp-mha.mjs";
 import { loadMeasuredMatrixEvidence } from "../src/core/hp-mha-benchmark.mjs";
+import { verifyLocalHarnessCardProvenance } from "../src/core/hp-mha-card-provenance.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -1651,7 +1652,16 @@ if (!shouldSkip("harness_attribution.contract")) {
       try {
         const cardRaw = JSON.parse(await fs.readFile(cardPath, "utf8"));
         const ev = validateHarnessCardFromManifest(cardRaw);
-        cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: cardRaw.card_id, verdict: ev.verdict, ok: ev.ok });
+        const provenance = await verifyLocalHarnessCardProvenance({ cardRaw, cardPath, repoRoot });
+        const ok = ev.ok && provenance.ok;
+        cardResults.push({
+          file: path.relative(repoRoot, cardPath),
+          card_id: cardRaw.card_id,
+          verdict: ok ? "PASS" : "FAIL",
+          ok,
+          provenance_scope: provenance.scope,
+          provenance_reason: provenance.reason
+        });
       } catch (err) {
         cardResults.push({ file: path.relative(repoRoot, cardPath), card_id: file.replace(/\.json$/, ""), verdict: "FAIL", ok: false, error: err.message });
       }

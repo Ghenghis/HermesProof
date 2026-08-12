@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // HP-MHA harness card loader.
 //
-// Reads examples/hp-mha/harness-cards/<name>.json, canonicalises it through
-// the HP-MHA schema, computes the six manifest sha256s the HP-HARNESS-ATTRIBUTION
-// sub-gate requires (HP-MHA-001), and runs evaluateHpMhaSubGate. Prints the
-// full PASS / FAIL / INCONCLUSIVE verdict with reason codes.
+// Reads examples/hp-mha/harness-cards/<name>.json and canonicalises it through
+// the HP-MHA schema. By default it validates declared installed provenance;
+// local HermesProof/HermesAgent cards additionally verify the exact ancestor
+// commit, current product-tree drift, and package/dependency hashes. An
+// explicit --matrix is analysis-only and never becomes release attribution.
 //
 // With `--task-sets`, also exercises HP-MHA-006 by running
 // validateTaskSetTagUniqueness against every fixture under task-sets/ and
@@ -36,6 +37,7 @@ import {
   validateHarnessCardFromManifest
 } from "../../src/core/hp-mha.mjs";
 import { loadMeasuredMatrixEvidence } from "../../src/core/hp-mha-benchmark.mjs";
+import { verifyLocalHarnessCardProvenance } from "../../src/core/hp-mha-card-provenance.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -68,16 +70,19 @@ async function evaluateCard(cardPathOrName, matrix) {
   const result = matrix
     ? evaluateHarnessCardFromManifest(cardRaw, { matrix })
     : validateHarnessCardFromManifest(cardRaw);
+  const provenance = await verifyLocalHarnessCardProvenance({ cardRaw, cardPath, repoRoot });
+  const ok = result.ok && provenance.ok;
   return {
     card_id: cardRaw.card_id,
     card_path: path.relative(repoRoot, cardPath),
     installed_commit: cardRaw.layers.execution.installed_commit,
     manifest_sha256: result.manifest_sha256,
     gate: result.gate,
-    verdict: result.verdict,
-    ok: result.ok,
-    reason_codes: result.reason_codes,
-    reason: result.reason,
+    verdict: ok ? result.verdict : "FAIL",
+    ok,
+    reason_codes: ok ? result.reason_codes : [...result.reason_codes, "HP-MHA-local-provenance-invalid"],
+    reason: provenance.ok ? result.reason : provenance.reason,
+    provenance,
     attribution: result.attribution,
     denominator: result.denominator
   };
