@@ -8,6 +8,13 @@ adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 No unreleased changes.
 
+## [0.9.2] — 2026-08-12
+
+### Fixed
+- The Windows installer now rejects absent, empty, or non-canonical SemVer release facts before comparing the archive manifest and release tag; malformed bundles such as an empty version paired with `v` fail closed.
+- Windows process-runner coverage now executes both `npm.cmd` and `npx.cmd`, the stable release-facts test binds version and tag together, and Pages tests require every user-facing release marker to match the canonical tag.
+- The Windows installer regression is explicitly Windows-only, and the release plan now requires Hermes task claims, exact file locks, allowlisted gates, evidence, and orderly lock/task release for every modification group.
+
 ## [0.9.1] — 2026-08-12
 
 ### Fixed

@@ -1,6 +1,6 @@
 # HermesProof — Architecture
 
-> **Current release:** v0.9.1 is a two-server monorepo: `hermes3d-locks` exposes 121
+> **Current release:** v0.9.2 is a two-server monorepo: `hermes3d-locks` exposes 121
 > coordination/proof tools and `hp-mha-serena` exposes 34 governed harness, Serena,
 > capability, automation, backend, and updater tools.
 

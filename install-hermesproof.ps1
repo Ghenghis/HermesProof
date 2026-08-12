@@ -103,9 +103,19 @@ $releaseFacts = Get-Content -LiteralPath $releaseFactsFile -Raw | ConvertFrom-Js
 Verify-ReleaseManifest $bundleRoot $manifest
 . $pathHelperFile
 $manifestVersion = [string]$manifest.version
+$releaseVersion = [string]$releaseFacts.version
+$releaseTag = [string]$releaseFacts.releaseTag
+$canonicalVersionPattern = '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$'
 if (
-  $manifestVersion -ne [string]$releaseFacts.version -or
-  [string]$releaseFacts.releaseTag -ne "v$manifestVersion"
+  [string]::IsNullOrWhiteSpace($manifestVersion) -or
+  [string]::IsNullOrWhiteSpace($releaseVersion) -or
+  [string]::IsNullOrWhiteSpace($releaseTag) -or
+  $manifestVersion -notmatch $canonicalVersionPattern -or
+  $releaseVersion -notmatch $canonicalVersionPattern
+) { throw "Release version is missing or malformed" }
+if (
+  $manifestVersion -ne $releaseVersion -or
+  $releaseTag -ne "v$manifestVersion"
 ) { throw "Release manifest version does not match canonical release facts" }
 $sha = [string]$manifest.sourceSha
 if ($sha -notmatch '^[0-9a-f]{40,64}$') { throw "Invalid source SHA in release manifest" }

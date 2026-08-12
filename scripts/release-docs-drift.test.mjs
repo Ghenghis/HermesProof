@@ -34,7 +34,9 @@ test("README and Pages site publish the stable dual-remote release and current d
     assert.match(content, /ecosystem-e2e\.svg/);
     assert.match(content, /updater-lifecycle-animated\.svg/);
   }
-  assert.equal(page.includes(currentReleaseTag), true);
+  const userFacingReleaseTags = [...page.matchAll(/\bv\d+\.\d+\.\d+\b/g)].map((match) => match[0]);
+  assert.equal(userFacingReleaseTags.length, 3);
+  assert.deepEqual([...new Set(userFacingReleaseTags)], [currentReleaseTag]);
   assert.doesNotMatch(page, /0\.9\.0-rc\.1/);
   assert.match(page, /121/);
   assert.match(page, /34/);

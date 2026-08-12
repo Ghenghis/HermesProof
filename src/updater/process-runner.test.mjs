@@ -3,17 +3,19 @@ import assert from "node:assert/strict";
 
 import { runProcess } from "./process-runner.mjs";
 
-test("process runner executes Windows npm shims without a command shell", {
+test("process runner executes Windows npm and npx shims without a command shell", {
   skip: process.platform !== "win32"
 }, async () => {
-  const result = await runProcess({
-    command: "npm.cmd",
-    args: ["--version"],
-    timeoutMs: 10_000,
-    maxOutputBytes: 64 * 1024
-  });
-  assert.equal(result.exitCode, 0);
-  assert.match(result.stdout.trim(), /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/);
+  for (const command of ["npm.cmd", "npx.cmd"]) {
+    const result = await runProcess({
+      command,
+      args: ["--version"],
+      timeoutMs: 10_000,
+      maxOutputBytes: 64 * 1024
+    });
+    assert.equal(result.exitCode, 0, command);
+    assert.match(result.stdout.trim(), /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/, command);
+  }
 });
 
 test("process runner preserves exact argv and exposes only an allowlisted environment", async () => {

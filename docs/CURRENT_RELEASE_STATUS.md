@@ -4,9 +4,9 @@ Last audited: 2026-08-12
 
 ## Authoritative lineage
 
-- Product: HermesProof `0.9.1`
+- Product: HermesProof `0.9.2`
 - Release branch: `release/hp-mha-serena-shippable`
-- Stable tag: `v0.9.1`
+- Stable tag: `v0.9.2`
 - Authoritative OTA remote: `https://gitlab.com/Ghenghis/HermesProof.git`
 - Public mirror: `https://github.com/Ghenghis/HermesProof.git`
 - Release facts: [`config/release-facts.json`](../config/release-facts.json)
@@ -19,8 +19,8 @@ The 2026-08-12 ancestry and content audit found:
 
 | Checkout | Finding | Release use |
 |---|---|---|
-| isolated `hermesproof-release` worktree | contains both remote histories and the v0.9.1 OTA patch | source of truth for `v0.9.1` |
-| `G:\Github\HermesProof` | clean v0.9.0 GitLab merge checkout before patch publication | refresh from the verified v0.9.1 merge after publication |
+| isolated `hermesproof-release` worktree | contains both remote histories and the CodeRabbit-reviewed v0.9.2 OTA patch | source of truth for `v0.9.2` |
+| `G:\Github\HermesProof` | stable GitLab checkout | refresh from the verified v0.9.2 merge after publication |
 | `G:\Github\HermesProof2\HermesProof` | duplicate of the same clean RC checkout | not a separate lineage |
 | `G:\Github\HermesProof2` | parent directory, not a Git repository | never use as a source |
 | `G:\Github\hermes3d-mcp-lock-orchestrator` | July commit; 55 commits behind with 640 dirty/untracked entries | preserve for audit only; never push directly |

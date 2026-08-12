@@ -24,7 +24,9 @@ async function parsePowerShell(file) {
   });
 }
 
-test("Windows installer accepts the patch version declared by canonical release facts", async (t) => {
+test("Windows installer accepts the patch version declared by canonical release facts", {
+  skip: process.platform !== "win32"
+}, async (t) => {
   const canonicalFacts = JSON.parse(await fs.readFile(path.join(root, "config", "release-facts.json"), "utf8"));
   const fixture = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-installer-version-"));
   t.after(() => fs.rm(fixture, { recursive: true, force: true }));
@@ -78,12 +80,32 @@ test("Windows installer accepts the patch version declared by canonical release 
 
   await fs.writeFile(
     path.join(fixture, "config", "release-facts.json"),
-    JSON.stringify({ version: "0.9.2", releaseTag: "v0.9.2" }) + "\n",
+    JSON.stringify({ version: "999.0.0", releaseTag: "v999.0.0" }) + "\n",
     "utf8"
   );
   await assert.rejects(
     execFileAsync(windowsPowerShell, installerArgs, { windowsHide: true }),
     /Release manifest version does not match canonical release facts/
+  );
+
+  await fs.writeFile(
+    path.join(fixture, "config", "release-facts.json"),
+    JSON.stringify({ version: "", releaseTag: "v" }) + "\n",
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(fixture, "release-manifest.json"),
+    JSON.stringify({
+      schema: "hermesproof.windows-release.v1",
+      version: "",
+      sourceSha: "invalid-on-purpose",
+      files: []
+    }) + "\n",
+    "utf8"
+  );
+  await assert.rejects(
+    execFileAsync(windowsPowerShell, installerArgs, { windowsHide: true }),
+    /Release version is missing or malformed/
   );
 });
 
