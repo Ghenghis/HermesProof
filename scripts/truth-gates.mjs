@@ -59,6 +59,7 @@ import { runDocsChangesReflectedGate } from "./docs-changes-reflected.mjs";
 import { runReleaseChecksumGate } from "./release-checksum.mjs";
 import { runCoderabbitReviewGate, parseRemoteUrl } from "./coderabbit-review.mjs";
 import { evaluateWorkspaceHygiene } from "../src/core/workspace-hygiene.mjs";
+import { evaluateRequiredMcpConnections } from "../src/core/mcp-client-health.mjs";
 import { HP_HARNESS_ATTRIBUTION_GATE, evaluateHpMhaSubGate, evaluateHarnessCardFromManifest, assertLockFilesRespectHoldoutIsolation, writeTraceIndex, readTraceIndex, searchTraceIndex } from "../src/core/hp-mha.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
@@ -875,12 +876,15 @@ if (!shouldSkip("clients.claude_code_live")) {
   if (result.error === "ENOENT") {
     record("clients.claude_code_live", "warn", false, result, "claude CLI not on PATH", durationMs);
   } else {
-    const line = (result.stdout.split("\n").find((l) => l.includes("hermes3d-locks")) || "").trim();
-    const connected = /✓\s*Connected/i.test(line);
+    const health = evaluateRequiredMcpConnections(result.stdout);
+    const connected = result.status === 0 && health.ok;
     record("clients.claude_code_live", "required", connected, {
       exit_code: result.status,
-      matched_line: line
-    }, connected ? "Connected" : `not connected (line: ${line || "<missing>"})`, durationMs);
+      ...health
+    }, connected
+      ? `${health.required.length}/${health.required.length} connected`
+      : `missing=${health.missing.join(",") || "none"}; failed=${health.failed.join(",") || "none"}`,
+    durationMs);
   }
 }
 

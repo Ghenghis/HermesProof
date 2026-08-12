@@ -32,6 +32,10 @@ No unreleased changes.
 - **Sub-gate promoted `warn` → `required`** once two real harness cards were committed. `scripts/truth-gates.mjs` now iterates every JSON file under `examples/hp-mha/harness-cards/` and asserts each passes the HP-MHA contract end-to-end; failure of any real card fails the run. Truth-gate reports `cards=N (card_a=PASS, card_b=PASS) | adversarial=FAIL(HP-MHA-missing-input)`.
 - Truth-gate expected tool list extended with `hermes_hp_mha_trace_metrics` and `hermes_hp_mha_trace_prune`. `server.stdio_handshake` now reports 118 tools.
 
+### Fixed
+- All supported client writers now provide `HERMES_WORKSPACE_ROOT` to `hp-mha-serena` while preserving the core server's narrower environment, so the composite server starts correctly in Claude Code, Codex, Kilo Code, VS Code, Windsurf, Cursor, LM Studio, and Devin exports.
+- The live-client truth gate now requires both `hermes3d-locks` and `hp-mha-serena` to report connected; a core-only connection can no longer produce release proof.
+
 ## [0.6.0] — 2026-05-03
 
 ### Added
