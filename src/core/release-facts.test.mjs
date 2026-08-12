@@ -14,7 +14,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 test("release facts load the supported stable dual-remote product contract", async () => {
   const facts = await loadReleaseFacts({ root });
   assert.equal(facts.schema, RELEASE_FACTS_SCHEMA);
-  assert.equal(facts.version, "0.9.0");
+  assert.equal(facts.version, "0.9.1");
   assert.equal(facts.gitlab.projectUrl, "https://gitlab.com/Ghenghis/HermesProof");
   assert.deepEqual(facts.github, {
     projectUrl: "https://github.com/Ghenghis/HermesProof",
