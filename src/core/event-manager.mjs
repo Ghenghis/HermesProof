@@ -20,6 +20,7 @@ import {
 import { makeMutex } from "./mutex.mjs";
 
 export const EVENT_SCHEMA_VERSION = 1;
+const BRANCH_CACHE_TTL_MS = 5_000;
 
 export const EVENT_TYPES = new Set([
   "task.enqueued",
@@ -27,6 +28,13 @@ export const EVENT_TYPES = new Set([
   "task.released",
   "task.blocked",
   "task.recovered",
+  "agent.profile.updated",
+  "agent.presence",
+  "message.sent",
+  "message.acked",
+  "assistance.requested",
+  "unlock.requested",
+  "work.completed",
   "handoff.created",
   "handoff.approved",
   "handoff.denied",
@@ -36,6 +44,21 @@ export const EVENT_TYPES = new Set([
   "evidence.appended",
   "gate.failed",
   "gate.passed",
+  "gitlab.project.ready",
+  "gitlab.merge_request.ready",
+  "gitlab.ultimate.ready",
+  "mode.testing.updated",
+  "contract.updated",
+  "contract.reviewed",
+  "slop.detected",
+  "claim.audit.passed",
+  "claim.audit.failed",
+  "agentic.tick",
+  "agent.watchdog.poke",
+  "agent.watchdog.recovery",
+  "bug.reported",
+  "bug.updated",
+  "bug.fix_submitted",
   "pr.opened"
 ]);
 
@@ -45,6 +68,9 @@ export const RECOMMENDED_ACTIONS = new Set([
   "fix_scope",
   "merge",
   "review_handoff",
+  "fix_bug",
+  "review_fix",
+  "run_tests",
   "acknowledge",
   "none"
 ]);
@@ -54,6 +80,7 @@ export class EventManager {
     if (!workspaceRoot) throw new Error("workspaceRoot is required");
     this.workspaceRoot = path.resolve(workspaceRoot);
     this.paths = statePaths(this.workspaceRoot, stateDirName);
+    this._branchCache = null; // { value, expiresAt }
     // Serialize concurrent markEventHandled / failEvent — each does
     // read + atomic-rename + write + ledger-append in sequence; without
     // the mutex two concurrent calls for the same event_id can both pass
@@ -104,7 +131,7 @@ export class EventManager {
       workspace_root: this.workspaceRoot,
       task_id: task_id || null,
       owner: owner || null,
-      branch: branch || await currentBranch(this.workspaceRoot),
+      branch: branch || await this.currentBranch(),
       files: normalizedFiles,
       summary,
       evidence_ids: task_id ? await this.evidenceIdsForTask(task_id) : [],
@@ -259,6 +286,16 @@ export class EventManager {
     };
     return await appendChainedJsonLine(this.paths.evidenceFile, entry);
   }
+
+  async currentBranch() {
+    const now = Date.now();
+    if (this._branchCache && this._branchCache.expiresAt > now) {
+      return this._branchCache.value;
+    }
+    const value = await currentBranch(this.workspaceRoot);
+    this._branchCache = { value, expiresAt: now + BRANCH_CACHE_TTL_MS };
+    return value;
+  }
 }
 
 export async function readEvidenceEntries(file) {
@@ -285,6 +322,8 @@ function makeEventId(createdUtc, payload) {
 }
 
 async function currentBranch(workspaceRoot) {
+  const gitPath = path.join(workspaceRoot, ".git");
+  if (!(await pathExists(gitPath))) return null;
   const result = spawnSync("git", ["branch", "--show-current"], {
     cwd: workspaceRoot,
     encoding: "utf8",

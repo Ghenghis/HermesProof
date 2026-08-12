@@ -1,16 +1,16 @@
 # HermesProof — Maintenance & Best Practices
 
 <div align="center">
-<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-five gates sequentially" width="100%"/>
+<img src="./diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-seven gates sequentially" width="100%"/>
 </div>
 
-This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees. The current server surface exposes 42 MCP tools.
+This guide covers day-2 operations: repair procedures, code-quality conventions, debugging, and how to extend HermesProof without weakening its safety guarantees. The current two-server surface exposes 121 core MCP tools plus 34 governed composite tools. Generated facts in [GENERATED_RELEASE_FACTS.md](GENERATED_RELEASE_FACTS.md) are authoritative for release counts.
 
-The single best diagnostic is `npm run truth-gates` — it surfaces thirty-five independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
+The single best diagnostic is `npm run truth-gates` — it surfaces thirty-seven independent attestations and writes a structured report (`PROOF/latest.json` + `PROOF_E2E_REPORT.md`). If you only run one thing after a change, run that.
 
 ## Code-quality conventions
 
-- **No arbitrary shell.** All process execution must go through `GateRunner` with an entry in `DEFAULT_GATES`. Reviewers should reject PRs that introduce `child_process` calls outside the gate runner.
+- **No arbitrary shell authority.** Execution must use a reviewed allowlisted gate or the bounded process runner (`shell: false`, exact arguments, environment allowlist, timeout, bounded/redacted output). Raw Serena shell and mutation tools remain unavailable.
 - **Atomic file ops.** Use `writeJsonAtomic` (write tmp + rename) and `mkdir { recursive: false }` for lock acquisition. Avoid `fs.writeFile` directly for state files.
 - **Path-relative inputs.** Tools that accept file paths must funnel through `normalizeWorkspacePath`. The function rejects path traversal, null bytes, and the workspace root itself.
 - **Owner string discipline.** Use `claude-lead`, `claude-reviewer-ux`, `codex-impl-01`, `windsurf-cascade`, etc. Reject vague names like `agent`, `me`, `bot`.

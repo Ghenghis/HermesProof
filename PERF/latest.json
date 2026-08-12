@@ -1,0 +1,70 @@
+{
+  "perf_schema_version": 1,
+  "ok": true,
+  "started_utc": "2026-07-02T12:20:27.132Z",
+  "duration_ms": 7705,
+  "iterations": 200,
+  "node_version": "v26.2.0",
+  "platform": "win32",
+  "arch": "x64",
+  "cpu_count": 16,
+  "cpu_model": "AMD Ryzen 7 5800X3D 8-Core Processor           ",
+  "budgets": {
+    "doctor_p95_ms": 300,
+    "lock_p95_ms": 50,
+    "heartbeat_p95_ms": 20
+  },
+  "benches": {
+    "hermes_doctor_cold_start": {
+      "stats": {
+        "n": 200,
+        "min_ms": 0.7882,
+        "max_ms": 3.254,
+        "mean_ms": 1.0974,
+        "p50_ms": 1.0524,
+        "p95_ms": 1.4514,
+        "p99_ms": 2.9114
+      },
+      "budget": {
+        "budget_ms": 300,
+        "p95_ms": 1.4514,
+        "pass": true,
+        "headroom_ms": 298.5486
+      }
+    },
+    "lock_acquire": {
+      "stats": {
+        "n": 200,
+        "min_ms": 4.0976,
+        "max_ms": 20.7798,
+        "mean_ms": 5.0225,
+        "p50_ms": 4.7465,
+        "p95_ms": 6.54,
+        "p99_ms": 12.0747
+      },
+      "budget": {
+        "budget_ms": 50,
+        "p95_ms": 6.54,
+        "pass": true,
+        "headroom_ms": 43.46
+      }
+    },
+    "heartbeat": {
+      "stats": {
+        "n": 200,
+        "min_ms": 5.0727,
+        "max_ms": 60.8698,
+        "mean_ms": 6.1186,
+        "p50_ms": 5.7039,
+        "p95_ms": 6.8975,
+        "p99_ms": 7.4503
+      },
+      "budget": {
+        "budget_ms": 20,
+        "p95_ms": 6.8975,
+        "pass": true,
+        "headroom_ms": 13.1025
+      }
+    }
+  }
+}

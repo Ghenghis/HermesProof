@@ -79,7 +79,7 @@ If you can do the work as inspection + reporting, do it. Save writers for genuin
 
 | Lead | Sub 1 | Sub 2 |
 |---|---|---|
-| `src/**` + `scripts/**` (core wiring) | `docs/**` + `.github/workflows/**` | `examples/**` (NEW files only) |
+| `src/**` + `scripts/**` (core wiring) | `docs/**` + `.gitlab-ci.yml` | `examples/**` (NEW files only) |
 | `<phase plan>.md` + `<adr>.md` | `handoffs/HANDOFF_TO_CODEX_*.md` | `tests/**/test_<this_phase>_*.py` |
 | `Hermes3D` repo via MCP locks | `HermesProof` repo via git branch | `documentation` repo via git branch |
 

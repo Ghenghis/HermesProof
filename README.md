@@ -1,404 +1,198 @@
 <div align="center">
 
-<img src="docs/diagrams/hero.svg" alt="HermesProof — verifiable multi-agent coordination over MCP" width="100%"/>
+<img src="docs/diagrams/hero.svg" alt="HermesProof — verifiable multi-agent completion over MCP" width="100%"/>
 
-<br/>
+# HermesProof
 
-[![Truth Gates](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml/badge.svg)](https://github.com/Ghenghis/HermesProof/actions/workflows/truth-gates.yml)
-[![Pages](https://github.com/Ghenghis/HermesProof/actions/workflows/pages.yml/badge.svg)](https://ghenghis.github.io/HermesProof/)
-[![MCP](https://img.shields.io/badge/MCP-2025--11--25-a855f7?style=flat-square)](https://modelcontextprotocol.io)
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-06b6d4?style=flat-square)](https://nodejs.org)
-[![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](./LICENSE)
-[![Inspired by](https://img.shields.io/badge/inspired%20by-Hermes%20Agent-ec4899?style=flat-square)](https://hermes-agent.nousresearch.com/)
+**A fail-closed coordination, semantic-intelligence, harness, capability, and release control plane for coding agents.**
 
-**🌐 Live site → [ghenghis.github.io/HermesProof](https://ghenghis.github.io/HermesProof/)**
+[![Release](https://img.shields.io/badge/release-v0.9.0-7b61ff?style=flat-square)](https://gitlab.com/Ghenghis/HermesProof/-/releases)
+[![GitLab](https://img.shields.io/badge/source-GitLab-fc6d26?style=flat-square)](https://gitlab.com/Ghenghis/HermesProof)
+[![GitHub mirror](https://img.shields.io/badge/mirror-GitHub-181717?style=flat-square)](https://github.com/Ghenghis/HermesProof)
+[![Pages](https://img.shields.io/badge/docs-GitLab%20Pages-20d9ff?style=flat-square)](https://ghenghis.gitlab.io/HermesProof)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A520-45e1ac?style=flat-square)](https://nodejs.org)
+[![License](https://img.shields.io/badge/license-MIT-45e1ac?style=flat-square)](LICENSE)
 
-**HermesProof** is the verifiable file-lock, proof, and passive trigger-bridge layer that lets **Claude · Codex · Windsurf · Cascade** coordinate edits on the **same repository** — without clobbering each other.
-
-[Quickstart](#-quickstart) · [Pipeline](#-end-to-end-pipeline) · [Truth Gates](#-truth-gates) · [Architecture](#-architecture) · [Coordination](#-multi-agent-coordination) · [Composition](#-composes-with-other-mcp-servers) · [Docs](#-documentation)
+[Live release site](https://ghenghis.gitlab.io/HermesProof) ·
+[GitHub release mirror](https://github.com/Ghenghis/HermesProof/releases) ·
+[Windows install](docs/WINDOWS_INSTALL.md) ·
+[Release verification](docs/WINDOWS_INSTALL.md#verify-before-extraction) ·
+[Updater runbook](docs/UPDATER_RUNBOOK.md) ·
+[Tool reference](docs/TOOL_REFERENCE.md) ·
+[Troubleshooting](docs/TROUBLESHOOTING_UPDATES.md)
 
 </div>
 
----
+HermesProof turns a requested outcome into an acceptance graph, gives every agent only the authority it needs, prevents colliding edits, proves the result, and preserves a known-good rollback path. It ships as **two MCP servers in one monorepo**:
 
-## ✦ End-to-end pipeline
+- `hermes3d-locks` — **121 tools** for tasks, file locks, handoffs, gates, evidence, releases, clients, GitLab, diagnostics, queues, agent communication, and project hygiene.
+- `hp-mha-serena` — **34 governed tools** for HP-MHA harness execution, Serena semantic intelligence, capability packs, backend recovery, automation, MCP lifecycle management, and safe updates.
 
-Every edit flows through six gates, leaving an immutable trail behind.
+Serena **1.7.0** is pinned by immutable commit and integrated using its current `language_servers:` project schema. Its 52-tool catalog is policy-filtered: 29 are available in the desktop context, 15 semantic/LSP operations are exposed behind Hermes claims and locks, and **zero raw mutation tools** bypass coordination. The 1.7 runtime adds parallel-client race fixes, timeout recovery, surfaced activation errors, language-server health status, and safer localhost/template handling.
 
-<div align="center">
-<img src="docs/diagrams/pipeline-flow.svg" alt="End-to-end pipeline: intent → claim → work → handoff → verify → attest" width="100%"/>
-</div>
+![HermesProof ecosystem architecture](docs/diagrams/ecosystem-e2e.svg)
 
-```text
-01 INTENT     agent decides "I want to edit X"
-02 CLAIM      claim_task + lock_files (atomic mkdir EEXIST, 90-min TTL)
-03 WORK       edit owned files, heartbeat to extend TTL — others see "blocked"
-04 HANDOFF    request_handoff → approve_handoff → ownership transferred
-05 VERIFY     run_gate (allowlisted: git-status, diff-check, npm-test, audit, …)
-06 ATTEST     append_evidence + release_files — append-only NDJSON ledger
-```
+## What this release solves
 
-Every push to `main` re-proves the entire chain through 35 truth gates, signs `PROOF/latest.json` with Sigstore (keyless OIDC), publishes a build-provenance attestation, and commits the refreshed proof bundle back to the repo automatically.
+- Multiple agents can work in one repository without silently overwriting one another.
+- Kilo Code and other clients get a dependable backend/tooling fallback when their built-in toolchain is incomplete.
+- Missing capabilities can be resolved just in time as signed, pinned, least-privilege packs instead of permanently exposing every MCP server.
+- Serena supplies symbol-aware navigation, diagnostics, references, implementations, and refactors without bypassing Hermes locks.
+- HP-MHA compares harness/tooling outcomes with measured evidence and scheduler-level holdout isolation.
+- User-facing progress can be backed by live MCP probes, tests, visual evidence, a hash-chained ledger, and 37 truth gates.
+- Updates stage immutably, snapshot client configs, probe both servers, quarantine failures, and roll back to a known-good release.
 
----
+## Install on Windows 11
 
-## ✦ Truth gates
+The release ZIP is the recommended path for another PC. It is per-user, does not require administrator rights, verifies its manifest, probes both MCP servers, snapshots existing client configuration, and uses a stable launcher so later upgrades do not rewrite every client.
 
-The proof harness — `npm run truth-gates` — runs thirty-five independent verifications in sequence, capturing structured evidence at every step.
+![Offline release signing and verification](docs/diagrams/release-signing-flow.svg)
 
-<div align="center">
-<img src="docs/diagrams/truth-gates-animated.svg" alt="Truth-gate pipeline running thirty-five gates sequentially" width="100%"/>
-</div>
-
-| #   | Gate | What it proves |
-| --- | --- | --- |
-| 01  | `source.integrity_manifest` | SHA-256 manifest of `src/` + `scripts/` so tampering surfaces as hash drift |
-| 02  | `deps.parity` | `package.json` declared deps match installed versions in `node_modules/` |
-| 03  | `tests.unit` | All Node smoke tests pass via direct `node --test` |
-| 04  | `server.stdio_handshake` | Real `node src/server.mjs` boots, completes MCP `initialize`, returns 42 MCP tools |
-| 05  | `doctor.hermes3d` | `hermes_doctor` returns `ok: true` against the live workspace when local gates are enabled |
-| 06  | `events.directory_present` | `events/outbox`, `events/handled`, and `events/failed` exist after init |
-| 07  | `tasks.directory_present` | `tasks/pending`, `tasks/claimed`, `tasks/blocked`, and `tasks/done` exist after init |
-| 08  | `trigger.doctor_passes` | Trigger bridge doctor validates event outbox, schema handling, and review packets |
-| 09  | `queue.doctor_passes` | Queue doctor validates enqueue, pick, done, owner affinity, priority, and recovery |
-| 10  | `wizard.dry_run_passes` | Universal setup wizard dry-run plans client wiring without writing state |
-| 11  | `e2e.multi_agent_flow` | 14-step real stdio probe: claim -> lock -> block -> handoff -> gate -> release |
-| 12  | `workspace.integrity` | No probe files leaked and no unexpected tracked changes in the workspace |
-| 13  | `clients.config_presence` | Claude Desktop, Claude Code, Codex, and Windsurf configs are wired |
-| 14  | `clients.claude_code_live` | `claude mcp list` reports `hermes3d-locks` connected when local gates are enabled |
-| 15  | `server.tool_description_hygiene` | Tool descriptions are free of prompt-injection markers |
-| 16  | `security.mcp_scan_pass` | Static MCP poisoning scan over `src/server.mjs` passes |
-| 17  | `evidence.hash_chain_valid` | Round-trips append + verify, including detection of mid-chain tamper |
-| 18  | `docs.master_prompt_deliverables_present` | Required design and handoff documents exist, non-empty, with H1 headings |
-| 19  | `provider.registry.validate` | `policies/provider-registry/registry.yaml` schema and duplicate checks pass |
-| 20  | `local.models.catalog.validate` | `lmstudio_local_models.csv` is schema-valid and non-empty |
-| 21  | `continue.llm_classes.validate` | All 62 expected Continue LLM provider names are present |
-| 22  | `kilocode.provider.mapping.validate` | KiloCode provider mapping gate reports applicable status or explicit N/A |
-| 23  | `lmstudio.health` | LM Studio endpoint health probe runs as warn-on-offline |
-| 24  | `ollama.health` | Ollama endpoint health probe runs as warn-on-offline |
-| 25  | `secret.scan` | Repo secret scan runs via gitleaks or stdlib fallback |
-| 26  | `secrets.rotation_evidence_present` | Secret-rotation evidence is present when required |
-| 27  | `sbom.cyclonedx_generated` | CycloneDX SBOM generation succeeds |
-| 28  | `licenses.scan` | Production dependency licenses pass the SPDX allow/deny policy |
-| 29  | `dependency.fresh` | Direct deps freshness check runs with advisory windows |
-| 30  | `security.workflow_actions_sha_pinned` | GitHub Actions are pinned according to workflow hardening policy |
-| 31  | `accessibility.wcag_aa_pass` | Accessibility gate reaches WCAG AA policy status |
-| 32  | `perf.budgets_pass` | Performance budgets gate reaches policy status |
-| 33  | `docs.reflects_changes` | Docs reflection gate verifies user-facing changes are documented |
-| 34  | `release.checksums_present` | Release checksum artifacts are present when required |
-| 35  | `quality.coderabbit_reviewed` | CodeRabbit review gate records reviewed or skipped status |
-
-Outputs:
-
-- `PROOF/latest.json` — machine-readable evidence (gate-by-gate JSON, manifest hashes, config snapshots)
-- `PROOF/latest.json.cosign.bundle` — Sigstore keyless signature published to Rekor on every `main` push
-- `PROOF_E2E_REPORT.md` — human-readable summary table at the repo root
-- GitHub Actions artifact `proof-<sha>` — 90-day retention
-- GitHub native build-provenance attestation — verifiable with `gh attestation verify PROOF/latest.json --repo Ghenghis/HermesProof`
-
-> Run locally: `npm run truth-gates` · Run CI-only subset: `npm run truth-gates -- --ci` · Read latest: [`PROOF_E2E_REPORT.md`](./PROOF_E2E_REPORT.md)
-
----
-
-## ✦ Architecture
-
-Single stdio process per workspace, four MCP clients, durable queue and proof state.
-
-<div align="center">
-<img src="docs/diagrams/architecture.svg" alt="HermesProof system architecture: clients connect via stdio JSON-RPC to one MCP server, which writes to the workspace state directory and runs allowlisted gates" width="100%"/>
-</div>
-
-The server exposes **42 MCP tools** for coordination, gates, evidence, event outbox operations, queue pickup, anonymous role rotation, USER-session management, A2A task exchange, Hermes Agent bridging, and diagnostics:
-
-```text
-CLAIM           claim_task          release_task
-LOCK            lock_files          release_files       heartbeat           list_locks
-HANDOFF         request_handoff     approve_handoff
-GATE            run_gate            list_gates
-EVIDENCE        append_evidence     verify_evidence
-EVENTS          list_events         emit_event          mark_event_handled
-                create_blocked_handoff
-QUEUE           enqueue_task        list_pending_tasks  pick_task
-                recover_stale_tasks
-DIAGNOSTICS     get_state           recover_stale_locks doctor              read_policy
-                list_agents
-ANONYMOUS       anonymous_claim     anonymous_release   anonymous_state
-                record_outcome      record_task         dispatch_recommend
-USER SESSION    user_grant_session  user_revoke_session user_check_authorization
-A2A             a2a_create_task     a2a_get_task        a2a_update_task     a2a_list_tasks
-AGENT           agent_health        agent_request_user_session
-                agent_resolve_blocked                   agent_revoke_session
-```
-
-Each tool ships with MCP `2025-11-25` annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients can render approval prompts that match the actual blast radius — read-only listing tools auto-allow, destructive recovery tools always confirm.
-
-Evidence is hash-chained: every entry binds to the previous via `prev_hash` + canonical-JSON `entry_hash` (sha256), so any after-the-fact rewrite is detected by `hermes_verify_evidence`. State lives in `<workspace>/.hermes3d_orchestrator/`:
-
-The v0.4 trigger bridge is deliberately passive. HermesProof writes durable event JSON files and optional review packets that other processes may observe; it does **not** call an LLM API, open a chat, or directly wake Claude, Codex, Windsurf, or any other session.
-
-```text
-.hermes3d_orchestrator/
-├── locks/              one directory per locked file (mkdir EEXIST = atomic acquire)
-│   └── <hash>/metadata.json
-├── tasks/
-│   ├── pending/        queued tasks awaiting pickup
-│   ├── claimed/        atomically claimed queue tasks
-│   ├── blocked/        malformed or scope-blocked queue tasks
-│   └── done/           completed queue tasks
-├── handoffs/           pending + decided handoff requests
-├── evidence/
-│   └── ledger.ndjson   append-only attestation log
-├── events/
-│   ├── outbox/         pending event JSON files
-│   ├── handled/        atomically moved after consumer acknowledgement
-│   └── failed/         events that need operator inspection
-└── review_packets/     optional deterministic Markdown review prompts
-```
-
-Event files use `event_schema_version: 1`, are first written through a same-filesystem atomic rename, and are moved from `outbox/` to `handled/` with `fs.rename` so competing watchers cannot double-handle the same event. Retention is intentionally narrow: handled events may be pruned after an operator-chosen cutoff such as 30 days; failed events are never auto-pruned.
-
-Queue task files use `task_schema_version: 1`. `hermes_pick_task` claims the highest-priority owner-matching task by atomically moving it from `tasks/pending/` to `tasks/claimed/`; `hermes_release_task` moves queued work to `tasks/done/`; stale claims can be explicitly returned to pending with `hermes_recover_stale_tasks`.
-
----
-
-## ✦ Trigger bridge (v0.4)
-
-State changes flow through a passive event router. No LLM is called from HermesProof; the file is the trigger surface.
-
-<div align="center">
-<img src="docs/diagrams/event-flow.svg" alt="Trigger bridge event flow: lock manager state change emits a JSON envelope through the event manager into the outbox; a watcher generates a deterministic review packet and atomically renames the file into handled, or to failed if the schema version is unrecognized" width="100%"/>
-</div>
-
-```text
-01 STATE CHANGE     lock claimed/released/recovered, handoff created/approved/denied,
-                    evidence appended, gate passed/failed, pr.opened
-02 EMIT             event-manager builds envelope (event_schema_version: 1),
-                    resolves evidence_ids at emit time, writes JSON atomically
-03 OUTBOX           events/outbox/evt_<utc_iso_compact>_<6hex>.json
-04 WATCH            scripts/watch-events.mjs polls; three modes: console (default),
-                    review packet (--write-review-packets), or webhook
-                    (HERMESPROOF_WEBHOOK_URL)
-05 REVIEW PACKET    deterministic Markdown — same input always produces same output
-06 HANDLED / FAILED fs.rename atomic transition to events/handled/ on consumer ack;
-                    schema-mismatched envelopes go to events/failed/ (never auto-pruned)
-```
-
-Five architect invariants enforced by the implementation:
-
-1. **Loop guard** — internal bookkeeping evidence carries `data.system: "event-manager"`; the lock manager skips re-emit on those rows so `evidence.appended` events don't recurse.
-2. **Atomic rename** — every state transition between `outbox/`, `handled/`, `failed/` uses `fs.rename` on the same filesystem; concurrent watchers see `event_already_handled` rather than double-processing.
-3. **Retention** — `scripts/prune-events.mjs --before <iso>` prunes only `handled/`. `failed/` is never auto-pruned.
-4. **Schema versioning** — `event_schema_version: 1` is required on every envelope. Unknown versions move to `failed/` with `error: "unknown_schema_version"`.
-5. **`evidence_ids` at emit time** — resolved from the chained ledger when the event is written, not when it's consumed; consumers don't re-walk the chain.
-
-A separate **GitHub Actions mechanical-review workflow** (`.github/workflows/hermesproof-review-check.yml`) runs without an LLM on every PR open and asserts: PR body contains the evidence-chain line, references a task id, lists at least one gate, has changed files, has a valid handoff if `handoffs/HANDOFF_*.md` is added, and the README tool count matches the server's registered tool count.
-
----
-
-## ✦ Multi-agent coordination
-
-Claude leads with docs and contracts. Codex implements code. Reviewers audit. HermesProof keeps them out of each other's way.
-
-<div align="center">
-<img src="docs/diagrams/multi-agent-flow.svg" alt="Sequence diagram of Claude lead, Codex implementer, Claude reviewer, and HermesProof server coordinating an edit with handoff" width="100%"/>
-</div>
-
-### Per-file lock lifecycle
-
-<div align="center">
-<img src="docs/diagrams/lock-lifecycle.svg" alt="Lock lifecycle states: unlocked, held by A, handoff pending, held by B" width="100%"/>
-</div>
-
-The state machine is intentionally minimal:
-
-- **unlocked** → no entry under `locks/`
-- **held by owner A** → `locks/<hash>/metadata.json` exists; only A can release; heartbeat extends TTL
-- **handoff pending** → `handoffs/<id>.json` exists; A still owns the lock
-- **held by owner B** → after A approves; same metadata file, role updated to `handoff_receiver`
-- **stale recovery** → after TTL expiry, any agent can call `recover_stale_locks` (the only safe override path)
-
----
-
-## ✦ Composes with other MCP servers
-
-HermesProof is intentionally narrow: it is the **governance layer**. It coexists with — never competes with — filesystem, transport, and bridge MCPs.
-
-<div align="center">
-<img src="docs/diagrams/mcp-composition.svg" alt="HermesProof composes with filesystem MCP and Codex bridges as peer servers, all sharing the same workspace" width="100%"/>
-</div>
-
-| Concern                                            | Server                                                                                                                                        | Status                |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| Per-file ownership / locking / handoffs / evidence | **HermesProof** (this repo)                                                                                                                   | shipped here          |
-| Read / write / list files                          | [`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers)                                                  | external — coexists   |
-| Claude → Codex bridge                              | [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) · [`cexll/codex-mcp-server`](https://github.com/cexll/codex-mcp-server) | external — coexists   |
-| Multi-agent spawning / routing                     | [`ruvnet/claude-flow`](https://github.com/ruvnet/claude-flow)                                                                                 | external — runs above |
-
-See [`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md) for full composition recipes.
-
----
-
-## ✦ Quickstart — works for ANY repository
-
-HermesProof is **project-agnostic by design**. Point `--workspace` at any local directory — a fresh repo, a legacy codebase, a monorepo, a documentation project. The `hermes3d-locks` MCP server name is a deployed-name carry-over from the original Hermes3D workflow, but the server governs whatever workspace you give it.
+Download the ZIP, its exact `.sha256` and `.sig` sidecars, `hermesproof-release-ed25519-public.pem`, and `verify-hermesproof-release.mjs` into one folder. Verify the download before extraction:
 
 ```powershell
-# 1. Clone HermesProof itself (the orchestrator)
-git clone https://github.com/Ghenghis/HermesProof.git
+node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
+```
+
+The command must print `[PASS] HermesProof release verified`. Any checksum, filename, public-key fingerprint, envelope, or Ed25519 signature mismatch exits nonzero. From a source checkout containing exactly one official Windows ZIP in `dist`, run `npm run release:verify`. For a custom path, invoke `node scripts/verify-hermesproof-release.mjs --artifact <zip> --public-key config/hermesproof-release-ed25519-public.pem` directly so PowerShell/npm option forwarding cannot alter the arguments.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install-hermesproof.ps1 -Workspace "G:\Github\your-project" -AutoUpdate
+```
+
+For development from this source checkout:
+
+```powershell
+npm ci
+npm run docs:check
+npm run test:updater
+npm test
+npm run install-clients -- --workspace "G:\Github\your-project"
+```
+
+See [Windows install, repair, backup, and uninstall](docs/WINDOWS_INSTALL.md).
+
+## Supported clients and local models
+
+| Target | Installed behavior |
+| --- | --- |
+| Kilo Code / VS Code | Both MCP servers in current `.kilo/kilo.json` or VS Code MCP configuration; primary supported workflow |
+| Codex | Both servers through the stable launcher |
+| Windsurf | Both servers in the Windsurf MCP configuration |
+| Cursor | Both servers in the Cursor MCP configuration |
+| Claude Desktop | Both servers in the desktop configuration |
+| Claude Code | Both servers installed or refreshed with `claude mcp`; the real user MCP store `~/.claude.json` is snapshotted |
+| LM Studio | MCP host wiring plus a local-model route; LM Link is preferred |
+| Ollama | Local inference fallback when LM Studio/LM Link is unavailable; it is not misrepresented as an MCP host |
+| Devin | Exportable MCP configuration template for the Devin environment |
+
+Existing files are backed up in an immutable, SHA-bound manifest and recorded with before/after hashes. Restore refuses to overwrite configuration that the user changed after installation. Repeat uninstall is idempotent, and a requested purge stops without deleting recovery data if client restoration cannot be proven.
+
+## Safe daily workflow
+
+```text
+init
+  workspace + Serena project + client wiring + baseline evidence
+
+doctor --deep
+  locks + symbols + GitLab + clients + harness + local models + package health
+
+safe-edit
+  claim → semantic analysis → exact lock → edit → diagnostics → tests → visual evidence
+
+release
+  clean tree → real two-server E2E → truth gates → attestation → GitLab release
+```
+
+The mutation boundary is strict: claim a task, acquire the exact operation/file lock, supply an idempotency key, then invoke the operation. Duplicate identical requests collapse; altered payloads are rejected and logged.
+
+## Updates, backup, and rollback
+
+![Fail-closed updater lifecycle](docs/diagrams/updater-lifecycle-animated.svg)
+
+```powershell
+hermesproof-update status
+hermesproof-update check
+hermesproof-update apply --channel stable
+hermesproof-update rollback
+hermesproof-update auto enable
+hermesproof-update evidence
+```
+
+Only credential-free HTTPS sources under `gitlab.com/Ghenghis/HermesProof`, approved refs, and exact commit SHAs are accepted. Production activation requires nine named gates: source integrity, dependency parity, current Serena configuration, the complete Node test suite, documentation drift, real HP-MHA verification, both live MCP probes, SBOM generation, and security scans. No skipped gate can activate a release.
+
+The Windows scheduler runs at most every six hours with jitter, backoff, a maintenance window, and missed-run recovery. Linux can use a non-root persistent systemd user timer. Read the [updater runbook](docs/UPDATER_RUNBOOK.md) before changing channels.
+
+## Just-in-time capability packs
+
+![Capability pack lifecycle](docs/diagrams/capability-pack-flow.svg)
+
+HermesProof does **not** enable every shell, filesystem, package, and MCP server at once. The resolver compares the acceptance graph with installed abilities, chooses the minimum pack, verifies its signature/hash/SBOM, grants a workspace-owner-task-time scoped lease, health-probes it, records outcomes, and disables or quarantines it when unused.
+
+Included control-plane capabilities cover:
+
+- MCP install, enable, disable, refresh, cycle, health, rollback, and idle shutdown.
+- Package and dependency inventory, lockfile parity, missing backend dependency detection, and pinned installation.
+- One-time and recurring automation with local scheduler adapters.
+- Kilo backend recovery for runtimes, databases, API testing, migrations, containers, diagnostics, and browser proof.
+- Authorized reverse-engineering inventory for owned or permitted targets, with local tools disabled until explicitly leased.
+- LM Studio LM Link preference with Ollama fallback for private/local inference.
+
+## HP-MHA harness
+
+HP-MHA is a real, fail-closed harness layer. A run records installed package and executable hashes, uses scheduler-level holdouts, builds a measured 2×2 attribution matrix, computes the trace Merkle root, and fails if trace verification fails. It never prints a success marker after a failed proof.
+
+Harness evidence and ordinary HermesProof coordination evidence remain distinct but linkable. The composite server can use measured outcomes to prefer the tool chain that actually completes a project type.
+
+## Evidence and release truth
+
+`npm run truth-gates` runs 37 checks and emits machine- and human-readable proof. Critical release actions require:
+
+- real stdio initialization and `tools/list` for both servers;
+- exact tool counts (121 core, 34 composite);
+- valid hash-chain and Merkle verification;
+- dependency/SBOM/security evidence;
+- workspace and client configuration integrity;
+- no template/FIXME harness cards or placeholder matrix;
+- generated documentation matching `config/release-facts.json`.
+
+Generated current facts are in [docs/GENERATED_RELEASE_FACTS.md](docs/GENERATED_RELEASE_FACTS.md). The canonical source is [config/release-facts.json](config/release-facts.json).
+
+## Architecture and security
+
+![Windows install and recovery](docs/diagrams/windows-install-flow.svg)
+
+Official archives are signed offline. The Ed25519 private key stays outside the repository under `C:\private`; the reviewed public key is pinned in Git. The builder refuses an official filename without the matching private key, emits exact checksum/signature sidecars, and self-verifies them before returning success.
+
+HermesProof is local-first and workspace-scoped. It never stores GitLab credentials in repository files, release artifacts, updater evidence, or client configs. Process execution uses exact argument arrays with `shell: false`, an environment allowlist, bounded output, timeouts, and redaction. Root/home/repository/traversal/link targets are rejected for managed updates.
+
+Reverse-engineering support is for software, devices, firmware, and data the operator owns or is authorized to analyze. Packs start read-only where possible, stay local by default, and inherit the same locks, evidence, package hashes, and least-privilege leases as other capabilities.
+
+## Documentation
+
+- [Current release and source of truth](docs/CURRENT_RELEASE_STATUS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Windows install](docs/WINDOWS_INSTALL.md)
+- [Updater runbook](docs/UPDATER_RUNBOOK.md)
+- [Update troubleshooting](docs/TROUBLESHOOTING_UPDATES.md)
+- [Local models and authorized reverse engineering](docs/LOCAL_MODELS_AND_REVERSE_ENGINEERING.md)
+- [Serena integration](docs/SERENA_INTEGRATION.md)
+- [Tool reference](docs/TOOL_REFERENCE.md)
+- [Security policy](docs/SECURITY_POLICY.md)
+- [GitLab release runbook](docs/GITLAB_RELEASE_RUNBOOK.md)
+- [Maintenance](docs/MAINTENANCE.md)
+
+## Development and contribution
+
+```powershell
+git clone https://gitlab.com/Ghenghis/HermesProof.git
 cd HermesProof
-npm install
-
-# Fastest path: run the universal setup wizard.
-npm run wizard
-
-# 2. Verify the package (no workspace needed yet)
-npm run truth-gates                                            # 35/35 gates pass
-npm test                                                       # Node smoke tests pass
-
-# 3. Pick the workspace HermesProof will govern. Examples:
-#       Windows:  $WORKSPACE = "G:\Github\my-project"
-#       macOS:    WORKSPACE=~/code/my-project
-#       Linux:    WORKSPACE=/home/me/work/my-project
-$WORKSPACE = "G:\Github\my-project"           # <-- change this to YOUR repo
-
-# 4. Non-destructive readiness probe
-npm run doctor -- --workspace $WORKSPACE
-
-# 5. Bootstrap the workspace state directory (creates .hermes3d_orchestrator/)
-npm run init-project -- --workspace $WORKSPACE
-
-# 6. Wire it into every MCP client (timestamped backups of any prior config)
-npm run install-clients -- --workspace $WORKSPACE
-
-# 7. Confirm it's live
-claude mcp list                                                # expect "hermes3d-locks: ✓ Connected"
+npm ci
+npm run docs:generate
+npm test
 ```
 
-After step 6, restart Claude Desktop and Codex; refresh MCP servers in Cascade. Tell any agent:
+Use a feature branch and a GitLab merge request. Do not commit secrets, generated caches, `node_modules`, temporary worktrees, private model files, or unrelated vendored tools.
 
-```text
-Use hermes_doctor and hermes_read_policy. Confirm workspace_root.
-Then claim_task + lock_files before editing anything.
-```
-
-### Use cases (each is a `--workspace <path>` away)
-
-| Project type | Example `--workspace` |
-|---|---|
-| Solo dev wiring 2+ AI agents into a personal repo | `~/code/my-app` |
-| Team using Claude + Codex in a shared monorepo | `/srv/team/monorepo` |
-| Open-source maintainer reviewing community PRs | `~/oss/my-library` |
-| Hermes3D workflow (the original target) | `G:\Github\Hermes3D` |
-
-**No GitHub repo required.** HermesProof governs the local filesystem. If your project lives only on disk (no remote, no `.git/`, even), it still works — `init-project` creates the state dir, locks govern files, gates run shell commands. The truth-gate harness uses git only when it's there.
-
-For deeper recipes (CI integration, multi-machine coordination, etc.), see [`docs/SETUP_GENERIC_PROJECT.md`](./docs/SETUP_GENERIC_PROJECT.md).
-
----
-
-## ✦ MCP client configuration
-
-Four clients are supported; `npm run install-clients` writes all of them with timestamped backups. Manual JSON for reference:
-
-<details>
-<summary><b>Claude Desktop</b> · <code>%APPDATA%\Claude\claude_desktop_config.json</code></summary>
-
-```json
-{
-  "mcpServers": {
-    "hermes3d-locks": {
-      "command": "node",
-      "args": ["G:\\Github\\HermesProof\\src\\server.mjs"],
-      "env": { "MCP_LOCK_WORKSPACE": "G:\\Github\\Hermes3D" }
-    }
-  }
-}
-```
-</details>
-
-<details>
-<summary><b>Claude Code</b> · CLI</summary>
-
-```powershell
-claude mcp add --transport stdio hermes3d-locks --scope user `
-  --env MCP_LOCK_WORKSPACE="G:\Github\Hermes3D" `
-  -- node "G:\Github\HermesProof\src\server.mjs"
-```
-</details>
-
-<details>
-<summary><b>Codex</b> · <code>~/.codex/config.toml</code></summary>
-
-```toml
-[mcp_servers.hermes3d-locks]
-command = "node"
-args = ["G:\\Github\\HermesProof\\src\\server.mjs"]
-env = { MCP_LOCK_WORKSPACE = "G:\\Github\\Hermes3D" }
-enabled = true
-startup_timeout_sec = 10
-tool_timeout_sec = 60
-# Keep serialized for lock correctness; do not enable parallel tool calls.
-```
-</details>
-
-<details>
-<summary><b>Windsurf · Cascade</b> · <code>~/.codeium/windsurf/mcp_config.json</code></summary>
-
-```json
-{
-  "mcpServers": {
-    "hermes3d-locks": {
-      "command": "node",
-      "args": ["G:\\Github\\HermesProof\\src\\server.mjs"],
-      "env": { "MCP_LOCK_WORKSPACE": "G:\\Github\\Hermes3D" }
-    }
-  }
-}
-```
-</details>
-
----
-
-## ✦ Environment
-
-| Variable               | Default                  | Purpose                                                            |
-| ---------------------- | ------------------------ | ------------------------------------------------------------------ |
-| `MCP_LOCK_WORKSPACE`   | `cwd()`                  | Absolute path of the workspace HermesProof governs                 |
-| `HERMES3D_WORKSPACE`   | —                        | Legacy alias for `MCP_LOCK_WORKSPACE` (still honored)              |
-| `MCP_LOCK_STATE_DIR`   | `.hermes3d_orchestrator` | Name of the state dir inside the workspace; rejects slashes / `..` |
-| `MCP_LOCK_SERVER_NAME` | `hermes3d-locks`         | Name surfaced to MCP clients (only used by `print-configs`)        |
-
----
-
-## ✦ Documentation
-
-- **[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)** — full system deep-dive with all diagrams
-- **[`docs/LOCK_PROTOCOL.md`](./docs/LOCK_PROTOCOL.md)** — exactly when and how locks are acquired and released
-- **[`docs/TOOL_REFERENCE.md`](./docs/TOOL_REFERENCE.md)** — every MCP tool, with example arguments and responses
-- **[`docs/EVENT_SCHEMA.md`](./docs/EVENT_SCHEMA.md)** — trigger bridge event envelope, lifecycle, concurrency, and retention
-- **[`docs/SECURITY_POLICY.md`](./docs/SECURITY_POLICY.md)** — what the server will and will not do, threat model, allowlist
-- **[`docs/INTEROP_WITH_OTHER_MCP.md`](./docs/INTEROP_WITH_OTHER_MCP.md)** — composing with filesystem MCP, Codex bridges, claude-flow
-- **[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)** — repair scripts, debugging recipes, release checklist
-- **[`docs/SETUP_CLAUDE_DESKTOP.md`](./docs/SETUP_CLAUDE_DESKTOP.md)** · **[`docs/SETUP_CLAUDE_CODE.md`](./docs/SETUP_CLAUDE_CODE.md)** · **[`docs/SETUP_CODEX.md`](./docs/SETUP_CODEX.md)** · **[`docs/SETUP_WINDSURF.md`](./docs/SETUP_WINDSURF.md)**
-- **[`docs/SETUP_GENERIC_PROJECT.md`](./docs/SETUP_GENERIC_PROJECT.md)** — install into any repo (not just Hermes3D)
-- **[`AGENTS.md`](./AGENTS.md)** — mandatory rules for any agent operating against this server
-- **[`PROOF_E2E_REPORT.md`](./PROOF_E2E_REPORT.md)** — latest auto-generated proof report
-
----
-
-## ✦ Inspiration & credits
-
-HermesProof carries the [Hermes Agent](https://hermes-agent.nousresearch.com/) lineage from [Nous Research](https://nousresearch.com/) — the same emphasis on **verifiable, agentic capability** with an immutable trail of evidence.
-
-Where Nous's [`hermes-agent`](https://github.com/nousresearch/hermes-agent) reasons and acts, HermesProof **governs and attests**: it is the layer that lets multiple Hermes-class agents cooperate on a real codebase without stepping on each other.
-
-Built for the [Hermes3D](https://github.com/Ghenghis/Hermes3D) workflow; project-agnostic by design.
-
----
-
-<div align="center">
-
-`hermes3d-locks` is the deployed MCP server name (already wired into client configs).
-**HermesProof** is the project, the harness, and the proof bundle.
-
-</div>
+MIT licensed. Project home: [gitlab.com/Ghenghis/HermesProof](https://gitlab.com/Ghenghis/HermesProof).

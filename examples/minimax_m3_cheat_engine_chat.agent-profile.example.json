@@ -1,0 +1,104 @@
+{
+  "agent_profile_schema_version": 1,
+  "owner": "minimax-m3-cechat-01",
+  "display_name": "MiniMax M3 in Cheat Engine Chat",
+  "host": "cheat-engine-chat",
+  "model": "minimax-m3",
+  "recommended_mode": "release-operator",
+  "mcp_server": {
+    "name": "hermes3d-locks",
+    "command": "node",
+    "args": [
+      "G:/Github/hermes3d-mcp-lock-orchestrator/scripts/mcp-supervisor.mjs"
+    ],
+    "env": {
+      "MCP_LOCK_WORKSPACE": "G:/Github/AI-CE",
+      "MCP_LOCK_STATE_DIR": ".hermes3d_orchestrator"
+    }
+  },
+  "host_supplies": [
+    "filesystem-read-write",
+    "shell",
+    "git",
+    "gitlab-credentials-when-configured",
+    "github-credentials-when-configured",
+    "browser-or-app-automation-when-configured"
+  ],
+  "hermesproof_supplies": [
+    "workspace-switching",
+    "presence",
+    "skills-routing",
+    "assistance-routing",
+    "assistance-acceptance-waiting",
+    "durable-inbox",
+    "inbox-long-polling",
+    "file-locks",
+    "unlock-requests",
+    "gitlab-project-and-merge-request-tools",
+    "stale-lock-recovery-routing",
+    "allowlisted-gates",
+    "hash-chained-evidence",
+    "completion-release"
+  ],
+  "presence": {
+    "role": "builder",
+    "status": "idle",
+    "skills": [
+      "ce-chat",
+      "minimax-m3",
+      "code",
+      "docs",
+      "testing",
+      "review",
+      "release",
+      "gitlab",
+      "windows",
+      "powershell"
+    ],
+    "taskTypes": [
+      "build",
+      "repair",
+      "review",
+      "test",
+      "docs",
+      "release"
+    ],
+    "ttlSeconds": 300,
+    "canInterrupt": true
+  },
+  "required_workflow": [
+    "hermes_doctor",
+    "hermes_get_workspace",
+    "hermes_join_project",
+    "hermes_backend_status",
+    "hermes_gitlab_status",
+    "hermes_update_presence",
+    "hermes_request_assistance when blocked or overloaded",
+    "hermes_wait_for_assistance after requesting help",
+    "hermes_wait_for_inbox while idle or waiting",
+    "hermes_claim_task",
+    "hermes_lock_files",
+    "edit only owned files",
+    "hermes_request_unlock when blocked",
+    "hermes_wait_for_unlock before continuing",
+    "hermes_gitlab_ensure_project and hermes_gitlab_create_merge_request when release needs GitLab",
+    "run gates",
+    "hermes_complete_work"
+  ],
+  "release_gates": [
+    "npm test",
+    "node scripts/truth-gates.mjs --ci"
+  ],
+  "gitlab_requirements": [
+    "glab auth login, GITLAB_TOKEN, GLAB_TOKEN, or git credential helper",
+    "remote create/push permission for the target namespace",
+    "commit SHA and remote URL recorded in HermesProof evidence"
+  ],
+  "must_not_do": [
+    "edit files locked by another owner",
+    "recover non-stale locks",
+    "claim GitLab work complete when credentials are missing",
+    "commit secrets or local env files",
+    "skip gates for release work"
+  ]
+}

@@ -1,0 +1,554 @@
+{
+  "schema_version": 1,
+  "generated": true,
+  "runtime": {
+    "name": "serena-agent",
+    "version": "1.7.0",
+    "commit": "949a27ef1e5fda1a6e7b561e777bcece345c6ffd",
+    "source": "git+https://github.com/oraios/serena@949a27ef1e5fda1a6e7b561e777bcece345c6ffd",
+    "install": {
+      "runner": "uvx",
+      "pin": "immutable-git-commit",
+      "windows_environment": {
+        "PYTHONUTF8": "1",
+        "SERENA_USAGE_REPORTING": "false"
+      }
+    },
+    "transport": "stdio",
+    "language_backend": "LSP",
+    "language_servers": [
+      "typescript"
+    ],
+    "project_config": ".serena/project.yml",
+    "context_config": ".serena/hermesproof-context.yml",
+    "read_only": true,
+    "dashboard_enabled": false
+  },
+  "inventory": {
+    "full_catalog_count": 52,
+    "desktop_default_count": 29,
+    "selected_lsp_direct_count": 15,
+    "selected_lsp_direct_tools": [
+      "find_declaration",
+      "find_file",
+      "find_implementations",
+      "find_referencing_symbols",
+      "find_symbol",
+      "get_current_config",
+      "get_diagnostics_for_file",
+      "get_symbols_overview",
+      "initial_instructions",
+      "list_dir",
+      "list_memories",
+      "read_file",
+      "read_memory",
+      "search_for_pattern",
+      "get_diagnostics_for_symbol"
+    ],
+    "default_guarded_count": 15,
+    "default_guarded_tools": [
+      "activate_project",
+      "create_text_file",
+      "delete_memory",
+      "edit_memory",
+      "execute_shell_command",
+      "insert_after_symbol",
+      "insert_before_symbol",
+      "onboarding",
+      "rename_memory",
+      "rename_symbol",
+      "replace_content",
+      "replace_in_files",
+      "replace_symbol_body",
+      "safe_delete_symbol",
+      "write_memory"
+    ],
+    "optional_lsp_direct_tools": [
+      "get_diagnostics_for_symbol"
+    ],
+    "optional_lsp_guarded_tools": [
+      "delete_lines",
+      "insert_at_line",
+      "open_dashboard",
+      "remove_project",
+      "replace_lines",
+      "restart_language_server"
+    ],
+    "query_guarded_tools": [
+      "list_queryable_projects",
+      "query_project"
+    ],
+    "jetbrains_direct_tools": [
+      "serena_info",
+      "jet_brains_find_declaration",
+      "jet_brains_find_implementations",
+      "jet_brains_find_referencing_symbols",
+      "jet_brains_find_symbol",
+      "jet_brains_get_symbols_overview",
+      "jet_brains_list_inspections",
+      "jet_brains_run_inspections",
+      "jet_brains_type_hierarchy"
+    ],
+    "jetbrains_guarded_tools": [
+      "jet_brains_debug",
+      "jet_brains_inline_symbol",
+      "jet_brains_move",
+      "jet_brains_rename",
+      "jet_brains_safe_delete"
+    ],
+    "all_tools": [
+      "activate_project",
+      "create_text_file",
+      "delete_lines",
+      "delete_memory",
+      "edit_memory",
+      "execute_shell_command",
+      "find_declaration",
+      "find_file",
+      "find_implementations",
+      "find_referencing_symbols",
+      "find_symbol",
+      "get_current_config",
+      "get_diagnostics_for_file",
+      "get_diagnostics_for_symbol",
+      "get_symbols_overview",
+      "initial_instructions",
+      "insert_after_symbol",
+      "insert_at_line",
+      "insert_before_symbol",
+      "jet_brains_debug",
+      "jet_brains_find_declaration",
+      "jet_brains_find_implementations",
+      "jet_brains_find_referencing_symbols",
+      "jet_brains_find_symbol",
+      "jet_brains_get_symbols_overview",
+      "jet_brains_inline_symbol",
+      "jet_brains_list_inspections",
+      "jet_brains_move",
+      "jet_brains_rename",
+      "jet_brains_run_inspections",
+      "jet_brains_safe_delete",
+      "jet_brains_type_hierarchy",
+      "list_dir",
+      "list_memories",
+      "list_queryable_projects",
+      "onboarding",
+      "open_dashboard",
+      "query_project",
+      "read_file",
+      "read_memory",
+      "remove_project",
+      "rename_memory",
+      "rename_symbol",
+      "replace_content",
+      "replace_in_files",
+      "replace_lines",
+      "replace_symbol_body",
+      "restart_language_server",
+      "safe_delete_symbol",
+      "search_for_pattern",
+      "serena_info",
+      "write_memory"
+    ],
+    "routes": {
+      "activate_project": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "create_text_file": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "delete_lines": {
+        "backend": "lsp",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "delete_memory": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "edit_memory": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "execute_shell_command": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "find_declaration": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "find_file": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "find_implementations": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "find_referencing_symbols": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "find_symbol": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "get_current_config": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "get_diagnostics_for_file": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "get_diagnostics_for_symbol": {
+        "backend": "lsp",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "get_symbols_overview": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "initial_instructions": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "insert_after_symbol": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "insert_at_line": {
+        "backend": "lsp",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "insert_before_symbol": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "jet_brains_debug": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "jet_brains_find_declaration": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "jet_brains_find_implementations": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "jet_brains_find_referencing_symbols": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "jet_brains_find_symbol": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "jet_brains_get_symbols_overview": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "jet_brains_inline_symbol": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "jet_brains_list_inspections": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "jet_brains_move": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "jet_brains_rename": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "jet_brains_run_inspections": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "jet_brains_safe_delete": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "jet_brains_type_hierarchy": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "list_dir": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "list_memories": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "list_queryable_projects": {
+        "backend": "project-server",
+        "availability": "mode:query-projects",
+        "route": "workspace-query-guarded"
+      },
+      "onboarding": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "open_dashboard": {
+        "backend": "lsp",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "query_project": {
+        "backend": "project-server",
+        "availability": "mode:query-projects",
+        "route": "workspace-query-guarded"
+      },
+      "read_file": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "read_memory": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "remove_project": {
+        "backend": "lsp",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "rename_memory": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "rename_symbol": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "replace_content": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "replace_in_files": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "replace_lines": {
+        "backend": "lsp",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "replace_symbol_body": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "restart_language_server": {
+        "backend": "lsp",
+        "availability": "optional",
+        "route": "hermes-guarded"
+      },
+      "safe_delete_symbol": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      },
+      "search_for_pattern": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "direct-read-only"
+      },
+      "serena_info": {
+        "backend": "jetbrains",
+        "availability": "optional",
+        "route": "direct-read-only"
+      },
+      "write_memory": {
+        "backend": "lsp",
+        "availability": "default",
+        "route": "hermes-guarded"
+      }
+    }
+  },
+  "enforcement": {
+    "raw_serena_mutations_active": 0,
+    "project_switching_active": false,
+    "shell_active": false,
+    "memory_mutations_active": false,
+    "mcp_tools_list_must_equal_selected_surface": true,
+    "workspace_binding_required": true,
+    "hermes_task_claim_required_for_mutation": true,
+    "exact_file_lock_required_for_mutation": true,
+    "source_hash_receipt_required_for_mutation": true,
+    "fail_closed": true
+  },
+  "capability_packs": {
+    "lsp_semantic": {
+      "default": true,
+      "direct": true,
+      "tools": [
+        "find_declaration",
+        "find_file",
+        "find_implementations",
+        "find_referencing_symbols",
+        "find_symbol",
+        "get_current_config",
+        "get_diagnostics_for_file",
+        "get_symbols_overview",
+        "initial_instructions",
+        "list_dir",
+        "list_memories",
+        "read_file",
+        "read_memory",
+        "search_for_pattern",
+        "get_diagnostics_for_symbol"
+      ]
+    },
+    "lsp_mutation": {
+      "default": false,
+      "route": "hp-mha-serena-broker",
+      "tools": [
+        "activate_project",
+        "create_text_file",
+        "delete_memory",
+        "edit_memory",
+        "execute_shell_command",
+        "insert_after_symbol",
+        "insert_before_symbol",
+        "onboarding",
+        "rename_memory",
+        "rename_symbol",
+        "replace_content",
+        "replace_in_files",
+        "replace_symbol_body",
+        "safe_delete_symbol",
+        "write_memory",
+        "delete_lines",
+        "insert_at_line",
+        "open_dashboard",
+        "remove_project",
+        "replace_lines",
+        "restart_language_server"
+      ]
+    },
+    "cross_project_query": {
+      "default": false,
+      "route": "signed-workspace-query-broker",
+      "tools": [
+        "list_queryable_projects",
+        "query_project"
+      ]
+    },
+    "jetbrains": {
+      "default": false,
+      "prerequisite": "Serena JetBrains plugin and matching open project",
+      "direct_read_only_tools": [
+        "serena_info",
+        "jet_brains_find_declaration",
+        "jet_brains_find_implementations",
+        "jet_brains_find_referencing_symbols",
+        "jet_brains_find_symbol",
+        "jet_brains_get_symbols_overview",
+        "jet_brains_list_inspections",
+        "jet_brains_run_inspections",
+        "jet_brains_type_hierarchy"
+      ],
+      "guarded_tools": [
+        "jet_brains_debug",
+        "jet_brains_inline_symbol",
+        "jet_brains_move",
+        "jet_brains_rename",
+        "jet_brains_safe_delete"
+      ]
+    }
+  },
+  "local_truth_gates": [
+    "serena --version",
+    "serena tools list --all",
+    "serena project health-check",
+    "serena memories check",
+    "serena project index",
+    "node --test scripts/serena-integration-e2e.test.mjs"
+  ],
+  "audited_official_sources": [
+    "https://oraios.github.io/serena/01-about/020_programming-languages.html",
+    "https://oraios.github.io/serena/01-about/035_tools.html",
+    "https://oraios.github.io/serena/02-usage/010_installation.html",
+    "https://oraios.github.io/serena/02-usage/020_running.html",
+    "https://oraios.github.io/serena/02-usage/030_clients.html",
+    "https://oraios.github.io/serena/02-usage/040_workflow.html",
+    "https://oraios.github.io/serena/02-usage/045_memories.html",
+    "https://oraios.github.io/serena/02-usage/050_configuration.html",
+    "https://oraios.github.io/serena/02-usage/060_dashboard.html",
+    "https://oraios.github.io/serena/02-usage/065_logs.html",
+    "https://oraios.github.io/serena/02-usage/070_security.html",
+    "https://oraios.github.io/serena/02-usage/999_additional-usage.html",
+    "https://github.com/oraios/serena/blob/main/CHANGELOG.md",
+    "https://github.com/oraios/serena/blob/main/pyproject.toml"
+  ],
+  "observed_dev0_constraints": [
+    {
+      "id": "SERENA_CONTEXT_REGISTRY_ORDER",
+      "observation": "Project exclusions alter active tools after the MCP registry is created.",
+      "mitigation": "Use the versioned HermesProof context to exclude risky tools during server construction."
+    },
+    {
+      "id": "SERENA_OPTIONAL_CONTEXT_REQUIRED",
+      "observation": "Project-only optional inclusions may be active in get_current_config but absent from tools/list.",
+      "mitigation": "Include selected optional tools in the versioned startup context and assert live callability."
+    },
+    {
+      "id": "SERENA_WINDOWS_UTF8",
+      "observation": "Windows CP-1252 terminals can fail while printing successful CLI glyphs.",
+      "mitigation": "Set PYTHONUTF8=1 for all HermesProof-launched Serena processes."
+    },
+    {
+      "id": "SERENA_INFO_JETBRAINS_ONLY",
+      "observation": "serena_info currently accepts only the jet_brains_debug_repl topic.",
+      "mitigation": "Keep serena_info out of the default LSP surface and route it with the JetBrains pack."
+    }
+  ]
+}

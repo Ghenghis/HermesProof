@@ -13,6 +13,7 @@ import {
 } from "./fs-utils.mjs";
 import { EventManager } from "./event-manager.mjs";
 import { makeMutex } from "./mutex.mjs";
+import { assertTaskClaimRespectsHoldoutIsolation } from "./hp-mha.mjs";
 
 export const TASK_SCHEMA_VERSION = 1;
 const DEFAULT_TTL_MINUTES = 120;
@@ -151,7 +152,7 @@ export class QueueManager {
     return { ok: true, status: "pending", count: tasks.length, tasks: tasks.slice(0, bounded) };
   }
 
-  async pickTask({ owner, prefer_task_id = "", preferTaskId = "" }) {
+  async pickTask({ owner, role = "", prefer_task_id = "", preferTaskId = "" }) {
     assertOwner(owner);
     await this.init();
     const preferred = prefer_task_id || preferTaskId;
@@ -159,10 +160,11 @@ export class QueueManager {
       const id = normalizeTaskId(preferred);
       const found = await this.readTask("pending", id);
       if (!found) return { ok: false, status: "no_pending_tasks_for_owner", message: `pending task not found: ${id}` };
-      return await this.claimPendingTask({ owner, item: { task: found, file: this.taskPath("pending", id) } });
+      return await this.claimPendingTask({ owner, role, item: { task: found, file: this.taskPath("pending", id) } });
     }
     const pending = (await this.readTasks("pending")).sort((a, b) => compareTasks(a.task, b.task));
     let sawMismatch = false;
+    let isolationDenial = null;
     for (const item of pending) {
       if (!isTaskVersion(item.task)) {
         await this.blockPendingTask(item, "unknown_schema_version");
@@ -172,8 +174,14 @@ export class QueueManager {
         sawMismatch = true;
         continue;
       }
-      return await this.claimPendingTask({ owner, item });
+      const isolation = taskClaimIsolation(item.task, role);
+      if (!isolation.ok) {
+        isolationDenial ||= holdoutDenial(item.task, isolation);
+        continue;
+      }
+      return await this.claimPendingTask({ owner, role, item });
     }
+    if (isolationDenial) return isolationDenial;
     return {
       ok: false,
       status: sawMismatch ? "task_owner_mismatch" : "no_pending_tasks_for_owner",
@@ -405,16 +413,19 @@ export class QueueManager {
     throw new Error("task state must be pending, claimed, blocked, or done");
   }
 
-  async claimPendingTask({ owner, item }) {
+  async claimPendingTask({ owner, role = "", item }) {
     const task = item.task;
     if (!isTaskVersion(task)) return await this.blockPendingTask(item, "unknown_schema_version");
     if (!ownerMatches(owner, task.target_owner_pattern)) {
       return { ok: false, status: "task_owner_mismatch", task };
     }
+    const isolation = taskClaimIsolation(task, role);
+    if (!isolation.ok) return holdoutDenial(task, isolation);
     const claimed = this.taskPath("claimed", task.task_id);
     const guard = `${claimed}.claiming`;
     const now = utcNow();
     task.claimed_by = owner;
+    task.claimed_role = role || null;
     task.claimed_utc = now;
     task.heartbeat_utc = now;
     let guardOwned = false;
@@ -464,6 +475,23 @@ export class QueueManager {
     await writeJsonAtomic(blocked, task);
     return { ok: false, status: reason, task };
   }
+}
+
+function taskClaimIsolation(task, role) {
+  return assertTaskClaimRespectsHoldoutIsolation({
+    role,
+    task_set_manifest: task?.data?.task_set_manifest || task?.data?.hp_mha?.task_set_manifest || null
+  });
+}
+
+function holdoutDenial(task, isolation) {
+  return {
+    ok: false,
+    status: "holdout_isolation_denied",
+    task_id: task?.task_id || null,
+    reason_codes: isolation.reason_codes || ["HP-MHA-006"],
+    reason: isolation.reason || "holdout task claim denied"
+  };
 }
 
 function normalizeTaskId(value) {

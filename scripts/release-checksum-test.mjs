@@ -10,6 +10,7 @@ import {
   ARTIFACT_EXTENSIONS,
   runReleaseChecksumGate
 } from "./release-checksum.mjs";
+import { signReleaseArtifact } from "../src/core/release-signing.mjs";
 
 test("isArtifactName accepts known release extensions, rejects sidecars and dotfiles", () => {
   assert.equal(isArtifactName("hermesproof-0.6.0.tgz"), true);
@@ -86,14 +87,52 @@ test("runReleaseChecksumGate: passes when every artifact has both sidecars", asy
     const dist = path.join(sb, "dist");
     await fs.mkdir(dist, { recursive: true });
     const artifact = path.join(dist, "hp-0.6.0.tgz");
+    const privateKeyFile = path.join(sb, "private.pem");
+    const publicKeyFile = path.join(sb, "public.pem");
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
     await fs.writeFile(artifact, "fake tarball bytes");
-    const sha = crypto.createHash("sha256").update("fake tarball bytes").digest("hex");
-    await fs.writeFile(`${artifact}.sha256`, `${sha}  hp-0.6.0.tgz\n`);
-    await fs.writeFile(`${artifact}.sig`, "fake-sig");
-    const r = await runReleaseChecksumGate({ root: sb, verifySha256: true });
+    await fs.writeFile(privateKeyFile, privateKey.export({ type: "pkcs8", format: "pem" }));
+    await fs.writeFile(publicKeyFile, publicKey.export({ type: "spki", format: "pem" }));
+    await signReleaseArtifact({ artifactFile: artifact, privateKeyFile, publicKeyFile });
+    const r = await runReleaseChecksumGate({
+      root: sb,
+      verifySha256: true,
+      verifySignatures: true,
+      publicKeyFile
+    });
     assert.equal(r.ok, true, JSON.stringify(r));
     assert.equal(r.evidence.artifacts.length, 1);
     assert.equal(r.evidence.artifacts[0].sha256_match, true);
+    assert.equal(r.evidence.artifacts[0].signature_verified, true);
+    assert.match(r.evidence.artifacts[0].key_fingerprint, /^sha256:[0-9a-f]{64}$/);
+    assert.deepEqual(r.evidence.signature_mismatches, []);
+  } finally {
+    await fs.rm(sb, { recursive: true, force: true });
+  }
+});
+
+test("runReleaseChecksumGate: rejects a present but invalid detached signature", async () => {
+  const sb = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rc-invalid-signature-"));
+  try {
+    const dist = path.join(sb, "dist");
+    await fs.mkdir(dist, { recursive: true });
+    const artifact = path.join(dist, "hp.zip");
+    const publicKeyFile = path.join(sb, "public.pem");
+    const { publicKey } = crypto.generateKeyPairSync("ed25519");
+    await fs.writeFile(artifact, "archive");
+    const sha = crypto.createHash("sha256").update("archive").digest("hex");
+    await fs.writeFile(artifact + ".sha256", sha + "  hp.zip\n");
+    await fs.writeFile(artifact + ".sig", "present-but-not-valid");
+    await fs.writeFile(publicKeyFile, publicKey.export({ type: "spki", format: "pem" }));
+    const r = await runReleaseChecksumGate({
+      root: sb,
+      verifySha256: true,
+      verifySignatures: true,
+      publicKeyFile
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.evidence.signature_mismatches.length, 1);
+    assert.equal(r.evidence.artifacts[0].signature_verified, false);
   } finally {
     await fs.rm(sb, { recursive: true, force: true });
   }
@@ -128,6 +167,28 @@ test("runReleaseChecksumGate: detects sha256 mismatch when --verify-sha256 set",
     const r = await runReleaseChecksumGate({ root: sb, verifySha256: true });
     assert.equal(r.ok, false);
     assert.equal(r.evidence.sha_mismatches.length, 1);
+  } finally {
+    await fs.rm(sb, { recursive: true, force: true });
+  }
+});
+
+test("runReleaseChecksumGate: rejects a malformed checksum sidecar", async () => {
+  const sb = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rc-malformed-checksum-"));
+  try {
+    const dist = path.join(sb, "dist");
+    await fs.mkdir(dist, { recursive: true });
+    const artifact = path.join(dist, "hp.zip");
+    await fs.writeFile(artifact, "real bytes");
+    await fs.writeFile(artifact + ".sha256", "not-a-checksum\n");
+    await fs.writeFile(artifact + ".sig", "signature-verification-disabled-for-this-test");
+    const r = await runReleaseChecksumGate({
+      root: sb,
+      verifySha256: true,
+      verifySignatures: false
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.evidence.sha_mismatches.length, 1);
+    assert.equal(r.evidence.sha_mismatches[0].reason, "checksum_invalid");
   } finally {
     await fs.rm(sb, { recursive: true, force: true });
   }

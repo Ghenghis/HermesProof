@@ -4,10 +4,11 @@ import crypto from "node:crypto";
  * HermesAgentBridge — connects HermesProof to the Hermes Agent reasoning loop.
  *
  * Provider backends (in failover order):
- *   1. DeepSeek v4         (DEEPSEEK_API_KEY)        — primary
- *   2. MiniMax highspeed   (MINIMAX_API_KEY)         — fallback (models 2.1-2.7)
- *   3. SiliconFlow         (SILICONFLOW_API_KEY)     — tertiary
- *   4. LM Studio (local)   (no key)                  — last-resort offline
+ *   1. MiniMax M3          (MINIMAX_API_KEY)         — primary coding agent model
+ *   2. DeepInfra           (DEEPINFRA_API_KEY)       — uncensored-capable sidecar/provider fallback
+ *   3. DeepSeek v4         (DEEPSEEK_API_KEY)        — planning/enhanced-prompt fallback
+ *   4. SiliconFlow         (SILICONFLOW_API_KEY)     — batch/indexing-adjacent fallback
+ *   5. LM Studio / Ollama  (local)                   — offline local fallbacks
  *
  * Once authorized for a project, Hermes Agent acts as the USER role:
  *   - Grants AS_USER sessions for in-scope actions
@@ -20,12 +21,12 @@ import crypto from "node:crypto";
  *   - Capability-scoped sessions (Hermes Agent never gets unbounded user power)
  *   - All decisions evidenced (rationale + provider + model into evidence ledger)
  *   - Health probe must pass before any AS_USER decision
- *   - Falls back across providers automatically; if all four fail, decision = "defer to human"
+ *   - Falls back across providers automatically; if all configured providers fail, decision = "defer to human"
  *   - Per-provider timeout independent of overall decision timeout
  */
 
 // Provider definitions. Endpoint URLs for local providers come from env
-// (LMSTUDIO_BASE_URL, OLLAMA_BASE_URL, HIPFIRE_BASE_URL) so the user's
+// (LMSTUDIO_BASE_URL, LM_STUDIO_BASE_URL, OLLAMA_BASE_URL) so the user's
 // .env in G:\private\.env can override per-machine. API keys ALWAYS come
 // from env — never hardcoded, never logged, never returned to callers.
 function bearerHeaders(key) {
@@ -48,10 +49,10 @@ const openaiCompatParse = (json) => json?.choices?.[0]?.message?.content;
 const PROVIDERS = {
   deepseek: {
     name: "deepseek",
-    endpoint_env: null,
+    endpoint_envs: ["DEEPSEEK_BASE_URL"],
     endpoint_default: "https://api.deepseek.com/v1/chat/completions",
     model_env: "DEEPSEEK_MODEL",
-    model_default: "deepseek-chat", // v4 latest
+    model_default: "deepseek-v4-flash",
     api_key_env: "DEEPSEEK_API_KEY",
     headers: bearerHeaders,
     body: openaiCompatBody,
@@ -59,34 +60,47 @@ const PROVIDERS = {
   },
   minimax: {
     name: "minimax",
-    endpoint_env: null,
-    endpoint_default: "https://api.minimaxi.com/v1/text/chatcompletion_v2",
+    endpoint_envs: ["MINIMAX_BASE_URL"],
+    endpoint_default: "https://api.minimax.io/v1/chat/completions",
+    endpoint_suffix: "/chat/completions",
     model_env: "MINIMAX_MODEL",
-    // Highspeed range 2.1-2.7 — the user's preferred line; concrete id selectable via MINIMAX_MODEL.
-    model_default: "MiniMax-Text-01",
+    model_default: "MiniMax-M3",
     api_key_env: "MINIMAX_API_KEY",
+    headers: bearerHeaders,
+    body: openaiCompatBody,
+    parse: openaiCompatParse,
+  },
+  deepinfra: {
+    name: "deepinfra",
+    endpoint_envs: ["DEEPINFRA_BASE_URL"],
+    endpoint_default: "https://api.deepinfra.com/v1/openai/chat/completions",
+    endpoint_suffix: "/chat/completions",
+    model_env: "DEEPINFRA_MODEL",
+    model_default: "Sao10K/L3.1-70B-Euryale-v2.2",
+    api_key_envs: ["DEEPINFRA_API_KEY", "DEEPINFRA_TOKEN"],
     headers: bearerHeaders,
     body: openaiCompatBody,
     parse: openaiCompatParse,
   },
   siliconflow: {
     name: "siliconflow",
-    endpoint_env: null,
-    endpoint_default: "https://api.siliconflow.cn/v1/chat/completions",
+    endpoint_envs: ["SILICONFLOW_BASE_URL"],
+    endpoint_default: "https://api.siliconflow.com/v1/chat/completions",
+    endpoint_suffix: "/chat/completions",
     model_env: "SILICONFLOW_MODEL",
-    model_default: "deepseek-ai/DeepSeek-V2.5",
-    api_key_env: "SILICONFLOW_API_KEY",
+    model_default: "deepseek-ai/DeepSeek-V4-Flash",
+    api_key_envs: ["SILICONFLOW_API_KEY", "SILICON_FLOW_API_KEY"],
     headers: bearerHeaders,
     body: openaiCompatBody,
     parse: openaiCompatParse,
   },
   lm_studio: {
     name: "lm_studio",
-    endpoint_env: "LMSTUDIO_BASE_URL", // e.g. http://localhost:1234/v1
-    endpoint_default: "http://localhost:1234/v1/chat/completions",
+    endpoint_envs: ["LMSTUDIO_BASE_URL", "LM_STUDIO_BASE_URL"], // e.g. http://127.0.0.1:1234/v1
+    endpoint_default: "http://127.0.0.1:1234/v1/chat/completions",
     endpoint_suffix: "/chat/completions", // appended if env URL doesn't already include it
-    model_env: "LMSTUDIO_MODEL",
-    model_default: "NousResearch/Hermes-4-14B-FP8",
+    model_envs: ["LMSTUDIO_MODEL", "LM_STUDIO_MODEL"],
+    model_default: "local-model",
     api_key_env: null,
     headers: bareHeaders,
     body: openaiCompatBody,
@@ -118,16 +132,38 @@ const PROVIDERS = {
   },
 };
 
-// User preference (per 2026-05-03 conversation): DeepSeek + MiniMax are the
-// preferred cloud brains; SiliconFlow is the third cloud; LM Studio / Ollama
-// / Hipfire are local fallbacks. The registry layer (registry-providers.mjs)
-// can extend this with any of the 62 Continue LLM provider classes when the
-// user supplies the corresponding API key in env.
-const DEFAULT_FAILOVER = ["deepseek", "minimax", "siliconflow", "lm_studio", "ollama", "hipfire"];
+// MiniMax M3 is the user's primary HermesAgent model. The default failover
+// order is paid-cloud-first then local fallbacks (deepinfra → siliconflow
+// → lm_studio → ollama). Callers may still narrow this with
+// `HERMES_AGENT_FAILOVER` or `HermesAgentBridge.failover_order` for opt-in
+// per-task rerouting.
+const DEFAULT_FAILOVER = ["minimax", "deepinfra", "deepseek", "siliconflow", "lm_studio", "ollama"];
+
+function firstEnv(names = []) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function providerEndpointEnvNames(p) {
+  if (Array.isArray(p.endpoint_envs)) return p.endpoint_envs;
+  return p.endpoint_env ? [p.endpoint_env] : [];
+}
+
+function providerModelEnvNames(p) {
+  if (Array.isArray(p.model_envs)) return p.model_envs;
+  return p.model_env ? [p.model_env] : [];
+}
+
+function providerApiKeyEnvNames(p) {
+  if (Array.isArray(p.api_key_envs)) return p.api_key_envs;
+  return p.api_key_env ? [p.api_key_env] : [];
+}
 
 function resolveProviderEndpoint(p) {
-  if (!p.endpoint_env) return p.endpoint_default;
-  const fromEnv = process.env[p.endpoint_env];
+  const fromEnv = firstEnv(providerEndpointEnvNames(p));
   if (!fromEnv) return p.endpoint_default;
   // If user-provided URL already includes the chat-completions path, use as-is.
   if (fromEnv.includes("/chat/completions")) return fromEnv;
@@ -135,7 +171,10 @@ function resolveProviderEndpoint(p) {
   return fromEnv.replace(/\/+$/, "") + suffix;
 }
 function resolveProviderModel(p) {
-  return (p.model_env && process.env[p.model_env]) || p.model_default;
+  return firstEnv(providerModelEnvNames(p)) || p.model_default;
+}
+function resolveProviderApiKey(p) {
+  return firstEnv(providerApiKeyEnvNames(p));
 }
 const HEALTH_TIMEOUT_MS = 5000;
 const PROVIDER_TIMEOUT_MS = 25000;
@@ -169,10 +208,14 @@ export class HermesAgentBridge {
    * @param {string[]} [options.failover_order=DEFAULT_FAILOVER]
    * @param {string[]} [options.scope]
    * @param {string} [options.projectGoals]
-   * @param {object} [options.modelOverrides] - { providerName: modelId }
-   * @param {Array} [options.registryProviders] - extra providers loaded from
-   *   policies/provider-registry/registry.yaml; appended to failover list.
-   */
+ * @param {object} [options.modelOverrides] - { providerName: modelId }
+ * @param {Array} [options.registryProviders] - extra providers loaded from
+ *   policies/provider-registry/registry.yaml; appended to failover list.
+ * @param {ProviderPerformanceTracker} [options.providerPerformance] - optional
+ *   proof-backed provider scorer. When present, Hermes keeps the configured
+ *   failover order as baseline but prefers providers with better recent
+ *   outcomes for the requested task type.
+ */
   constructor({
     orchestrator,
     enabled = false,
@@ -181,6 +224,7 @@ export class HermesAgentBridge {
     projectGoals = null,
     modelOverrides = {},
     registryProviders = [],
+    providerPerformance = null,
   } = {}) {
     if (!orchestrator) throw new Error("HermesAgentBridge requires an orchestrator");
     this.orchestrator = orchestrator;
@@ -190,6 +234,7 @@ export class HermesAgentBridge {
     this.projectGoals = projectGoals;
     this.modelOverrides = modelOverrides;
     this.registryProviders = registryProviders;
+    this.providerPerformance = providerPerformance;
     this.activeSessionId = null;
     // Merge registry providers into the PROVIDERS map (don't shadow built-ins).
     this._mergedProviders = { ...PROVIDERS };
@@ -206,16 +251,22 @@ export class HermesAgentBridge {
     for (const name of this.failoverOrder) {
       const p = this._mergedProviders[name];
       if (!p) continue;
-      const key = p.api_key_env ? process.env[p.api_key_env] : "no-key-needed";
-      if (p.api_key_env && !key) continue; // skip if key not set
+      const keyNames = providerApiKeyEnvNames(p);
+      const key = keyNames.length > 0 ? resolveProviderApiKey(p) : "no-key-needed";
+      if (keyNames.length > 0 && !key) continue; // skip if key not set
       list.push({
         ...p,
         endpoint: resolveProviderEndpoint(p),
         model: this.modelOverrides[name] ?? resolveProviderModel(p),
-        api_key: p.api_key_env ? key : null,
+        api_key: keyNames.length > 0 ? key : null,
       });
     }
     return list;
+  }
+
+  async _providersForTask(_taskType) {
+    const providers = this._resolvedProviders();
+    return providers;
   }
 
   /**
@@ -223,7 +274,7 @@ export class HermesAgentBridge {
    */
   async healthCheck() {
     if (!this.enabled) return { ok: false, reason: "bridge disabled" };
-    const providers = this._resolvedProviders();
+    const providers = await this._providersForTask("health_probe");
     if (providers.length === 0) {
       return { ok: false, reason: "no providers configured (no API keys + LM Studio absent)" };
     }
@@ -362,7 +413,8 @@ export class HermesAgentBridge {
    */
   async _askAgent(payload) {
     const overallStart = Date.now();
-    const providers = this._resolvedProviders();
+    const taskType = payload?.task ? `hermes_agent:${payload.task}` : "hermes_agent:decision";
+    const providers = await this._providersForTask(taskType);
     if (providers.length === 0) {
       return { ok: false, reason: "no providers available" };
     }
@@ -376,7 +428,18 @@ export class HermesAgentBridge {
       if (Date.now() - overallStart > DECISION_OVERALL_TIMEOUT_MS) {
         return { ok: false, reason: "overall decision timeout exceeded" };
       }
+      const providerStart = Date.now();
       const result = await this._callProvider(p, messages);
+      if (this.providerPerformance) {
+        await this.providerPerformance.recordOutcome({
+          provider_id: p.name,
+          model_name: p.model,
+          task_type: taskType,
+          outcome: result.ok ? "completed" : (result.reason || "").includes("timeout") ? "timeout" : "failed",
+          latency_ms: Date.now() - providerStart,
+          context: result.ok ? "Hermes Agent decision returned parseable JSON" : result.reason,
+        }).catch(() => {});
+      }
       if (result.ok) return { ...result, provider_used: p.name, model_used: p.model };
       lastErr = result.reason;
     }

@@ -11,7 +11,7 @@ You are a member of a 20-agent Claude review/design team for **HermesProof + Her
 **Repo paths:**
 
 ```
-HermesProof:   G:\Github\hermes3d-mcp-lock-orchestrator   (https://github.com/Ghenghis/HermesProof)
+HermesProof:   GitLab release worktree   (https://gitlab.com/Ghenghis/HermesProof)
 Hermes3D:      G:\Github\Hermes3D                          (https://github.com/Ghenghis/Hermes3D, READ-ONLY)
 ```
 
@@ -63,7 +63,7 @@ Confirms HermesProof points at `G:\Github\Hermes3D` without destructive tests. *
 ### 12 — Playwright / Screenshot Planner
 Plans non-destructive screenshot capture if UI screenshots are added later (currently optional). **Output:** Playwright config in `tape/` or `screenshots/` (deferred per Phase 3).
 
-### 13 — GitHub Pages Planner
+### 13 — GitLab Pages Planner
 Plans optional Pages upgrade beyond static `site/` (e.g., Astro Starlight migration). **Output:** ADR; non-blocking.
 
 ### 14 — Security / Secrets Auditor

@@ -13,7 +13,7 @@ The contract `README.md` MUST satisfy. The visual rebrand in commit `c330814` wa
 | External font imports | Forbidden | `! grep '@font-face\|fonts.googleapis' README.md` |
 | Each embedded SVG | ≤ 100 KiB (target), self-contained | per [VISUAL_ASSET_SPEC.md](VISUAL_ASSET_SPEC.md) |
 | Inline raster `<img>` | ≤ 1 MiB per image | manual audit |
-| Markdown features | GFM only (no GitHub Pages-only Liquid) | rendered preview on github.com |
+| Markdown features | GFM only (no host-specific Liquid) | rendered preview on GitLab |
 
 ## 2. Required sections (in order)
 
@@ -73,7 +73,7 @@ Every change to README.md MUST:
 
 1. Hold a HermesProof lock on `README.md` for the duration of the edit.
 2. Run `npm run truth-gates` locally afterward; gate `docs.master_prompt_deliverables_present` (10) verifies the spec docs still exist.
-3. Re-run the GitHub Pages workflow after merge (auto-triggers on `site/**` and `docs/diagrams/**` only — for README-only changes, GitHub Pages does not redeploy, which is correct).
+3. Run the GitLab Pages job on the project-owned runner after the final proof pipeline succeeds.
 4. Update [README_COVERAGE_MATRIX.md](README_COVERAGE_MATRIX.md) if any required claim or anchor changes.
 
 ## 8. Versioning

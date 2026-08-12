@@ -1,5 +1,9 @@
 # HermesProof — Security Policy
 
+> v0.9.0 adds a fail-closed managed updater, hash-guarded client snapshots,
+> signed/pinned capability-pack policy, and a second governed MCP server. See
+> [UPDATER_RUNBOOK.md](UPDATER_RUNBOOK.md) for the activation contract.
+
 This MCP is intentionally narrow. Everything the server is allowed to do is enumerated in this document.
 
 <div align="center">
@@ -9,6 +13,16 @@ This MCP is intentionally narrow. Everything the server is allowed to do is enum
 ## Threat model in one diagram
 
 The two surfaces an attacker (or a buggy agent) might target are the **state directory** and the **gate runner**. Both are kept small on purpose.
+
+## Offline release-signing boundary
+
+Official Windows ZIPs are signed with Ed25519 after their internal manifest is built and verified. The private key is stored outside every repository at `C:\private\HermesProof-release-ed25519-private.pem`, with Windows inheritance removed and access limited to the current user. It is never placed in a release archive, manifest, SBOM, proof file, updater evidence, client configuration, or GitLab variable.
+
+The reviewed trust anchor is `config/hermesproof-release-ed25519-public.pem`. The official builder derives the public key from the supplied private key and fails if it differs from that pinned key. It emits exact `.zip.sha256` and `.zip.sig` sidecars, then immediately performs the same cryptographic verification required of downloaded releases.
+
+The standalone verifier binds five values: signature schema, Ed25519 algorithm, exact archive basename, recomputed SHA-256, and public-key fingerprint. Malformed or extra envelope fields, renamed archives, altered bytes, malformed checksums, wrong public keys, and modified signatures all fail closed.
+
+Trust begins with the public key in a reviewed GitLab source revision. Key rotation requires a reviewed public-key commit, a transition release note with both fingerprints, and preservation of old public keys for historical verification. Sigstore and Authenticode are not claimed by this ZIP release.
 
 ## Allowed
 
@@ -21,7 +35,7 @@ The two surfaces an attacker (or a buggy agent) might target are the **state dir
 
 ## Not allowed
 
-- Arbitrary shell execution.
+- Arbitrary or client-supplied shell execution. Reviewed gates and bounded exact-argument process adapters are permitted only for declared capabilities.
 - Arbitrary file writing through MCP.
 - Editing files without locks.
 - Force unlocking active locks.

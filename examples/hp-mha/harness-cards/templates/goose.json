@@ -1,0 +1,107 @@
+{
+  "$schema": "hermesproof.hp_mha.harness_card.v2",
+  "schema_version": 1,
+  "card_id": "goose_1_27_2_windows_installed_reference",
+  "description": "Installed reference manifest; copy to a root card only after re-running version and SHA-256 probes. Verified local Windows static installation of Goose 1.27.2. Executable SHA-256 3f6412b6836a820d3de7884638abeb3d720feba9619d4b9798c5fde773abb14c is also the immutable compiled dependency-closure digest because this installation has no separate package lock. Observed 2026-08-09.",
+  "layers": {
+    "execution": {
+      "installed_commit": "package:goose@1.27.2-static-windows-x64",
+      "package_sha256": "3f6412b6836a820d3de7884638abeb3d720feba9619d4b9798c5fde773abb14c",
+      "dependency_lock_sha256": "3f6412b6836a820d3de7884638abeb3d720feba9619d4b9798c5fde773abb14c",
+      "container_digest": null,
+      "runner_identity": "goose-static-windows",
+      "os_arch": "win32-x64",
+      "repo_commit": "package:goose@1.27.2-static-windows-x64",
+      "repo_dirty": false,
+      "per_step_timeout_s": 30,
+      "task_timeout_s": 1200,
+      "max_steps": 180,
+      "token_budget": 500000,
+      "cost_budget_usd": 2,
+      "wall_clock_budget_s": 3600,
+      "network_policy": "config-allowlist",
+      "sandbox_policy": "workspace-only"
+    },
+    "model": {
+      "provider": "runtime-configured",
+      "model_id": "not-pinned-by-cli-install"
+    },
+    "tools": {
+      "tool_inventory": [
+        "read",
+        "write",
+        "shell",
+        "computer_use",
+        "extension"
+      ],
+      "tool_schema_hashes": [],
+      "mcp_servers": [
+        "hp-mha-serena"
+      ],
+      "allowlist_sha256": null,
+      "denylist_sha256": null,
+      "tool_descriptions_sha256": null,
+      "tool_result_format": "json",
+      "error_response_contract": "code+message",
+      "shell_restrictions": "allowlisted",
+      "write_boundaries": "workspace-root",
+      "destructive_op_policy": "deny"
+    },
+    "context": {
+      "system_prompt_sha256": null,
+      "project_contract_sha256": null,
+      "context_construction_rules": "extension-aware",
+      "file_discovery": "extension-driven",
+      "retrieval_policy": "by-id",
+      "summarization_policy": "truncate-tool-output",
+      "persistent_memory_policy": "session-only",
+      "max_retained_history": 100,
+      "constraint_reminder_behavior": "every-step",
+      "failed_outputs_visible": true,
+      "test_output_injection": "raw"
+    },
+    "scheduling": {
+      "controller": "loop",
+      "planning_stage": false,
+      "retry_count": 2,
+      "backoff": "exponential",
+      "escalation_rules": "human-after-3",
+      "subagent_delegation": true,
+      "model_selection_policy": "multi-provider",
+      "stop_conditions": [
+        "task_done",
+        "budget_exceeded"
+      ],
+      "checkpoint_rollback": false,
+      "doom_loop_threshold": 4,
+      "per_file_edit_limit": 3,
+      "pre_completion_checklist": true
+    },
+    "observability": {
+      "tool_call_sequence_capture": true,
+      "test_command_outcomes_capture": true,
+      "failed_validation_capture": true,
+      "patch_hashes": true,
+      "changed_file_inventory": true,
+      "timeout_cancellation_capture": true,
+      "verification_commands_capture": true,
+      "final_contract_check": true,
+      "rerere_check": false,
+      "trace_completeness_check": true,
+      "missing_event_count": 0
+    },
+    "governance": {
+      "workspace_scope": "single-workspace",
+      "side_effect_boundaries": "workspace-only",
+      "secret_access_policy": "deny",
+      "human_approval_points": [
+        "destructive"
+      ],
+      "destructive_action_policy": "deny",
+      "redaction_policy": "redact-tokens",
+      "secret_values_returned": false,
+      "denied_action_attempts": [],
+      "candidate_agent_proof_only": true
+    }
+  }
+}

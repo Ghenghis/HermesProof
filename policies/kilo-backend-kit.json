@@ -1,0 +1,50 @@
+{
+  "schema": "hermesproof.kilo-backend-policy.v1",
+  "release_target": "Kilo Code 7.10.0-rc.25",
+  "observed_bundle": {
+    "version": "0.0.0-codex-gate11-strong-model-repair-202608050735",
+    "bytes": 206884864,
+    "sha256": "f666f1ce9a55d3fdaf620781e34bed680c850a45f6ac85eb8bdc94c435335ab1",
+    "path_resolution": {
+      "environment": "KILO_RC_ROOT",
+      "relative_path": "packages/kilo-vscode/bin/kilo.exe",
+      "observed_windows_path": "G:/Github/kilocode-2026-openhands/packages/kilo-vscode/bin/kilo.exe"
+    }
+  },
+  "fallback_pack": {
+    "id": "kilo-backend",
+    "package": "@kilocode/cli",
+    "version": "7.4.20",
+    "integrity": "sha512-u/9CvTuf5TkiHFqe5YDFcsglL1XWMDJ3f4Cjn6qIEMHPSrN4HBOLxog5kifrBoYjmmhhgfX73C8DyXKRwXGwxA==",
+    "install_scope": "workspace-content-addressed",
+    "default_enabled": false,
+    "provenance": "source integrity is pinned; executable and SPDX SBOM hashes are generated and verified at install"
+  },
+  "permissions": [
+    "workspace:read",
+    "process:child",
+    "loopback:http"
+  ],
+  "lifecycle": {
+    "default_enabled": false,
+    "activation": "workspace-owner-task-time bounded lease",
+    "expired_or_unused": "disable automatically",
+    "cycle": "stop, restart, health probe without authority expansion",
+    "rollback": "restore content-addressed previous pack and quarantine drift"
+  },
+  "required_health_probes": [
+    "kilo --version",
+    "kilo mcp list",
+    "kilo serve --help",
+    "ollama list",
+    "git --version",
+    "hermesproof doctor --deep"
+  ],
+  "optional_when_fallback_proven": [
+    "docker-engine",
+    "lm-studio",
+    "glab",
+    "bun"
+  ],
+  "secrets": "never stored in policy, scheduler jobs, install plans, or evidence"
+}

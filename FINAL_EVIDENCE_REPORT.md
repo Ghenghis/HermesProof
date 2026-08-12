@@ -1,5 +1,7 @@
 # HermesProof — Final Evidence Report
 
+> Historical report. This May 2026 v0.3.0 closure report is not the current KiloCode/OpenHands/Aider/Goose ecosystem handoff. For current Kilo integration status, read `docs/STALENESS_AUDIT_2026-07-05.md` and `G:\Github\kilocode-2026-openhands\TRUE_MAP.md`.
+
 > Master-prompt §5 Wave 7 closure. Generated 2026-05-02 after the merge of PR #1 to `main`, the first push of `main` exercising the Phase 2 Sigstore + attestation pipeline, and the Pages workflow rerun.
 
 ## 1. Identity

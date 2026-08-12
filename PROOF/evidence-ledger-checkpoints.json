@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "kind": "hermesproof_evidence_ledger_checkpoint",
+  "created_utc": "2026-07-04T10:20:00.000Z",
+  "decision": "accept_documented_historical_forks_without_rewriting_ledger",
+  "incident_doc": "docs/incidents/2026-05-03-chain-break-ev_47347bd34f9a282d.md",
+  "post_checkpoint_policy": "Every entry_hash mismatch and every prev_hash mismatch not listed in accepted_breaks remains a verification failure.",
+  "accepted_breaks": [
+    {
+      "index": 12,
+      "id": "ev_47347bd34f9a282d",
+      "reason": "prev_hash",
+      "prev_entry_id": "ev_a68be9a6ddadeb4a",
+      "ts_utc": "2026-05-03T18:05:16.003Z",
+      "accepted_by": "chain-break-ev_47347bd34f9a282d"
+    },
+    {
+      "index": 19,
+      "id": "ev_be8aac38c4968e51",
+      "reason": "prev_hash",
+      "prev_entry_id": "ev_8459ad81ee2f5d7b",
+      "ts_utc": "2026-05-03T18:45:13.504Z",
+      "accepted_by": "chain-break-ev_47347bd34f9a282d"
+    },
+    {
+      "index": 21,
+      "id": "ev_ee06ff186b9880bf",
+      "reason": "prev_hash",
+      "prev_entry_id": "ev_be8aac38c4968e51",
+      "ts_utc": "2026-05-03T18:50:15.702Z",
+      "accepted_by": "chain-break-ev_47347bd34f9a282d"
+    },
+    {
+      "index": 23,
+      "id": "ev_573337d513808f7e",
+      "reason": "prev_hash",
+      "prev_entry_id": "ev_ee06ff186b9880bf",
+      "ts_utc": "2026-05-03T18:50:15.769Z",
+      "accepted_by": "chain-break-ev_47347bd34f9a282d"
+    }
+  ],
+  "checkpoint_hash": "4b5f6b2003e40b4f399f8d088d5ff1a3b4757c39f26d2145313ed090d5c46099"
+}

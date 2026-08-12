@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * release-checksum — gate `release.checksums_present` (advisory).
+ * release-checksum — gate `release.checksums_present` (cryptographic).
  *
  * Walks the release directories (`dist/`, `release/`) and asserts that
  * every "release artifact" has BOTH a `.sha256` sidecar and a signature
@@ -16,9 +16,9 @@
  *   - `<artifact>.cosign.bundle` (cosign keyless / Sigstore bundle) OR
  *   - `<artifact>.asc` (OpenPGP detached signature).
  *
- * The gate is **advisory** until cosign integration lands — registered in
- * scripts/truth-gates.mjs at level=warn. We still emit ok:true when no
- * release dirs exist (nothing to gate yet) so the gate is dormant in dev.
+ * Detached Ed25519 signatures are verified against the pinned HermesProof
+ * public key. The gate emits ok:true when no release artifacts exist so it
+ * remains dormant during development.
  *
  * Output: structured evidence; CLI emits one PASS/FAIL line.
  *
@@ -32,6 +32,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import url from "node:url";
 import crypto from "node:crypto";
+import { verifyReleaseArtifact } from "../src/core/release-signing.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -59,7 +60,7 @@ if (args.help) {
 Options:
   --dirs <list>         Comma-separated relative dirs to scan (default: dist,release)
   --root <path>         Repo root override (default: parent of scripts/)
-  --verify-sha256       Recompute the SHA-256 of each artifact and compare to its sidecar
+  --verify-sha256       Recompute SHA-256 explicitly (Ed25519 verification is always enabled)
   --json                JSON only output
   --help                Show this help`);
   process.exit(0);
@@ -143,10 +144,17 @@ async function readShaSidecar(filePath) {
 // ---------------------------------------------------------------------------
 // Gate runner
 // ---------------------------------------------------------------------------
-export async function runReleaseChecksumGate({ root = ROOT, scanDirs = SCAN_DIRS, verifySha256 = false } = {}) {
+export async function runReleaseChecksumGate({
+  root = ROOT,
+  scanDirs = SCAN_DIRS,
+  verifySha256 = false,
+  verifySignatures = true,
+  publicKeyFile = path.join(root, "config", "hermesproof-release-ed25519-public.pem")
+} = {}) {
   const scanned = [];
   const artifacts = [];
   const sha_mismatches = [];
+  const signature_mismatches = [];
 
   for (const rel of scanDirs) {
     const abs = path.join(root, rel);
@@ -167,10 +175,44 @@ export async function runReleaseChecksumGate({ root = ROOT, scanDirs = SCAN_DIRS
       if (verifySha256 && verdict.checksum_sidecar) {
         const expected = await readShaSidecar(path.join(abs, verdict.checksum_sidecar));
         const actual = await sha256OfFile(path.join(abs, name));
-        if (expected && expected !== actual) {
-          sha_mismatches.push({ path: verdict.path, expected, actual });
+        if (!expected) {
+          sha_mismatches.push({ path: verdict.path, expected: null, actual, reason: "checksum_invalid" });
+        } else if (expected !== actual) {
+          sha_mismatches.push({ path: verdict.path, expected, actual, reason: "checksum_mismatch" });
         }
         verdict.sha256_match = expected === actual;
+      }
+      if (verifySignatures && verdict.signature_sidecar) {
+        if (!verdict.signature_sidecar.endsWith(".sig")) {
+          verdict.signature_verified = false;
+          verdict.signature_reason = "unsupported_signature_format";
+          signature_mismatches.push({
+            path: verdict.path,
+            signature: verdict.signature_sidecar,
+            reason: verdict.signature_reason
+          });
+        } else {
+          const verification = await verifyReleaseArtifact({
+            artifactFile: path.join(abs, name),
+            checksumFile: verdict.checksum_sidecar
+              ? path.join(abs, verdict.checksum_sidecar)
+              : path.join(abs, name + ".sha256"),
+            signatureFile: path.join(abs, verdict.signature_sidecar),
+            publicKeyFile
+          });
+          verdict.signature_verified = verification.ok === true;
+          if (verification.ok) {
+            verdict.key_fingerprint = verification.keyFingerprint;
+            verdict.verified_sha256 = verification.sha256;
+          } else {
+            verdict.signature_reason = verification.reason;
+            signature_mismatches.push({
+              path: verdict.path,
+              signature: verdict.signature_sidecar,
+              reason: verification.reason
+            });
+          }
+        }
       }
     }
     scanned.push({ dir: rel, exists: true, artifact_count: count });
@@ -178,17 +220,24 @@ export async function runReleaseChecksumGate({ root = ROOT, scanDirs = SCAN_DIRS
 
   const noArtifacts = artifacts.length === 0;
   const failing = artifacts.filter((a) => !a.ok);
-  const ok = noArtifacts || (failing.length === 0 && sha_mismatches.length === 0);
+  const ok = noArtifacts || (
+    failing.length === 0 &&
+    sha_mismatches.length === 0 &&
+    signature_mismatches.length === 0
+  );
 
   let details;
   if (noArtifacts) {
     details = `no release artifacts in ${scanDirs.join(",")}; gate dormant`;
-  } else if (failing.length || sha_mismatches.length) {
+  } else if (failing.length || sha_mismatches.length || signature_mismatches.length) {
     details =
       `${artifacts.length} artifact(s); ` +
-      `missing_sidecar=${failing.length}, sha_mismatch=${sha_mismatches.length}`;
+      `missing_sidecar=${failing.length}, sha_mismatch=${sha_mismatches.length}, ` +
+      `signature_mismatch=${signature_mismatches.length}`;
   } else {
-    details = `${artifacts.length} artifact(s) all have sha256+signature sidecars`;
+    details = verifySignatures
+      ? `${artifacts.length} artifact(s) have verified sha256+Ed25519 signatures`
+      : `${artifacts.length} artifact(s) all have sha256+signature sidecars`;
   }
 
   return {
@@ -197,10 +246,12 @@ export async function runReleaseChecksumGate({ root = ROOT, scanDirs = SCAN_DIRS
       root,
       scanned,
       verify_sha256: verifySha256,
+      verify_signatures: verifySignatures,
       artifact_extensions: ARTIFACT_EXTENSIONS,
       artifacts,
       failing,
-      sha_mismatches
+      sha_mismatches,
+      signature_mismatches
     },
     details
   };
@@ -225,11 +276,13 @@ if (isMain) {
         console.log(`  - ${f.path}: missing ${f.missing.join(",")}`);
       }
       for (const m of result.evidence.sha_mismatches) {
-        console.log(`  - sha256 mismatch: ${m.path} expected=${m.expected.slice(0, 12)}.. actual=${m.actual.slice(0, 12)}..`);
+        const expected = m.expected ? m.expected.slice(0, 12) + ".." : "invalid";
+        console.log(`  - sha256 mismatch: ${m.path} expected=${expected} actual=${m.actual.slice(0, 12)}.. reason=${m.reason}`);
+      }
+      for (const m of result.evidence.signature_mismatches) {
+        console.log(`  - signature mismatch: ${m.path} reason=${m.reason}`);
       }
     }
   }
-  // Advisory until cosign integration lands; we still surface non-zero
-  // for direct CLI invocation so a release pipeline can wire it strictly.
   process.exit(result.ok ? 0 : 1);
 }

@@ -1,5 +1,7 @@
 # Missing Features
 
+> Historical/reference inventory. This file describes May 2026 HermesProof v0.3.0 scope decisions and is not the current Kilo ecosystem source of truth. For current Kilo/HermesProof lane status, read `docs/STALENESS_AUDIT_2026-07-05.md` and `G:\Github\kilocode-2026-openhands\HANDOFF.md`.
+
 **Companion to [FINAL_EVIDENCE_REPORT.md](FINAL_EVIDENCE_REPORT.md).** Catalogues every capability researched during the v0.3.0 cycle that did NOT ship, why, and what conditions would justify revisiting. Three buckets:
 
 1. **Deferred** — useful, not yet shipped, likely to revisit

@@ -155,15 +155,27 @@ function stringEnv(env) {
   return out;
 }
 
-// On Windows, npm / npx / yarn / pnpm are .cmd shims. Resolve them explicitly
-// so we can spawn with shell:false (avoiding Node 25's DEP0190 warning about
-// shell:true + args, and removing any shell-injection surface even though our
-// args are hardcoded in DEFAULT_GATES).
-const WIN_CMD_SHIMS = new Set(["npm", "npx", "yarn", "pnpm"]);
-function resolveCommandForPlatform(command) {
-  if (process.platform !== "win32") return command;
-  if (WIN_CMD_SHIMS.has(command)) return `${command}.cmd`;
-  return command;
+// Node cannot spawn .cmd shims with shell:false on current Windows releases
+// (`spawn EINVAL`). Execute npm/npx's JavaScript CLI with this exact Node
+// runtime instead. This preserves shell:false and avoids both command-shell
+// injection and dependence on PATHEXT/cmd.exe behavior.
+const WIN_NPM_CLIS = Object.freeze({ npm: "npm-cli.js", npx: "npx-cli.js" });
+function resolveCommandForPlatform(command, args) {
+  if (process.platform !== "win32" || !WIN_NPM_CLIS[command]) {
+    return { command, args, display: command };
+  }
+  const cli = path.join(
+    path.dirname(process.execPath),
+    "node_modules",
+    "npm",
+    "bin",
+    WIN_NPM_CLIS[command]
+  );
+  return {
+    command: process.execPath,
+    args: [cli, ...args],
+    display: `${command}.cmd`
+  };
 }
 
 function runProcess({ command, args, cwd, timeoutMs, env }) {
@@ -171,18 +183,18 @@ function runProcess({ command, args, cwd, timeoutMs, env }) {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
-    const resolved = resolveCommandForPlatform(command);
+    const resolved = resolveCommandForPlatform(command, args);
     let child;
     try {
       // shell:false — args are passed verbatim to the OS. DEFAULT_GATES literals
       // only; never accept user-controlled command/args here.
-      child = spawn(resolved, args, { cwd, env, shell: false });
+      child = spawn(resolved.command, resolved.args, { cwd, env, shell: false });
     } catch (err) {
       resolve({
         exitCode: 127,
         timedOut: false,
         stdout: "",
-        stderr: `Failed to spawn '${resolved}': ${err.message}. Is it installed and on PATH?`
+        stderr: `Failed to spawn '${resolved.display}': ${err.message}. Is it installed and on PATH?`
       });
       return;
     }

@@ -1,0 +1,14 @@
+{
+  "$schema": "hermesproof.hp_mha.task_set_manifest.v1",
+  "schema_version": 1,
+  "task_set_id": "ts_holdout_release_v1",
+  "description": "Holdout task set: results from runs on this set MUST NOT reach the candidate optimizer before the candidate harness is frozen (HP-MHA-006). Placeholder tasks — populate per release per project rules.",
+  "tasks": [
+    { "id": "holdout-t1", "description": "reserved holdout task slot 1" },
+    { "id": "holdout-t2", "description": "reserved holdout task slot 2" },
+    { "id": "holdout-t3", "description": "reserved holdout task slot 3" }
+  ],
+  "tags": ["hp_mha.holdout"],
+  "visibility": "optimizer-blinded",
+  "recommended_size": "select in release-policy file"
+}

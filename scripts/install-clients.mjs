@@ -21,7 +21,10 @@ function parseArgs(argv) {
     else if (a === "--targets" || a === "--target") out.targets = argv[++i];
     else if (a.startsWith("--targets=")) out.targets = a.slice("--targets=".length);
     else if (a.startsWith("--target=")) out.targets = a.slice("--target=".length);
+    else if (a === "--launcher") out.launcherPath = argv[++i];
+    else if (a.startsWith("--launcher=")) out.launcherPath = a.slice("--launcher=".length);
     else if (a === "--dry-run") out.dryRun = true;
+    else if (a === "--json") out.json = true;
     else if (a === "--help" || a === "-h") out.help = true;
   }
   return out;
@@ -39,40 +42,44 @@ export async function installClients(argv = process.argv.slice(2), env = process
       env.HERMES3D_WORKSPACE ||
       process.cwd()
   );
-  const clients = (args.targets || "claude-desktop,codex,windsurf,claude-code")
+  const clients = (args.targets || "kilocode,vscode,codex,windsurf,lm-studio,ollama,claude-desktop,claude-code,cursor,devin")
     .split(",")
     .map((target) => target.trim())
     .filter(Boolean);
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  console.log(`== Installing ${args.serverName || "hermes3d-locks"} ==`);
-  console.log(`workspace    : ${workspaceRoot}`);
-  console.log(`targets      : ${clients.join(", ")}`);
-  console.log("");
+  const log = args.json ? () => {} : console.log;
+  log(`== Installing HermesProof dual-server stack ==`);
+  log(`workspace    : ${workspaceRoot}`);
+  log(`targets      : ${clients.join(", ")}`);
+  log("");
   const result = await writeClients({
     clients,
     workspaceRoot,
     repoRoot,
     serverName: args.serverName || env.MCP_LOCK_SERVER_NAME || "hermes3d-locks",
+    launcherPath: args.launcherPath ? path.resolve(args.launcherPath) : undefined,
     dryRun: Boolean(args.dryRun),
     env
   });
   for (const [client, value] of Object.entries(result.results)) {
-    if (value.error) console.log(`${client.padEnd(18)} ERROR  ${value.error}`);
-    else console.log(`${client.padEnd(18)} ${value.status.toUpperCase()}`);
+    if (value.error) log(`${client.padEnd(18)} ERROR  ${value.error}`);
+    else log(`${client.padEnd(18)} ${value.status.toUpperCase()}`);
   }
-  console.log("");
-  console.log("Restart Claude Desktop / Codex; refresh MCP servers in Cascade. Run `claude mcp list` to verify Claude Code.");
-  return { ok: Object.values(result.results).every((item) => item.ok !== false), ...result };
+  log("");
+  log("Restart or refresh each installed MCP host. Kilo Code, LM Studio, Codex, Windsurf, VS Code, and Claude should list both hermes3d-locks and hp-mha-serena.");
+  const output = { ok: Object.values(result.results).every((item) => item.ok !== false), ...result };
+  if (args.json) process.stdout.write(JSON.stringify(output) + "\n");
+  return output;
 }
 
 function helpText() {
-  return `Install hermes3d-locks into MCP client configs.\n\n` +
+  return `Install both HermesProof MCP servers plus LM Link/Ollama routing into supported client configs.\n\n` +
     `Usage:\n` +
-    `  node scripts/install-clients.mjs --workspace <path> [--server-name <id>] [--targets <list>]\n\n` +
+    `  node scripts/install-clients.mjs --workspace <path> [--server-name <id>] [--targets <list>] [--launcher <path>]\n\n` +
     `Available targets:\n` +
     `  ${SUPPORTED_CLIENTS.join(", ")}, vscode\n` +
     `  claude-code-hooks\n\n` +
-    `--targets defaults to: claude-desktop,codex,windsurf,claude-code`;
+    `--targets defaults to: kilocode,vscode,codex,windsurf,lm-studio,ollama,claude-desktop,claude-code,cursor,devin`;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

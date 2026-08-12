@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { HermesAgentBridge } from "./hermes-agent-bridge.mjs";
+import { DEFAULT_FAILOVER, HermesAgentBridge, PROVIDERS } from "./hermes-agent-bridge.mjs";
 import { AnonymousOrchestrator } from "./anonymous-orchestrator.mjs";
 import { verifyChainedLog } from "./fs-utils.mjs";
 
@@ -70,6 +70,70 @@ async function readEvidenceEntries(orchestrator) {
 }
 
 describe("HermesAgentBridge USER session hardening", () => {
+  it("defaults to MiniMax M3 with DeepSeek fallback (paid-cloud-first then local)", () => {
+    // Defaults put paid cloud providers (minimax, deepinfra, deepseek, siliconflow)
+    // before local fallbacks (lm_studio, ollama). The historic 2-name failover
+    // ["minimax","deepseek"] is a strict prefix of the new explicit ordering.
+    assert.ok(DEFAULT_FAILOVER[0] === "minimax", "minimax must be the primary default");
+    assert.ok(DEFAULT_FAILOVER.includes("deepseek"), "deepseek must remain reachable");
+    assert.deepEqual(
+      DEFAULT_FAILOVER.slice(0, 4),
+      ["minimax", "deepinfra", "deepseek", "siliconflow"],
+      "paid-cloud-first ordering"
+    );
+    assert.deepEqual(
+      DEFAULT_FAILOVER.slice(4),
+      ["lm_studio", "ollama"],
+      "local-fallback ordering"
+    );
+    assert.equal(PROVIDERS.minimax.endpoint_default, "https://api.minimax.io/v1/chat/completions");
+    assert.equal(PROVIDERS.minimax.model_default, "MiniMax-M3");
+    assert.equal(PROVIDERS.deepinfra.endpoint_default, "https://api.deepinfra.com/v1/openai/chat/completions");
+    assert.equal(PROVIDERS.deepseek.model_default, "deepseek-v4-flash");
+    assert.equal(PROVIDERS.siliconflow.model_default, "deepseek-ai/DeepSeek-V4-Flash");
+  });
+
+  it("resolves alternate private env names without exposing key values", () => {
+    const old = {
+      MINIMAX_API_KEY: process.env.MINIMAX_API_KEY,
+      DEEPINFRA_API_KEY: process.env.DEEPINFRA_API_KEY,
+      DEEPINFRA_TOKEN: process.env.DEEPINFRA_TOKEN,
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+      SILICONFLOW_API_KEY: process.env.SILICONFLOW_API_KEY,
+      SILICON_FLOW_API_KEY: process.env.SILICON_FLOW_API_KEY,
+      LMSTUDIO_BASE_URL: process.env.LMSTUDIO_BASE_URL,
+      LM_STUDIO_BASE_URL: process.env.LM_STUDIO_BASE_URL,
+      LM_STUDIO_MODEL: process.env.LM_STUDIO_MODEL,
+    };
+    try {
+      process.env.MINIMAX_API_KEY = "test-minimax-key";
+      delete process.env.DEEPINFRA_API_KEY;
+      process.env.DEEPINFRA_TOKEN = "test-deepinfra-token";
+      process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
+      delete process.env.SILICONFLOW_API_KEY;
+      process.env.SILICON_FLOW_API_KEY = "test-siliconflow-key";
+      delete process.env.LMSTUDIO_BASE_URL;
+      process.env.LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1";
+      process.env.LM_STUDIO_MODEL = "local-test-model";
+
+      const bridge = new HermesAgentBridge({
+        orchestrator: makeOrchestrator(),
+        enabled: true,
+        failover_order: ["minimax", "deepseek", "lm_studio"],
+      });
+      const providers = bridge._resolvedProviders();
+
+      assert.deepEqual(providers.map((provider) => provider.name), ["minimax", "deepseek", "lm_studio"]);
+      assert.equal(providers.find((provider) => provider.name === "lm_studio")?.endpoint, "http://127.0.0.1:1234/v1/chat/completions");
+      assert.equal(providers.find((provider) => provider.name === "lm_studio")?.model, "local-test-model");
+    } finally {
+      for (const [key, value] of Object.entries(old)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it("rejects missing configured scope before provider call", async () => {
     const orchestrator = makeOrchestrator();
     const bridge = new TestBridge({ orchestrator, scope: null });
@@ -170,6 +234,118 @@ describe("HermesAgentBridge USER session hardening", () => {
     assert.equal(providers[0].name, "synthetic_registry");
     assert.equal(providers[0].endpoint, "http://localhost:9999/v1/chat/completions");
     assert.equal(providers[0].model, "synthetic-model");
+  });
+
+  it("keeps the configured provider order despite performance scores", async () => {
+    const providerPerformance = {
+      async rankProviders({ task_type, candidates }) {
+        assert.equal(task_type, "aice_live_controller");
+        assert.deepEqual(candidates, ["provider-a", "provider-b"]);
+        return {
+          ok: true,
+          providers: [
+            { provider_id: "provider-b", score: 2.25 },
+            { provider_id: "provider-a", score: 0.5 },
+          ],
+        };
+      },
+    };
+    const bridge = new HermesAgentBridge({
+      orchestrator: makeOrchestrator(),
+      enabled: true,
+      failover_order: ["provider-a", "provider-b"],
+      providerPerformance,
+      registryProviders: [
+        {
+          name: "provider-a",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9998/v1/chat/completions",
+          model_env: null,
+          model_default: "model-a",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+        {
+          name: "provider-b",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9999/v1/chat/completions",
+          model_env: null,
+          model_default: "model-b",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+      ],
+    });
+
+    assert.deepEqual(bridge._resolvedProviders().map((p) => p.name), ["provider-a", "provider-b"]);
+    assert.deepEqual((await bridge._providersForTask("aice_live_controller")).map((p) => p.name), ["provider-a", "provider-b"]);
+  });
+
+  it("records provider success and failure from Hermes Agent decisions", async () => {
+    const recorded = [];
+    const providerPerformance = {
+      async rankProviders({ candidates }) {
+        return {
+          ok: true,
+          providers: candidates.map((provider_id) => ({ provider_id, score: 1.0 })),
+        };
+      },
+      async recordOutcome(event) {
+        recorded.push(event);
+        return { ok: true };
+      },
+    };
+    class RecordingBridge extends HermesAgentBridge {
+      async _callProvider(provider) {
+        if (provider.name === "provider-a") {
+          return { ok: false, reason: "provider-a timeout" };
+        }
+        return { ok: true, verdict: "approve", rationale: "json ok" };
+      }
+    }
+    const bridge = new RecordingBridge({
+      orchestrator: makeOrchestrator(),
+      enabled: true,
+      failover_order: ["provider-a", "provider-b"],
+      providerPerformance,
+      registryProviders: [
+        {
+          name: "provider-a",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9998/v1/chat/completions",
+          model_env: null,
+          model_default: "model-a",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+        {
+          name: "provider-b",
+          endpoint_env: null,
+          endpoint_default: "http://localhost:9999/v1/chat/completions",
+          model_env: null,
+          model_default: "model-b",
+          api_key_env: null,
+          headers: () => ({ "Content-Type": "application/json" }),
+          body: ({ model, messages }) => ({ model, messages }),
+          parse: (json) => json.text,
+        },
+      ],
+    });
+
+    const decision = await bridge._askAgent({ task: "unit_test_decision" });
+
+    assert.equal(decision.ok, true);
+    assert.equal(decision.provider_used, "provider-b");
+    assert.deepEqual(recorded.map((event) => [event.provider_id, event.outcome, event.task_type]), [
+      ["provider-a", "timeout", "hermes_agent:unit_test_decision"],
+      ["provider-b", "completed", "hermes_agent:unit_test_decision"],
+    ]);
   });
 
   it("writes USER-session decisions to the chained evidence ledger", async () => {

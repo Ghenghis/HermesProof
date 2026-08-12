@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 390" role="img" aria-labelledby="t d">
+  <title id="t">HermesProof fail-closed update lifecycle</title>
+  <desc id="d">An update is fetched from allowlisted GitLab, verified through nine production gates, staged immutably, probed, activated atomically, and rolled back if any check fails.</desc>
+  <defs>
+    <linearGradient id="b" x2="1"><stop stop-color="#071827"/><stop offset="1" stop-color="#22123d"/></linearGradient>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0v6l9-3z" fill="#55e8ff"/></marker>
+    <style>
+      text{font-family:Segoe UI,Arial,sans-serif;fill:#eff9ff}.h{font-size:25px;font-weight:800}.n{font-size:17px;font-weight:700}.s{font-size:13px;fill:#b8cede}
+      .card{fill:#102a40;stroke:#39769a;stroke-width:2}.ok{fill:#123d37;stroke:#45e1ac}.bad{fill:#401c2e;stroke:#ff6c9d}
+      .p{fill:none;stroke:#55e8ff;stroke-width:3;stroke-dasharray:9 8;marker-end:url(#a);animation:f 1.5s linear infinite}.dot{fill:#55e8ff;animation:q 2s ease-in-out infinite}
+      @keyframes f{to{stroke-dashoffset:-34}}@keyframes q{50%{opacity:.2}}@media(prefers-reduced-motion:reduce){.p,.dot{animation:none}}
+    </style>
+  </defs>
+  <rect width="1200" height="390" rx="28" fill="url(#b)"/><text class="h" x="600" y="47" text-anchor="middle">Safe update: immutable, evidence-bound, reversible</text>
+  <g text-anchor="middle">
+    <rect class="card" x="35" y="94" width="170" height="104" rx="16"/><text class="n" x="120" y="127">1 · Resolve</text><text class="s" x="120" y="153">allowlisted GitLab</text><text class="s" x="120" y="175">exact ref + SHA</text>
+    <rect class="card" x="237" y="94" width="170" height="104" rx="16"/><text class="n" x="322" y="127">2 · Stage</text><text class="s" x="322" y="153">new immutable dir</text><text class="s" x="322" y="175">no live overwrite</text>
+    <rect class="card" x="439" y="79" width="245" height="134" rx="16"/><text class="n" x="561" y="112">3 · Prove</text><text class="s" x="561" y="138">source · deps · Serena · tests</text><text class="s" x="561" y="160">docs · HP-MHA · both MCPs</text><text class="s" x="561" y="182">SBOM + security scans</text>
+    <rect class="ok" x="716" y="94" width="170" height="104" rx="16"/><text class="n" x="801" y="127">4 · Activate</text><text class="s" x="801" y="153">atomic pointer</text><text class="s" x="801" y="175">known-good only</text>
+    <rect class="ok" x="918" y="94" width="240" height="104" rx="16"/><text class="n" x="1038" y="127">5 · Refresh clients</text><text class="s" x="1038" y="153">snapshot configs first</text><text class="s" x="1038" y="175">stable launcher path</text>
+  </g>
+  <path class="p" d="M205 146h32 M407 146h32 M684 146h32 M886 146h32"/>
+  <circle class="dot" cx="221" cy="146" r="5"/><circle class="dot" cx="423" cy="146" r="5"/><circle class="dot" cx="700" cy="146" r="5"/><circle class="dot" cx="902" cy="146" r="5"/>
+  <path class="p" d="M561 213v58h-175"/><rect class="bad" x="116" y="266" width="270" height="82" rx="16"/>
+  <text class="n" x="251" y="299" text-anchor="middle">Any failure → quarantine</text><text class="s" x="251" y="323" text-anchor="middle">restore config snapshot + previous release</text>
+  <path class="p" d="M386 307h400"/><rect class="ok" x="786" y="266" width="286" height="82" rx="16"/>
+  <text class="n" x="929" y="299" text-anchor="middle">Manual or automatic rollback</text><text class="s" x="929" y="323" text-anchor="middle">evidence retained; user edits protected</text>
+</svg>

@@ -36,13 +36,23 @@ long-running server.
 
 ## Activation per client
 
+The managed Windows release already wires every selected client through
+`hermesproof-launch`, which resolves only the active known-good release. The
+manual supervisor examples below are for a source checkout. Do not replace a
+managed stable-launcher entry with a versioned release path.
+
 Replace `"command": "node", "args": ["src/server.mjs"]` with
 `"command": "node", "args": ["scripts/mcp-supervisor.mjs"]` in any client
 config.
 
 ### Claude Code
 
-In `~/.config/claude-code/settings.json` (or `~/.claude/settings.json`):
+Claude Code stores user- and local-scoped MCP servers in `~/.claude.json`.
+For the supported install, use `install-hermesproof.ps1` or
+`scripts/install-clients.mjs`; both call `claude mcp` and snapshot that real
+MCP store before changing it. Do not place MCP servers in
+`~/.claude/settings.json`, which is a settings/plugin file rather than the
+user MCP store.
 
 ```json
 {

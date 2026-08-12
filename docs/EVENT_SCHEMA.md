@@ -58,9 +58,18 @@ Required fields:
 ## Event types
 
 ```text
+task.enqueued
 task.claimed
 task.released
 task.blocked
+task.recovered
+agent.profile.updated
+agent.presence
+message.sent
+message.acked
+assistance.requested
+unlock.requested
+work.completed
 handoff.created
 handoff.approved
 handoff.denied
@@ -70,6 +79,8 @@ lock.recovered
 evidence.appended
 gate.failed
 gate.passed
+gitlab.project.ready
+gitlab.merge_request.ready
 pr.opened
 ```
 

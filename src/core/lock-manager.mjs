@@ -12,6 +12,7 @@ import {
   normalizeWorkspacePath,
   pathExists,
   readJson,
+  readEvidenceCheckpointManifest,
   safeWorkspaceRoot,
   shaId,
   statePaths,
@@ -29,6 +30,20 @@ const DEFAULT_TTL_MINUTES = 90;
 // busy worktrees that's measurable. v0.5.1 caches the result for DOCTOR_CACHE_TTL_MS
 // per-instance. Cache invalidates on TTL or explicit force_refresh.
 const DOCTOR_CACHE_TTL_MS = 30_000;
+const WINDOWS_CMD_ENV_LIMIT = 8191;
+
+export function assessWindowsCommandPath({
+  platform = process.platform,
+  pathValue = process.env.Path ?? process.env.PATH ?? ""
+} = {}) {
+  const length = String(pathValue || "").length;
+  if (platform !== "win32") return { ok: true, length, limit: null };
+  return {
+    ok: length > 0 && length <= WINDOWS_CMD_ENV_LIMIT,
+    length,
+    limit: WINDOWS_CMD_ENV_LIMIT
+  };
+}
 
 export class HermesLockManager {
   constructor({ workspaceRoot, stateDirName } = {}) {
@@ -582,7 +597,26 @@ export class HermesLockManager {
   }
 
   async verifyEvidence() {
-    return await verifyChainedLog(this.paths.evidenceFile);
+    const checkpointFile = path.join(this.workspaceRoot, "PROOF", "evidence-ledger-checkpoints.json");
+    const checkpoint = await readEvidenceCheckpointManifest(checkpointFile);
+    const result = await verifyChainedLog(this.paths.evidenceFile, {
+      acceptedBreaks: checkpoint?.ok ? checkpoint.accepted_breaks : []
+    });
+    return {
+      ...result,
+      checkpoint: checkpoint
+        ? {
+            ok: checkpoint.ok,
+            path: "PROOF/evidence-ledger-checkpoints.json",
+            reason: checkpoint.reason,
+            schema: checkpoint.schema,
+            kind: checkpoint.kind,
+            created_utc: checkpoint.created_utc,
+            incident_doc: checkpoint.incident_doc,
+            accepted_break_count: checkpoint.accepted_breaks.length
+          }
+        : null
+    };
   }
 
   async getStateSummary() {
@@ -753,6 +787,25 @@ export class HermesLockManager {
       });
     }
     checks.push({ id: "node_version", ok: nodeOk });
+
+    // 6. cmd.exe silently drops overlong environment values. npm lifecycle
+    // scripts use cmd.exe on Windows, so an oversized PATH makes otherwise
+    // healthy `node`/`npm` commands fail with no useful child-process output.
+    const commandPath = assessWindowsCommandPath();
+    if (!commandPath.ok) {
+      findings.push({
+        level: "error",
+        check: "windows_cmd_path_length",
+        message: `Windows PATH is ${commandPath.length} characters; cmd.exe supports at most ${commandPath.limit}.`,
+        fix: "Shorten duplicate/stale user and system PATH entries, restart the terminal, then rerun doctor. For emergency local proof, launch npm with a bounded PATH containing Node, Git, and Windows system directories."
+      });
+    }
+    checks.push({
+      id: "windows_cmd_path_length",
+      ok: commandPath.ok,
+      length: commandPath.length,
+      limit: commandPath.limit
+    });
 
     return {
       ok: findings.every((f) => f.level !== "error"),

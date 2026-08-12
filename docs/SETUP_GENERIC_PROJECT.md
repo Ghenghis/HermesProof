@@ -77,6 +77,30 @@ npm run init-project -- `
 | `MCP_LOCK_STATE_DIR` | optional  | Override the hidden state dir name. Default: `.hermes3d_orchestrator`.     |
 | `HERMES3D_WORKSPACE` | optional  | Legacy alias for `MCP_LOCK_WORKSPACE`. Honored when the new name is unset. |
 
+### Shared install across many workspaces
+
+Keep `MCP_LOCK_WORKSPACE` pointed at a default safe repo, then switch at runtime when an agent starts work in a different project:
+
+```json
+{ "tool": "hermes_get_workspace", "arguments": {} }
+```
+
+```json
+{
+  "tool": "hermes_set_workspace",
+  "arguments": {
+    "owner": "codex-impl-01",
+    "workspaceRoot": "C:\\path\\to\\AnotherProject",
+    "reason": "Start coordinated edits in AnotherProject",
+    "allowActiveLocks": false
+  }
+}
+```
+
+After switching, call `hermes_join_project` so the agent profile, live presence, inbox, backend status, and current project summary are hydrated in one step. `hermes_live_status` shows active locks, stale locks, queue counts, recent outbox events, presence, and anonymous-agent state. Use `includeProfiles: true` when an agent needs the registered host/capability profiles. Agents that need low-latency handoff awareness can call `hermes_wait_for_events` with the last event id they observed, and agents waiting on direct work can call `hermes_wait_for_inbox`.
+
+If an agent needs a collaborator, call `hermes_request_assistance` with required skills and task type. HermesProof ranks active agents using live presence, lock load, and learned dispatch history, sends typed inbox messages, and emits `assistance.requested`. The requester can then call `hermes_wait_for_assistance` to see who accepted, declined, or timed out. If an agent needs a locked file, call `hermes_request_unlock` with the file list and reason. HermesProof discovers active owners, creates handoff requests, sends inbox messages, and emits `unlock.requested` / `handoff.created` events. The owner then calls `hermes_approve_handoff`; the requester waits with `hermes_wait_for_unlock`. If the lock owner is stale, `hermes_request_unlock` reports `stale_available` and points to `hermes_recover_stale_locks` instead of blocking on an absent owner. Finishing agents should call `hermes_complete_work` so evidence, task release, lock release, notifications, and presence update happen in one step.
+
 ## Per-client wiring
 
 The wizard is the recommended way to wire clients. The manual command below is

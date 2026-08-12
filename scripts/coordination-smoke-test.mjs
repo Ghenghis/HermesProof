@@ -653,11 +653,11 @@ test("install-clients wires streamhook adapters for KiloCode, Cursor, Windsurf, 
   assert.equal(result.results.vscode.status, "written");
 
   assert.match(
-    await fs.readFile(path.join(workspaceRoot, ".kilocode", "rules.toml"), "utf8"),
+    await fs.readFile(path.join(workspaceRoot, ".kilo", "hermesproof", "rules.toml"), "utf8"),
     /KILOCODE_INBOX\.md/
   );
   assert.match(
-    await fs.readFile(path.join(workspaceRoot, ".kilocode", "system-prompt-snippet.md"), "utf8"),
+    await fs.readFile(path.join(workspaceRoot, ".kilo", "hermesproof", "system-prompt-snippet.md"), "utf8"),
     /HermesProof STREAM Discipline for KiloCode/
   );
   const cursorMcp = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".cursor", "mcp.json"), "utf8"));

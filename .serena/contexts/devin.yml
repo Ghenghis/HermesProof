@@ -1,0 +1,16 @@
+description: Devin context with Serena semantic intelligence and Devin-owned file, shell, and browser operations
+prompt: |
+  You are running inside Devin. Use Serena for symbol-aware code understanding, references,
+  diagnostics, and safe refactoring insight. Devin owns basic file reads, line edits, shell,
+  browser, and environment operations. In HermesProof projects, obtain a task claim and exact
+  file lock before any mutation and attach verification evidence before completion.
+excluded_tools:
+  - create_text_file
+  - read_file
+  - execute_shell_command
+  - find_file
+  - list_dir
+included_optional_tools:
+  - get_diagnostics_for_symbol
+tool_description_overrides: {}
+single_project: true
