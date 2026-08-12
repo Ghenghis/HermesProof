@@ -216,6 +216,10 @@ test("Claude Code receives both servers and LM Studio alone receives the LM Link
   });
   assert.equal(result.results["claude-code"].ok, true);
   assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.options.env.HOME, homeDir);
+    assert.equal(call.options.env.USERPROFILE, homeDir);
+  }
   assert.deepEqual(calls.map((call) => call.args[4]).sort(), ["hermes3d-locks", "hp-mha-serena"]);
   const compositeCall = calls.find((call) => call.args[4] === "hp-mha-serena");
   assert.ok(compositeCall.args.includes("HERMES_WORKSPACE_ROOT=" + workspaceRoot));
