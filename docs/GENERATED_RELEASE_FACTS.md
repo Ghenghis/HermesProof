@@ -9,8 +9,7 @@ lock-governed semantic/LSP tools, and **0 unrestricted mutation tools**.
 
 - GitLab project: https://gitlab.com/Ghenghis/HermesProof
 - GitLab Pages: https://ghenghis.gitlab.io/HermesProof
-- GitHub mirror: https://github.com/Ghenghis/HermesProof
-- GitHub releases: https://github.com/Ghenghis/HermesProof/releases
+- Publication authority: GitLab only
 - Release tag: `v0.9.2`
 - Truth gates: 37
 - Minimum Node.js: 20

@@ -33,7 +33,7 @@ test("README and Pages site publish the GitLab-primary release and current diagr
     assert.match(content, /ecosystem-e2e\.svg/);
     assert.match(content, /updater-lifecycle-animated\.svg/);
   }
-  assert.match(readme, /github\.com\/Ghenghis\/HermesProof/i);
+  assert.doesNotMatch(readme, /github\.com\/Ghenghis\/HermesProof/i);
   const userFacingReleaseTags = [...page.matchAll(/\bv\d+\.\d+\.\d+\b/g)].map((match) => match[0]);
   assert.ok(userFacingReleaseTags.length >= 3);
   assert.deepEqual([...new Set(userFacingReleaseTags)], [currentReleaseTag]);
@@ -43,7 +43,8 @@ test("README and Pages site publish the GitLab-primary release and current diagr
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(readme, /CURRENT_RELEASE_STATUS\.md/);
   assert.match(currentStatus, /release\/hp-mha-serena-shippable/);
-  assert.match(currentStatus, /GitLab and GitHub must contain the same verified source commit/i);
+  assert.match(currentStatus, /GitLab is the only v0\.9\.2 release\/OTA authority/i);
+  assert.match(currentStatus, /GitHub repository is not used to decide currency/i);
   assert.match(currentStatus, /GitLab shared-runner minutes/i);
   assert.match(currentStatus, /measured, fail-closed HP-MHA/i);
   assert.match(currentStatus, /No audited repository contains a later August 11 harness commit/i);

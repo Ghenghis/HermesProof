@@ -26,8 +26,7 @@ lock-governed semantic/LSP tools, and **${facts.serena.rawMutationTools} unrestr
 
 - GitLab project: ${facts.gitlab.projectUrl}
 - GitLab Pages: ${facts.gitlab.pagesUrl}
-- GitHub mirror: ${facts.github.projectUrl}
-- GitHub releases: ${facts.github.releasesUrl}
+- Publication authority: GitLab only
 - Release tag: \`${facts.releaseTag}\`
 - Truth gates: ${facts.truthGates}
 - Minimum Node.js: ${facts.nodeMinimum}

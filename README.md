@@ -8,13 +8,11 @@
 
 [![Release](https://img.shields.io/badge/release-v0.9.2-7b61ff?style=flat-square)](https://gitlab.com/Ghenghis/HermesProof/-/releases)
 [![GitLab](https://img.shields.io/badge/source-GitLab-fc6d26?style=flat-square)](https://gitlab.com/Ghenghis/HermesProof)
-[![GitHub mirror](https://img.shields.io/badge/mirror-GitHub-181717?style=flat-square)](https://github.com/Ghenghis/HermesProof)
 [![Pages](https://img.shields.io/badge/docs-GitLab%20Pages-20d9ff?style=flat-square)](https://ghenghis.gitlab.io/HermesProof)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A520-45e1ac?style=flat-square)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-45e1ac?style=flat-square)](LICENSE)
 
 [Live release site](https://ghenghis.gitlab.io/HermesProof) ·
-[GitHub release mirror](https://github.com/Ghenghis/HermesProof/releases) ·
 [Windows install](docs/WINDOWS_INSTALL.md) ·
 [Release verification](docs/WINDOWS_INSTALL.md#verify-before-extraction) ·
 [Updater runbook](docs/UPDATER_RUNBOOK.md) ·

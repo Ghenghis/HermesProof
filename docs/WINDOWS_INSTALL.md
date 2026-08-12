@@ -1,6 +1,6 @@
 # Windows 11 install, repair, and recovery
 
-The supported distribution is the signed release ZIP for `v0.9.2`, published identically on GitLab and GitHub. Installation is per-user by default and requires Node.js 20 or newer. Administrator privileges are not required.
+The supported distribution is the signed release ZIP for `v0.9.2` published by the authoritative GitLab project. Installation is per-user by default and requires Node.js 20 or newer. Administrator privileges are not required.
 
 ## Verify before extraction
 

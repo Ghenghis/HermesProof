@@ -11,7 +11,7 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("release facts load the supported stable dual-remote product contract", async () => {
+test("release facts load the GitLab-authoritative product contract and legacy compatibility metadata", async () => {
   const facts = await loadReleaseFacts({ root });
   assert.equal(facts.schema, RELEASE_FACTS_SCHEMA);
   assert.equal(facts.version, "0.9.2");
