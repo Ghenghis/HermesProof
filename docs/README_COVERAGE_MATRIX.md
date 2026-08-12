@@ -1,6 +1,6 @@
 # README coverage matrix
 
-This matrix maps the current v0.9.0 README claims to executable evidence. Generated numbers come from config/release-facts.json and scripts/generate-release-docs.mjs.
+This matrix maps the current v0.9.1 README claims to executable evidence. Generated numbers come from config/release-facts.json and scripts/generate-release-docs.mjs.
 
 | Current claim | Implementation | Required evidence |
 | --- | --- | --- |

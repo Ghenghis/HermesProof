@@ -8,6 +8,12 @@ adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 No unreleased changes.
 
+## [0.9.1] — 2026-08-12
+
+### Fixed
+- The managed Windows OTA updater now runs npm and npx candidate gates through the active Node runtime instead of asking Node to spawn `.cmd` shims with `shell: false`. This removes the `spawn EINVAL` quarantine failure while preserving exact argv handling, command-shell isolation, fail-closed gates, rollback, and signed candidate verification.
+- Added a real Windows regression test that executes `npm.cmd --version` through the production updater process runner and fails if the shell-free translation is removed.
+
 ## [0.9.0] — 2026-08-12
 
 ### Added

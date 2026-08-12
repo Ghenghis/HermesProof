@@ -24,18 +24,18 @@ Create reviewed commits with the configured author email, then push every GitLab
 
 ## Pipeline policy
 
-The v0.9.0 publication does not start a GitLab pipeline. If a project-owned runner is restored later, its jobs must retain the `hermesproof-local` tag and no untagged shared-runner job may be enabled. Locally verified proof inside the offline Ed25519-signed release archive is the release gate while the project has no usable GitLab compute allowance. Never publish a Sigstore bundle unless its embedded digest matches the exact proof file.
+The v0.9.1 publication does not start a GitLab pipeline. If a project-owned runner is restored later, its jobs must retain the `hermesproof-local` tag and no untagged shared-runner job may be enabled. Locally verified proof inside the offline Ed25519-signed release archive is the release gate while the project has no usable GitLab compute allowance. Never publish a Sigstore bundle unless its embedded digest matches the exact proof file.
 
 ## Publish
 
 1. Push `release/hp-mha-serena-shippable` to GitLab and GitHub without force.
-2. Update and merge GitLab merge request 3; open and merge the matching GitHub pull request without squashing either remote's history.
+2. Open fresh v0.9.1 merge requests on GitLab and GitHub and merge without squashing either remote's history.
 3. Fetch both remotes and require both `main` branches to contain the verified stable source commit.
-4. Create one annotated `v0.9.0` tag at that verified source commit and push it to both remotes.
+4. Create one annotated `v0.9.1` tag at that verified source commit and push it to both remotes.
 5. Create matching GitLab and GitHub releases and upload the complete asset set to each:
-   - `HermesProof-v0.9.0-windows-x64.zip`
-   - `HermesProof-v0.9.0-windows-x64.zip.sha256`
-   - `HermesProof-v0.9.0-windows-x64.zip.sig`
+   - `HermesProof-v0.9.1-windows-x64.zip`
+   - `HermesProof-v0.9.1-windows-x64.zip.sha256`
+   - `HermesProof-v0.9.1-windows-x64.zip.sig`
    - `hermesproof-release-ed25519-public.pem`
    - `verify-hermesproof-release.mjs`
    - `SHA256SUMS.txt`
@@ -44,7 +44,7 @@ The v0.9.0 publication does not start a GitLab pipeline. If a project-owned runn
 7. Download every asset from each provider into a separate empty directory. Run in both:
 
    ```powershell
-   node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
+   node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.1-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
    ```
 
 8. Extract only after verification passes, then run the isolated two-server MCP smoke from the downloaded archive.

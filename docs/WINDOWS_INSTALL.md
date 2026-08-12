@@ -1,21 +1,21 @@
 # Windows 11 install, repair, and recovery
 
-The supported distribution is the signed release ZIP for `v0.9.0`, published identically on GitLab and GitHub. Installation is per-user by default and requires Node.js 20 or newer. Administrator privileges are not required.
+The supported distribution is the signed release ZIP for `v0.9.1`, published identically on GitLab and GitHub. Installation is per-user by default and requires Node.js 20 or newer. Administrator privileges are not required.
 
 ## Verify before extraction
 
 Download these five sibling assets from the [GitLab release](https://gitlab.com/Ghenghis/HermesProof/-/releases):
 
-- `HermesProof-v0.9.0-windows-x64.zip`
-- `HermesProof-v0.9.0-windows-x64.zip.sha256`
-- `HermesProof-v0.9.0-windows-x64.zip.sig`
+- `HermesProof-v0.9.1-windows-x64.zip`
+- `HermesProof-v0.9.1-windows-x64.zip.sha256`
+- `HermesProof-v0.9.1-windows-x64.zip.sig`
 - `hermesproof-release-ed25519-public.pem`
 - `verify-hermesproof-release.mjs`
 
 Keep the filenames unchanged and run the standalone verifier before extracting the ZIP:
 
 ```powershell
-node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.0-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
+node .\verify-hermesproof-release.mjs --artifact .\HermesProof-v0.9.1-windows-x64.zip --public-key .\hermesproof-release-ed25519-public.pem
 ```
 
 Expected output:
