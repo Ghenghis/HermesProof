@@ -128,16 +128,19 @@ export class HpMhaSerenaService {
     await this.capabilityManager.init();
     this.automationManager = this.automationManagerFactory({
       workspaceRoot: this.workspaceRoot,
-      leaseVerifier: async ({ runtimeId, leaseId }) => {
-        const status = await this.runtimeManager.status();
-        return status.leases.some((lease) =>
-          lease.id === leaseId &&
-          lease.runtime_id === runtimeId &&
-          lease.status === "active" &&
-          lease.expires_at_ms > this.now()
-        );
+      stateDirectory: this.manager.paths.stateDir,
+      leaseVerifier: async ({ runtimeId, leaseId, owner, workspace }) => {
+        try {
+          return this.runtimeManager.activeLease(leaseId, runtimeId, {
+            workspace,
+            owner
+          });
+        } catch {
+          return false;
+        }
       }
     });
+    if (typeof this.automationManager.init === "function") await this.automationManager.init();
     if (this.updateManagerFactory) {
       this.updateManager = await this.updateManagerFactory({
         workspaceRoot: this.workspaceRoot,
@@ -684,7 +687,10 @@ export class HpMhaSerenaService {
 
   async runtimeStatus({ workspaceHandle, owner } = {}) {
     const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
-    return { ...(await this.runtimeManager.status()), workspace_handle_id: binding.handle_id };
+    return {
+      ...(await this.runtimeManager.status({ workspace: this.workspaceRoot, owner })),
+      workspace_handle_id: binding.handle_id
+    };
   }
 
   async runtimeIssueLease({ workspaceHandle, owner, taskId, runtimeId, permissions, ttlSeconds } = {}) {
@@ -705,16 +711,20 @@ export class HpMhaSerenaService {
 
   async runtimeEnable({ workspaceHandle, owner, runtimeId, leaseId } = {}) {
     const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    const lease = this.runtimeManager.activeLease(leaseId, runtimeId, { workspace: this.workspaceRoot, owner });
+    await this.requireClaimedTask(owner, lease.task_id);
     return {
-      ...(await this.runtimeManager.enable({ runtimeId, leaseId })),
+      ...(await this.runtimeManager.enable({ runtimeId, leaseId, workspace: this.workspaceRoot, owner })),
       workspace_handle_id: binding.handle_id
     };
   }
 
   async runtimeCycle({ workspaceHandle, owner, runtimeId, leaseId } = {}) {
     const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
+    const lease = this.runtimeManager.activeLease(leaseId, runtimeId, { workspace: this.workspaceRoot, owner });
+    await this.requireClaimedTask(owner, lease.task_id);
     return {
-      ...(await this.runtimeManager.cycle({ runtimeId, leaseId })),
+      ...(await this.runtimeManager.cycle({ runtimeId, leaseId, workspace: this.workspaceRoot, owner })),
       workspace_handle_id: binding.handle_id
     };
   }
@@ -722,7 +732,7 @@ export class HpMhaSerenaService {
   async runtimeRevokeLease({ workspaceHandle, owner, leaseId } = {}) {
     const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
     return {
-      ...(await this.runtimeManager.revokeLease({ leaseId })),
+      ...(await this.runtimeManager.revokeLease({ leaseId, workspace: this.workspaceRoot, owner })),
       workspace_handle_id: binding.handle_id
     };
   }
@@ -781,7 +791,7 @@ export class HpMhaSerenaService {
   async automationEnable({ workspaceHandle, owner, jobId, platform, leaseId } = {}) {
     const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
     return {
-      ...(await this.automationManager.enable({ jobId, platform, leaseId })),
+      ...(await this.automationManager.enable({ jobId, platform, leaseId, owner })),
       workspace_handle_id: binding.handle_id
     };
   }
@@ -789,7 +799,7 @@ export class HpMhaSerenaService {
   async automationCycle({ workspaceHandle, owner, jobId, platform, leaseId } = {}) {
     const binding = await this.verifyWorkspaceHandle({ workspaceHandle, owner });
     return {
-      ...(await this.automationManager.cycle({ jobId, platform, leaseId })),
+      ...(await this.automationManager.cycle({ jobId, platform, leaseId, owner })),
       workspace_handle_id: binding.handle_id
     };
   }

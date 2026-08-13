@@ -1670,6 +1670,25 @@ test("unlock-request stdio round-trip: stale owner routes to recovery instead of
   }
 });
 
+test("HP-MHA holdout guard fails closed when an optimizer omits the task-set manifest", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rt-holdout-omit-"));
+  const s = await startServer(tmp);
+  try {
+    const blocked = parseToolResult(await s.call("hermes_lock_files", {
+      owner: "rt-optimizer",
+      role: "optimizer",
+      files: ["holdout/run-001.json"],
+      reason: "manifest omission must not bypass HP-MHA-006"
+    }));
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.status, "blocked_hp_mha_006");
+    assert.ok(blocked.reason_codes.includes("HP-MHA-006"));
+  } finally {
+    s.stop();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("v0.7 stdio round-trip: anonymous orchestrator tools (claim → state → release)", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "v07-rt-anon-"));
   const s = await startServer(tmp);

@@ -1,18 +1,18 @@
 {
   "$schema": "hermesproof.hp_mha.harness_card.v1",
   "schema_version": 1,
-  "card_id": "hermesagent_bridge_2026-08-05",
-  "description": "Real harness card for the HermesAgent bridge that ships in src/core/hermes-agent-bridge.mjs. The bridge mediates between HermesProof and a configured Hermes Agent reasoning loop (provider failover DeepSeek → MiniMax → SiliconFlow → LM Studio → Ollama). A 2x2 A/B with hermesproof_v0.7.0_hp_mha_real would surface the harness effect measured by HP-MHA-007.",
+  "card_id": "hermesagent_bridge_v0.9.2_real",
+  "description": "Real provenance card for the HermesAgent bridge shipped in the HermesProof v0.9.2 implementation commit. The configured failover order is MiniMax, DeepInfra, DeepSeek, SiliconFlow, LM Studio, then Ollama. This card is schema/provenance evidence; only an exact separately measured benchmark can support HP-MHA-007 attribution.",
   "layers": {
     "execution": {
-      "installed_commit": "fae63a403501727aa1484a681a00d070fd9117d5",
-      "package_sha256": "6f2fe0169d08ed13fe9b94c5d054f63c82ed92dc14d50cab4283b8e7c10d15c5",
-      "dependency_lock_sha256": "22d5c7c543c34c769b6048bb226ec9ce825ae8e56333ef56293d913dd7952f26",
+      "installed_commit": "3a8e91f42ee6471d955a2a9d38cab50be7c69e68",
+      "package_sha256": "e9eccf73ad8f1326e8c97db7c077c0bdc9afe98a0b9e49e9e2c3f3e6d3e8bfe7",
+      "dependency_lock_sha256": "42b928849ab4ef2aa6bf061225fa30b76499ee97db56956e12d79a21d3b3f7b7",
       "container_digest": null,
       "runner_identity": "hermes-agent-bridge-process",
       "os_arch": "win32-x64",
-      "repo_commit": "fae63a403501727aa1484a681a00d070fd9117d5",
-      "repo_dirty": true,
+      "repo_commit": "3a8e91f42ee6471d955a2a9d38cab50be7c69e68",
+      "repo_dirty": false,
       "per_step_timeout_s": 25,
       "task_timeout_s": 60,
       "max_steps": 12,
@@ -24,7 +24,7 @@
     },
     "model": {
       "provider": "hermes-agent",
-      "model_id": "deepseek/deepseek-chat"
+      "model_id": "configured-provider-failover"
     },
     "tools": {
       "tool_inventory": [

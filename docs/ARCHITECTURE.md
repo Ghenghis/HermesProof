@@ -1,6 +1,6 @@
 # HermesProof — Architecture
 
-> **Current release:** v0.9.0 is a two-server monorepo: `hermes3d-locks` exposes 121
+> **Current release:** v0.9.2 is a two-server monorepo: `hermes3d-locks` exposes 121
 > coordination/proof tools and `hp-mha-serena` exposes 34 governed harness, Serena,
 > capability, automation, backend, and updater tools.
 
@@ -14,7 +14,9 @@ This document is the consolidated technical view of HermesProof. Every other doc
 <img src="./diagrams/architecture.svg" alt="HermesProof system architecture" width="100%"/>
 </div>
 
-HermesProof runs **two cooperating Node MCP processes per workspace**. Both speak JSON-RPC over stdio. The core server owns durable coordination/proof state; the composite server delegates all mutations through claims and locks while adding semantic analysis, harnesses, capability packs, automation, backend recovery, and managed updates.
+HermesProof runs **two cooperating Node MCP processes per workspace**. Both speak JSON-RPC over stdio. The core server owns durable coordination/proof state; the composite server delegates Hermes mutations through claims and locks while adding semantic analysis, harnesses, a small local capability catalog, fixed recurring automation, backend diagnostics, and managed updates.
+
+The v0.9.2 capability directory called `sandbox_path` is not an OS sandbox. Child processes use `shell:false`, a reduced environment, immutable identities, and leases, but still execute as the current user with that user's filesystem and network authority. Real Windows WSL2/Hyper-V and Linux namespace/microVM confinement is a separately reviewed future adapter.
 
 | Layer | What it does | Where it lives |
 | --- | --- | --- |
@@ -281,7 +283,7 @@ HermesProof remains the **independent authority**. The heavy benchmark execution
 
 The candidate optimizer **never** lives inside HermesProof (HP-MHA-009). HermesProof refuses to modify, select, or certify changes it itself performed. Synthetic or mock execution is also rejected (HP-MHA-010) — only real installed runtimes and real tool chains count toward the verdict.
 
-The `HP-HARNESS-ATTRIBUTION` release sub-gate (`scripts/truth-gates.mjs`) runs at `required` level. Five root cards—HermesProof, HermesAgent, OpenHands 1.16.0, Aider 0.86.2, and Goose 1.27.2—carry installed identities and SHA-256 provenance. The checked-in real Ollama 2×2 evidence in `examples/hp-mha/measured-matrix.json` is hash-bound and tamper-tested; its matrix `{0.2,0.2,0.1,0.8}` measures harness effect `+0.35`, model effect `+0.25`, and interaction `+0.70`.
+The `HP-HARNESS-ATTRIBUTION` release sub-gate (`scripts/truth-gates.mjs`) runs at `required` level. Five root cards—HermesProof, HermesAgent, OpenHands 1.16.0, Aider 0.86.2, and Goose 1.27.2—plus three retained installed-reference declarations carry identities and SHA-256 fields. The two local Hermes cards are verified against an unchanged ancestor commit and current source/package/lock hashes; external cards are schema-checked and are not re-probed at gate time. The exact Kilo backend benchmark separately loads, schema-checks, cell-binds, re-scores its retained raw responses, verifies the scorer source and evidence digest, and computes the matrix `{0.2,0.2,0.1,0.8}`: harness effect `+0.35`, model effect `+0.25`, interaction `+0.70`. That attribution is never copied onto unrelated cards.
 
 ## 8. Threat model & safety guarantees
 

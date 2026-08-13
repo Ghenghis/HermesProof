@@ -369,8 +369,14 @@ async function writeVscode({ workspaceRoot, paths, repoRoot, servers, dryRun }) 
   return { ok: true, status: "written", files, backups: [bak, instructionsBak].filter(Boolean) };
 }
 
-async function writeClaudeCode({ workspaceRoot, servers, dryRun, commandRunner }) {
+async function writeClaudeCode({ workspaceRoot, servers, dryRun, commandRunner, env }) {
   const command = process.platform === "win32" ? "claude.exe" : "claude";
+  const configuredHome = resolveHome(env);
+  const commandOptions = {
+    encoding: "utf8",
+    shell: false,
+    env: { ...env, HOME: configuredHome, USERPROFILE: configuredHome }
+  };
   const commands = servers.map((server) => ({
     command,
     args: [
@@ -381,7 +387,7 @@ async function writeClaudeCode({ workspaceRoot, servers, dryRun, commandRunner }
   }));
   if (dryRun) return { ok: true, status: "planned", commands };
   for (const item of commands) {
-    let result = commandRunner(item.command, item.args, { encoding: "utf8", shell: false });
+    let result = commandRunner(item.command, item.args, commandOptions);
     if (result.error?.code === "ENOENT") {
       return { ok: true, status: "skipped", reason: "claude CLI not found", commands };
     }
@@ -390,12 +396,12 @@ async function writeClaudeCode({ workspaceRoot, servers, dryRun, commandRunner }
       const removed = commandRunner(
         item.command,
         ["mcp", "remove", configuredServerName, "--scope", "user"],
-        { encoding: "utf8", shell: false }
+        commandOptions
       );
       if (removed.status !== 0) {
         return { ok: false, status: "error", error: "claude mcp remove exited " + removed.status };
       }
-      result = commandRunner(item.command, item.args, { encoding: "utf8", shell: false });
+      result = commandRunner(item.command, item.args, commandOptions);
     }
     if (result.status !== 0) {
       return { ok: false, status: "error", error: "claude mcp add exited " + result.status };

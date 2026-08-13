@@ -5409,7 +5409,7 @@ registerTool(
   "hermes_lock_files",
   {
     title: "Lock files atomically",
-    description: "Atomically lock files before editing. If any file is locked by another owner, the whole request is rolled back; the caller should request a handoff instead. Optional `task_set_manifest` carries holdout/optimization tags; roles outside the HP-MHA-006 allow-list (agent/auditor/reviewer/human/system) cannot lock files tagged `hp_mha.holdout`.",
+    description: "Atomically lock files before editing. If any file is locked by another owner, the whole request is rolled back; the caller should request a handoff instead. HP-MHA-006 denies every public MCP request for reserved holdout paths or holdout tags regardless of a caller-supplied role; omitting or changing a manifest cannot weaken server-derived isolation.",
     inputSchema: {
       owner: Owner,
       role: z.string().default("agent"),
@@ -5422,26 +5422,24 @@ registerTool(
     annotations: { readOnlyHint: false, openWorldHint: false, idempotentHint: false }
   },
   async (args) => {
-    if (args.task_set_manifest) {
-      try {
-        const guard = assertLockFilesRespectHoldoutIsolation({
-          files: args.files,
-          role: args.role,
-          task_set_manifest: args.task_set_manifest
+    try {
+      const guard = assertLockFilesRespectHoldoutIsolation({
+        files: args.files,
+        role: args.role,
+        task_set_manifest: args.task_set_manifest
+      });
+      if (!guard.ok) {
+        return toolResult({
+          ok: false,
+          status: "blocked_hp_mha_006",
+          reason_codes: guard.reason_codes,
+          reason: guard.reason,
+          blocked_files: guard.blocked_files || args.files,
+          next_tool: "hermes_request_unlock"
         });
-        if (!guard.ok) {
-          return toolResult({
-            ok: false,
-            status: "blocked_hp_mha_006",
-            reason_codes: guard.reason_codes,
-            reason: guard.reason,
-            blocked_files: guard.blocked_files || args.files,
-            next_tool: "hermes_request_unlock"
-          });
-        }
-      } catch (err) {
-        return toolError(err);
       }
+    } catch (err) {
+      return toolError(err);
     }
     try { return toolResult(await manager.lockFiles(args)); } catch (err) { return toolError(err); }
   }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 const BASE_ENVIRONMENT = [
   "PATH",
@@ -33,6 +34,21 @@ function childEnvironment(environment, allowlist) {
   return output;
 }
 
+const WINDOWS_NPM_CLIS = Object.freeze({
+  npm: "npm-cli.js",
+  "npm.cmd": "npm-cli.js",
+  npx: "npx-cli.js",
+  "npx.cmd": "npx-cli.js"
+});
+
+function resolveProcessCommand(command, args) {
+  if (process.platform !== "win32") return { command, args };
+  const cliName = WINDOWS_NPM_CLIS[path.basename(command).toLowerCase()];
+  if (!cliName) return { command, args };
+  const cli = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", cliName);
+  return { command: process.execPath, args: [cli, ...args] };
+}
+
 export async function runProcess({
   command,
   args = [],
@@ -49,12 +65,14 @@ export async function runProcess({
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error("process timeout is invalid");
   if (!Number.isSafeInteger(maxOutputBytes) || maxOutputBytes < 1) throw new Error("process output limit is invalid");
 
+  const resolved = resolveProcessCommand(command, args);
+
   return await new Promise((resolve, reject) => {
     let settled = false;
     let bytes = 0;
     const stdout = [];
     const stderr = [];
-    const child = spawn(command, args, {
+    const child = spawn(resolved.command, resolved.args, {
       cwd,
       env: childEnvironment(environment, environmentAllowlist),
       shell: false,

@@ -29,7 +29,7 @@
   <main id="main">
     <section class="hero" id="top">
       <div class="hero-copy reveal">
-        <div class="eyebrow"><span class="live-dot"></span> v0.9.0 · stable on GitLab + GitHub</div>
+        <div class="eyebrow"><span class="live-dot"></span> v0.9.2 · verified GitLab release lineage</div>
         <h1>Agents finish projects.<br><span>HermesProof proves it.</span></h1>
         <p class="lead">One control plane for collision-free edits, Serena code intelligence, measured harness outcomes, just-in-time tools, local models, safe updates, and visual release evidence.</p>
         <div class="actions">
@@ -59,7 +59,7 @@
       <div class="section-heading reveal">
         <p class="kicker">Two servers, one governed system</p>
         <h2>Everything agents need. Only when they need it.</h2>
-        <p>HermesProof separates durable coordination from advanced intelligence, while binding every mutation to a claimed task, exact lock, idempotency key, and evidence record.</p>
+        <p>HermesProof separates durable coordination from advanced intelligence. Governed file edits bind to a claimed task, exact lock, idempotency key, and evidence; runtime and scheduler control bind to the exact active lease and task.</p>
       </div>
       <figure class="diagram reveal">
         <img src="diagrams/ecosystem-e2e.svg" alt="End-to-end HermesProof ecosystem showing clients, two MCP servers, completion control plane, and fail-closed delivery loop" loading="lazy">
@@ -71,13 +71,13 @@
       <div class="section-heading reveal"><p class="kicker">Built for daily completion</p><h2>A full project-finishing toolkit</h2></div>
       <div class="grid">
         <article class="card reveal"><span class="icon">01</span><h3>Claim, lock, hand off</h3><p>Atomic file ownership, heartbeats, queues, inboxes, unlock requests, and explicit transfers prevent agent collisions.</p></article>
-        <article class="card reveal"><span class="icon">02</span><h3>Serena, governed</h3><p>52 catalogued tools from Serena 1.7.0; 15 semantic/LSP operations sit behind locks and no raw mutation bypass is exposed.</p></article>
-        <article class="card reveal"><span class="icon">03</span><h3>Real HP-MHA</h3><p>Installed-package hashes, scheduler holdouts, measured attribution, trace Merkle roots, and fail-closed verification.</p></article>
-        <article class="card reveal"><span class="icon">04</span><h3>Kilo backend kit</h3><p>Runtime, database, API, migration, container, diagnostics, browser-proof, dependency, and package recovery capabilities.</p></article>
-        <article class="card reveal"><span class="icon">05</span><h3>MCP + automation manager</h3><p>Install, pin, lease, enable, cycle, health-check, idle-disable, quarantine, schedule, and roll back capability servers.</p></article>
+        <article class="card reveal"><span class="icon">02</span><h3>Serena, governed</h3><p>52 catalogued tools from Serena 1.7.0; 15 selectable semantic/LSP operations require a workspace handle, while each guarded Serena edit adds an exact task, lock, source hash, one-use receipt, diagnostics, and rollback.</p></article>
+        <article class="card reveal"><span class="icon">03</span><h3>Real HP-MHA</h3><p>Installed-package provenance, raw retained benchmark responses re-scored at gate time, exact cell/harness binding, public holdout denial, trace Merkle roots, and fail-closed verification.</p></article>
+        <article class="card reveal"><span class="icon">04</span><h3>Kilo backend doctor</h3><p>Probes Node, Bun, Kilo, Git, GitLab, Docker, Ollama, LM Studio, indexing, and integrations; it installs the pinned Kilo npm pack but does not invent unshipped recovery packs.</p></article>
+        <article class="card reveal"><span class="icon">05</span><h3>Lifecycle + automation</h3><p>Exact active-lease ownership, task rechecks, enable/cycle/revoke/idle-disable controls, persisted desired state, and three fixed recipes that reauthorize before every run. Native orphan discovery remains roadmap work.</p></article>
         <article class="card reveal"><span class="icon">06</span><h3>Private local models</h3><p>LM Studio LM Link is preferred for fast remote-GPU inference; Ollama is a health-checked local fallback.</p></article>
-        <article class="card reveal"><span class="icon">07</span><h3>Authorized RE pack</h3><p>Local-first reverse-engineering inventory for owned targets, read-only first and covered by hashes, leases, locks, and proof.</p></article>
-        <article class="card reveal"><span class="icon">08</span><h3>Visual truth</h3><p>Live MCP handshakes, diagnostics, tests, browser evidence, hash chains, and release artifacts show that features actually work.</p></article>
+        <article class="card reveal"><span class="icon">07</span><h3>RE inventory plan</h3><p>Local-first reverse-engineering inventory is catalogued for owned targets. Its non-npm apply adapter and real OS confinement are intentionally not claimed in v0.9.2.</p></article>
+        <article class="card reveal"><span class="icon">08</span><h3>Evidence truth</h3><p>Live MCP handshakes, diagnostics, tests, caller-supplied visual artifacts, hash chains, and signed releases show what actually ran. Automated browser capture is roadmap work.</p></article>
       </div>
     </section>
 
@@ -85,8 +85,8 @@
       <div class="copy reveal">
         <p class="kicker">Just-in-time capability packs</p>
         <h2>No prompt bloat. No duplicate authority.</h2>
-        <p>The capability resolver compares an outcome’s acceptance graph with installed abilities. Missing abilities arrive as signed, pinned packs with an SBOM, health probe, exact permissions, a task/time/path lease, and a rollback path.</p>
-        <ul class="checks"><li>Local/private/free routes first</li><li>Idle MCP servers automatically disabled</li><li>Measured outcomes teach the router</li><li>User choices remain editable and upgradeable</li></ul>
+        <p>The current resolver selects from two pinned local entries. The npm path verifies integrity, package lock, executable hash, generated SBOM, and health before it remains disabled; runtime use then requires a caller-scoped lease. Publisher signatures, a public registry, multi-format adapters, and OS sandboxing are the next security boundary.</p>
+        <ul class="checks"><li>Pinned npm install with scripts disabled</li><li>Owner/workspace/task/time lease binding</li><li>Per-run authorization and known-job kill switch</li><li>No claim of OS sandboxing, native orphan reconciliation, or pack rollback</li></ul>
       </div>
       <figure class="diagram compact reveal"><img src="diagrams/capability-pack-flow.svg" alt="Just-in-time capability pack verification and lease flow" loading="lazy"></figure>
     </section>
@@ -117,11 +117,11 @@
       <p class="kicker">Stop guessing whether the project works</p>
       <h2>Make the evidence visible.</h2>
       <p>HermesProof keeps projects focused on a working backend, navigable product, measurable progress, and a release that another PC can install today.</p>
-      <div class="actions"><a class="button" href="https://gitlab.com/Ghenghis/HermesProof/-/releases">Get v0.9.0</a><a class="button ghost" href="https://github.com/Ghenghis/HermesProof/releases">GitHub mirror</a></div>
+      <div class="actions"><a class="button" href="https://gitlab.com/Ghenghis/HermesProof/-/releases">Get v0.9.2</a><a class="button ghost" href="https://gitlab.com/Ghenghis/HermesProof/-/blob/main/README.md">Read the verified scope</a></div>
     </section>
   </main>
 
-  <footer><span>HermesProof v0.9.0 · MIT</span><span>GitLab + GitHub · local-first · fail-closed</span></footer>
+  <footer><span>HermesProof v0.9.2 · MIT</span><span>GitLab primary · local-first · fail-closed</span></footer>
   <div class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

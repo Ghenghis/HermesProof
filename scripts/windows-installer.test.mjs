@@ -24,6 +24,91 @@ async function parsePowerShell(file) {
   });
 }
 
+test("Windows installer accepts the patch version declared by canonical release facts", {
+  skip: process.platform !== "win32"
+}, async (t) => {
+  const canonicalFacts = JSON.parse(await fs.readFile(path.join(root, "config", "release-facts.json"), "utf8"));
+  const fixture = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-installer-version-"));
+  t.after(() => fs.rm(fixture, { recursive: true, force: true }));
+  const workspace = path.join(fixture, "workspace");
+  const managedRoot = path.join(fixture, "managed");
+  const installerFile = path.join(fixture, "install-hermesproof.ps1");
+  await fs.mkdir(workspace, { recursive: true });
+  await fs.mkdir(path.join(fixture, "scripts"), { recursive: true });
+  await fs.mkdir(path.join(fixture, "config"), { recursive: true });
+  await fs.copyFile(path.join(root, "install-hermesproof.ps1"), installerFile);
+  await fs.writeFile(path.join(fixture, "scripts", "windows-child-path.ps1"), "# version fixture\n", "utf8");
+  await fs.writeFile(
+    path.join(fixture, "config", "release-facts.json"),
+    JSON.stringify({ version: canonicalFacts.version, releaseTag: canonicalFacts.releaseTag }) + "\n",
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(fixture, "release-manifest.json"),
+    JSON.stringify({
+      schema: "hermesproof.windows-release.v1",
+      version: canonicalFacts.version,
+      sourceSha: "invalid-on-purpose",
+      files: []
+    }) + "\n",
+    "utf8"
+  );
+
+  const installerArgs = [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    installerFile,
+    "-Workspace",
+    workspace,
+    "-ManagedRoot",
+    managedRoot,
+    "-SkipUserPath"
+  ];
+  await assert.rejects(
+    execFileAsync(windowsPowerShell, installerArgs, { windowsHide: true }),
+    (error) => {
+      const output = `${error.stdout || ""}\n${error.stderr || ""}`;
+      assert.match(output, /Invalid source SHA/);
+      assert.doesNotMatch(output, /Unexpected release version/);
+      return true;
+    }
+  );
+
+  await fs.writeFile(
+    path.join(fixture, "config", "release-facts.json"),
+    JSON.stringify({ version: "999.0.0", releaseTag: "v999.0.0" }) + "\n",
+    "utf8"
+  );
+  await assert.rejects(
+    execFileAsync(windowsPowerShell, installerArgs, { windowsHide: true }),
+    /Release manifest version does not match canonical release facts/
+  );
+
+  await fs.writeFile(
+    path.join(fixture, "config", "release-facts.json"),
+    JSON.stringify({ version: "", releaseTag: "v" }) + "\n",
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(fixture, "release-manifest.json"),
+    JSON.stringify({
+      schema: "hermesproof.windows-release.v1",
+      version: "",
+      sourceSha: "invalid-on-purpose",
+      files: []
+    }) + "\n",
+    "utf8"
+  );
+  await assert.rejects(
+    execFileAsync(windowsPowerShell, installerArgs, { windowsHide: true }),
+    /Release version is missing or malformed/
+  );
+});
+
 test("Windows installer and uninstaller parse and contain fail-safe controls", async () => {
   const installFile = path.join(root, "install-hermesproof.ps1");
   const uninstallFile = path.join(root, "uninstall-hermesproof.ps1");

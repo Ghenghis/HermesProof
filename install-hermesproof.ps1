@@ -17,6 +17,7 @@ $bundleRoot = [IO.Path]::GetFullPath($PSScriptRoot)
 $managed = [IO.Path]::GetFullPath($ManagedRoot)
 $workspaceRoot = [IO.Path]::GetFullPath($Workspace)
 $manifestFile = [IO.Path]::Combine($bundleRoot, "release-manifest.json")
+$releaseFactsFile = [IO.Path]::Combine($bundleRoot, "config", "release-facts.json")
 $pathHelperFile = [IO.Path]::Combine($bundleRoot, "scripts", "windows-child-path.ps1")
 $clientSnapshot = $null
 $controlBackup = $null
@@ -96,10 +97,26 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments, [string]$Working
 $managed = Assert-SafeManagedRoot $managed
 if (-not (Test-Path -LiteralPath $workspaceRoot -PathType Container)) { throw "Workspace does not exist: $workspaceRoot" }
 if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) { throw "release-manifest.json is missing; use the GitLab release bundle" }
+if (-not (Test-Path -LiteralPath $releaseFactsFile -PathType Leaf)) { throw "config/release-facts.json is missing; use the GitLab release bundle" }
 $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
+$releaseFacts = Get-Content -LiteralPath $releaseFactsFile -Raw | ConvertFrom-Json
 Verify-ReleaseManifest $bundleRoot $manifest
 . $pathHelperFile
-if ([string]$manifest.version -ne "0.9.0") { throw "Unexpected release version" }
+$manifestVersion = [string]$manifest.version
+$releaseVersion = [string]$releaseFacts.version
+$releaseTag = [string]$releaseFacts.releaseTag
+$canonicalVersionPattern = '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$'
+if (
+  [string]::IsNullOrWhiteSpace($manifestVersion) -or
+  [string]::IsNullOrWhiteSpace($releaseVersion) -or
+  [string]::IsNullOrWhiteSpace($releaseTag) -or
+  $manifestVersion -notmatch $canonicalVersionPattern -or
+  $releaseVersion -notmatch $canonicalVersionPattern
+) { throw "Release version is missing or malformed" }
+if (
+  $manifestVersion -ne $releaseVersion -or
+  $releaseTag -ne "v$manifestVersion"
+) { throw "Release manifest version does not match canonical release facts" }
 $sha = [string]$manifest.sourceSha
 if ($sha -notmatch '^[0-9a-f]{40,64}$') { throw "Invalid source SHA in release manifest" }
 $nodeCommand = (Get-Command node.exe -ErrorAction Stop).Source

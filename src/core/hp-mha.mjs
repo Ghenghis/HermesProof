@@ -1269,6 +1269,30 @@ export function evaluateHpMhaSubGate({ workspaceRoot, stateDirName, harness_card
 const SMOKE_TRACE_ROOT = "0".repeat(64);
 const MEASURED_MATRIX = { s11: 0.2, s12: 0.2, s21: 0.1, s22: 0.8 };
 
+export function validateHarnessCardFromManifest(cardRaw) {
+  const cardInput = { card_id: cardRaw.card_id, layers: cardRaw.layers };
+  const builtHarness = buildHarnessCard(cardInput);
+  const model = buildModelManifest(cardRaw.layers.model);
+  const execution = cardRaw.layers.execution;
+  return {
+    card_id: cardRaw.card_id,
+    gate: HP_HARNESS_ATTRIBUTION_GATE,
+    ok: execution.repo_dirty === false,
+    verdict: execution.repo_dirty === false ? "PASS" : "FAIL",
+    reason_codes: execution.repo_dirty === false ? ["HP-MHA-card-provenance-valid"] : ["HP-MHA-card-dirty"],
+    reason: execution.repo_dirty === false
+      ? "card schema and retained installed identity are valid"
+      : "card records a dirty repository and cannot be release-certified",
+    manifest_sha256: { model: model.manifest_sha256, harness: builtHarness.manifest_sha256 },
+    installed_commit: execution.installed_commit,
+    package_sha256: execution.package_sha256,
+    dependency_lock_sha256: execution.dependency_lock_sha256,
+    repo_dirty: execution.repo_dirty,
+    attribution: null,
+    denominator: null
+  };
+}
+
 export function evaluateHarnessCardFromManifest(cardRaw, { matrix = MEASURED_MATRIX } = {}) {
   const cardInput = { card_id: cardRaw.card_id, layers: cardRaw.layers };
   const builtHarness = buildHarnessCard(cardInput);
@@ -1383,6 +1407,15 @@ const HOLDOUT_AWARE_ROLES = new Set([
   "system"
 ]);
 
+function holdoutScopedFiles(files) {
+  return files.filter((file) => {
+    const normalized = String(file).replace(/\\/gu, "/").toLowerCase();
+    return normalized.split("/").some((segment) =>
+      /^(?:hp-mha-)?holdout(?:[.-].*)?$/u.test(segment)
+    );
+  });
+}
+
 export function assertTaskClaimRespectsHoldoutIsolation({ role, task_set_manifest } = {}) {
   const tagCheck = validateTaskSetTagUniqueness(task_set_manifest || {});
   if (!tagCheck.ok) {
@@ -1405,6 +1438,15 @@ export function assertLockFilesRespectHoldoutIsolation({ files, role, task_set_m
   if (!Array.isArray(files) || files.length === 0) {
     return { ok: true, reason_codes: [], reason: "no files requested" };
   }
+  const derivedHoldoutFiles = holdoutScopedFiles(files);
+  if (derivedHoldoutFiles.length > 0) {
+    return {
+      ok: false,
+      reason_codes: ["HP-MHA-006", "HP-MHA-006-derived-holdout"],
+      reason: "the public MCP lock path cannot mutate holdout-scoped files; caller-supplied roles and manifests are not authorization",
+      blocked_files: derivedHoldoutFiles
+    };
+  }
   const tagCheck = validateTaskSetTagUniqueness(task_set_manifest || {});
   if (!tagCheck.ok && tagCheck.reason_codes.includes("HP-MHA-006")) {
     return { ok: false, reason_codes: tagCheck.reason_codes, reason: tagCheck.reason };
@@ -1412,13 +1454,10 @@ export function assertLockFilesRespectHoldoutIsolation({ files, role, task_set_m
   if (tagCheck.tag !== HOLDOUT_TAG) {
     return { ok: true, reason_codes: [], reason: "task set is not holdout-scoped" };
   }
-  if (HOLDOUT_AWARE_ROLES.has(role)) {
-    return { ok: true, reason_codes: [], reason: `role '${role}' is allow-listed for holdout files` };
-  }
   return {
     ok: false,
     reason_codes: ["HP-MHA-006"],
-    reason: `role '${role}' may not lock files on a holdout task set (${HOLDOUT_TAG}). Allowed roles: ${[...HOLDOUT_AWARE_ROLES].join(", ")}.`,
+    reason: `the public MCP lock path cannot mutate a holdout task set (${HOLDOUT_TAG}); caller-supplied role '${role || "(missing)"}' is not authorization`,
     blocked_files: files
   };
 }

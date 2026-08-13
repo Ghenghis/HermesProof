@@ -1167,6 +1167,16 @@ test("assertLockFilesRespectHoldoutIsolation: non-holdout task set always passes
   assert.equal(r.ok, true);
 });
 
+test("assertLockFilesRespectHoldoutIsolation: optimizer without a task-set manifest fails closed", () => {
+  const r = assertLockFilesRespectHoldoutIsolation({
+    files: ["holdout/run-001.json"],
+    role: "optimizer"
+  });
+  assert.equal(r.ok, false);
+  assert.ok(r.reason_codes.includes("HP-MHA-006"));
+  assert.match(r.reason, /manifest/i);
+});
+
 test("assertLockFilesRespectHoldoutIsolation: holdout tag + optimizer role = FAIL", () => {
   const r = assertLockFilesRespectHoldoutIsolation({
     files: ["holdout/run-001.json"],
@@ -1178,15 +1188,25 @@ test("assertLockFilesRespectHoldoutIsolation: holdout tag + optimizer role = FAI
   assert.deepEqual(r.blocked_files, ["holdout/run-001.json"]);
 });
 
-test("assertLockFilesRespectHoldoutIsolation: holdout tag + agent/auditor/human = PASS", () => {
+test("assertLockFilesRespectHoldoutIsolation: public lock path denies every caller role on holdout", () => {
   for (const role of ["agent", "auditor", "reviewer", "human", "system"]) {
     const r = assertLockFilesRespectHoldoutIsolation({
       files: ["x.ts"],
       role,
       task_set_manifest: { tags: [HOLDOUT_TAG] }
     });
-    assert.equal(r.ok, true, `role '${role}' should be allowed on holdout files`);
+    assert.equal(r.ok, false, `caller-supplied role '${role}' must not authorize holdout locks`);
   }
+});
+
+test("assertLockFilesRespectHoldoutIsolation: protects the checked-in holdout filename", () => {
+  const r = assertLockFilesRespectHoldoutIsolation({
+    files: ["examples/hp-mha/task-sets/holdout.json"],
+    role: "agent"
+  });
+  assert.equal(r.ok, false);
+  assert.ok(r.reason_codes.includes("HP-MHA-006"));
+  assert.deepEqual(r.blocked_files, ["examples/hp-mha/task-sets/holdout.json"]);
 });
 
 test("assertLockFilesRespectHoldoutIsolation: unknown role on holdout = FAIL", () => {

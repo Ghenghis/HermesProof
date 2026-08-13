@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // HP-MHA harness card loader.
 //
-// Reads examples/hp-mha/harness-cards/<name>.json, canonicalises it through
-// the HP-MHA schema, computes the six manifest sha256s the HP-HARNESS-ATTRIBUTION
-// sub-gate requires (HP-MHA-001), and runs evaluateHpMhaSubGate. Prints the
-// full PASS / FAIL / INCONCLUSIVE verdict with reason codes.
+// Reads examples/hp-mha/harness-cards/<name>.json and canonicalises it through
+// the HP-MHA schema. By default it validates declared installed provenance;
+// local HermesProof/HermesAgent cards additionally verify the exact ancestor
+// commit, current product-tree drift, and package/dependency hashes. An
+// explicit --matrix is analysis-only and never becomes release attribution.
 //
 // With `--task-sets`, also exercises HP-MHA-006 by running
 // validateTaskSetTagUniqueness against every fixture under task-sets/ and
@@ -32,8 +33,11 @@ import {
   buildTaskSetManifest,
   evaluateHarnessCardFromManifest,
   HP_MHA_CONTRACT_VERSION,
-  validateTaskSetTagUniqueness
+  validateTaskSetTagUniqueness,
+  validateHarnessCardFromManifest
 } from "../../src/core/hp-mha.mjs";
+import { loadMeasuredMatrixEvidence } from "../../src/core/hp-mha-benchmark.mjs";
+import { verifyLocalHarnessCardProvenance } from "../../src/core/hp-mha-card-provenance.mjs";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -41,7 +45,7 @@ const cardsDir = path.join(here, "harness-cards");
 const taskSetsDir = path.join(here, "task-sets");
 
 function parseArgs(argv) {
-  const out = { card: "hermesproof", matrix: [0.2, 0.2, 0.1, 0.8], all: false, taskSets: false };
+  const out = { card: "hermesproof", matrix: null, all: false, taskSets: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--card") out.card = argv[++i];
@@ -58,22 +62,27 @@ function parseArgs(argv) {
   return out;
 }
 
-async function evaluateCard(cardPathOrName, args) {
+async function evaluateCard(cardPathOrName, matrix) {
   const cardPath = path.isAbsolute(cardPathOrName)
     ? cardPathOrName
     : path.join(cardsDir, `${cardPathOrName}.json`);
   const cardRaw = JSON.parse(await fs.readFile(cardPath, "utf8"));
-  const result = evaluateHarnessCardFromManifest(cardRaw, { matrix: { s11: args.matrix[0], s12: args.matrix[1], s21: args.matrix[2], s22: args.matrix[3] } });
+  const result = matrix
+    ? evaluateHarnessCardFromManifest(cardRaw, { matrix })
+    : validateHarnessCardFromManifest(cardRaw);
+  const provenance = await verifyLocalHarnessCardProvenance({ cardRaw, cardPath, repoRoot });
+  const ok = result.ok && provenance.ok;
   return {
     card_id: cardRaw.card_id,
     card_path: path.relative(repoRoot, cardPath),
     installed_commit: cardRaw.layers.execution.installed_commit,
     manifest_sha256: result.manifest_sha256,
     gate: result.gate,
-    verdict: result.verdict,
-    ok: result.ok,
-    reason_codes: result.reason_codes,
-    reason: result.reason,
+    verdict: ok ? result.verdict : "FAIL",
+    ok,
+    reason_codes: ok ? result.reason_codes : [...result.reason_codes, "HP-MHA-local-provenance-invalid"],
+    reason: provenance.ok ? result.reason : provenance.reason,
+    provenance,
     attribution: result.attribution,
     denominator: result.denominator
   };
@@ -151,11 +160,22 @@ async function main() {
     process.exitCode = 2;
     return;
   }
+  const measured = args.matrix
+    ? null
+    : await loadMeasuredMatrixEvidence(path.join(here, "measured-matrix.json"), {
+        scorerFile: path.join(repoRoot, "src", "core", "hp-mha-benchmark.mjs")
+      });
+  const matrix = args.matrix
+    ? { s11: args.matrix[0], s12: args.matrix[1], s21: args.matrix[2], s22: args.matrix[3] }
+    : null;
+  summary.matrix_source = measured
+    ? { kind: "retained-benchmark-only", benchmark: measured.benchmark, evidence_sha256: measured.evidence_sha256 }
+    : { kind: "explicit-override" };
   const results = [];
   for (const file of files) {
     const cardName = path.basename(file).replace(/\.json$/, "");
     try {
-      results.push(await evaluateCard(file, args));
+      results.push(await evaluateCard(file, matrix));
     } catch (err) {
       results.push({
         card_id: cardName,

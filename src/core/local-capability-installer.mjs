@@ -1,11 +1,8 @@
 import crypto from "node:crypto";
-import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { runProcess } from "../updater/process-runner.mjs";
 
 async function sha256File(file) {
   const hash = crypto.createHash("sha256");
@@ -13,23 +10,25 @@ async function sha256File(file) {
   return hash.digest("hex");
 }
 
-async function defaultCommandRunner({ cwd, packageSpec }) {
+export async function defaultCapabilityCommandRunner({ cwd, packageSpec, processRunner = runProcess }) {
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  await execFileAsync(npm, ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--save-exact", packageSpec], {
+  await processRunner({
+    command: npm,
+    args: ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--save-exact", packageSpec],
     cwd,
-    windowsHide: true,
-    timeout: 300_000,
-    maxBuffer: 8 * 1024 * 1024
+    timeoutMs: 300_000,
+    maxOutputBytes: 8 * 1024 * 1024
   });
 }
 
-async function defaultProbeRunner({ executable, args }) {
+export async function defaultCapabilityProbeRunner({ executable, args, processRunner = runProcess }) {
   const command = /\.(?:c?m?js)$/iu.test(executable) ? process.execPath : executable;
   const commandArgs = command === process.execPath ? [executable, ...args] : args;
-  const result = await execFileAsync(command, commandArgs, {
-    windowsHide: true,
-    timeout: 15_000,
-    maxBuffer: 1024 * 1024
+  const result = await processRunner({
+    command,
+    args: commandArgs,
+    timeoutMs: 15_000,
+    maxOutputBytes: 1024 * 1024
   });
   return String(result.stdout || result.stderr || "").trim().split(/\r?\n/u)[0];
 }
@@ -41,10 +40,12 @@ function assertInside(parent, candidate, label) {
   }
 }
 
-export function createLocalCapabilityInstaller({ workspaceRoot, commandRunner = defaultCommandRunner, probeRunner = defaultProbeRunner } = {}) {
+export function createLocalCapabilityInstaller({ workspaceRoot, commandRunner, probeRunner, processRunner = runProcess } = {}) {
   const root = path.resolve(workspaceRoot || "");
   if (!workspaceRoot) throw new TypeError("workspaceRoot is required");
   const packsRoot = path.join(root, ".hermes3d_orchestrator", "capability-packs");
+  const runCommand = commandRunner || ((request) => defaultCapabilityCommandRunner({ ...request, processRunner }));
+  const runProbe = probeRunner || ((request) => defaultCapabilityProbeRunner({ ...request, processRunner }));
 
   async function inspectInstall({ installDir, pack }) {
     const lock = JSON.parse(await fs.readFile(path.join(installDir, "package-lock.json"), "utf8"));
@@ -76,7 +77,7 @@ export function createLocalCapabilityInstaller({ workspaceRoot, commandRunner = 
     };
     const sbomText = JSON.stringify(sbom, null, 2) + "\n";
     await fs.writeFile(path.join(installDir, "sbom.spdx.json"), sbomText, "utf8");
-    const healthOutput = await probeRunner({ executable, args: pack.health_probe?.args || [] });
+    const healthOutput = await runProbe({ executable, args: pack.health_probe?.args || [] });
     return {
       executable_sha256: executableSha256,
       schema_sha256: pack.schema_sha256,
@@ -104,7 +105,7 @@ export function createLocalCapabilityInstaller({ workspaceRoot, commandRunner = 
     try {
       await fs.mkdir(staging, { recursive: false });
       await fs.writeFile(path.join(staging, "package.json"), JSON.stringify({ private: true, name: "hermesproof-pack-" + pack.id, version: "0.0.0", dependencies: { [pack.source.package]: pack.version } }, null, 2) + "\n", "utf8");
-      await commandRunner({ cwd: staging, packageSpec: pack.source.package + "@" + pack.version });
+      await runCommand({ cwd: staging, packageSpec: pack.source.package + "@" + pack.version });
       const receipt = await inspectInstall({ installDir: staging, pack });
       await fs.rename(staging, finalDir);
       return { ...receipt, executable: receipt.executable.replace(staging, finalDir), installed_path: finalDir };
