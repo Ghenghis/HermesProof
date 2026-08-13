@@ -10,6 +10,7 @@ Last audited: 2026-08-12
 - Authoritative OTA remote: `https://gitlab.com/Ghenghis/HermesProof.git`
 - GitHub compatibility metadata: retained for older tooling, but not a v0.9.2 publication target
 - Release facts: [`config/release-facts.json`](../config/release-facts.json)
+- Continuation handoff: [`HANDOFF_V0.9.2_AND_NEXT_5.md`](HANDOFF_V0.9.2_AND_NEXT_5.md)
 
 The release branch is the only publication source and GitLab is the only v0.9.2 release/OTA authority. The inactive GitHub repository is not used to decide currency and is not updated by this run. A folder name, modification date, generated proof file, or uncommitted worktree is never evidence that a checkout is current.
 

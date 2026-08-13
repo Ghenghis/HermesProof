@@ -17,6 +17,7 @@
 [Release verification](docs/WINDOWS_INSTALL.md#verify-before-extraction) ·
 [Updater runbook](docs/UPDATER_RUNBOOK.md) ·
 [Tool reference](docs/TOOL_REFERENCE.md) ·
+[Release handoff](docs/HANDOFF_V0.9.2_AND_NEXT_5.md) ·
 [Troubleshooting](docs/TROUBLESHOOTING_UPDATES.md)
 
 </div>
@@ -173,6 +174,7 @@ Reverse-engineering support is for software, devices, firmware, and data the ope
 
 ## Documentation
 
+- [v0.9.2 release continuation and five-improvement handoff](docs/HANDOFF_V0.9.2_AND_NEXT_5.md)
 - [Current release and source of truth](docs/CURRENT_RELEASE_STATUS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Windows install](docs/WINDOWS_INSTALL.md)
