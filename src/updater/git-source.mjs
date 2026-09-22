@@ -78,9 +78,10 @@ export function createGitSource({
     return { sha, ref, remote };
   };
 
-  const stage = async ({ sha, directory, channel = "stable" } = {}) => {
+  const stage = async ({ sha, directory, channel = "stable", currentSha = null } = {}) => {
     const candidateSha = validateReleaseSha(sha);
     if (typeof directory !== "string" || !path.isAbsolute(directory)) throw new Error("staging directory must be absolute");
+    if (currentSha !== null) validateReleaseSha(currentSha);
     const current = await resolve({ channel });
     if (current.sha !== candidateSha) throw new Error("channel no longer resolves to candidate SHA");
 
@@ -112,6 +113,30 @@ export function createGitSource({
       args: ["-C", path.resolve(directory), "status", "--porcelain=v1", "--untracked-files=all"]
     })).stdout;
     if (status.trim()) throw new Error("staged candidate is not clean");
+
+    // Anti-rollback / anti-downgrade check: a candidate is only accepted if it
+    // is a fast-forward descendant of the currently-active release. Without
+    // this, a channel ref that (via force-push, compromise, or a stale mirror)
+    // resolves back to an older SHA that still happens to pass every gate
+    // would be silently re-activated -- a textbook rollback attack. `git
+    // merge-base --is-ancestor` uses its exit code as the answer (0 = yes, 1 =
+    // no), not as a command-failure signal, so exit code 1 is read here as a
+    // real rejection rather than an error to bubble up.
+    if (currentSha !== null && currentSha !== candidateSha) {
+      try {
+        await runner({
+          command: "git",
+          args: ["-C", path.resolve(directory), "merge-base", "--is-ancestor", currentSha, candidateSha],
+          timeoutMs: 30_000
+        });
+      } catch (error) {
+        if (error?.exitCode === 1) {
+          throw new Error("candidate SHA is not a fast-forward descendant of the current active release (possible rollback)");
+        }
+        throw error;
+      }
+    }
+
     return { sha: candidateSha, directory: path.resolve(directory), ref: current.ref, remote };
   };
 

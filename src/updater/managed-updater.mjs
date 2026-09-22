@@ -264,7 +264,7 @@ export class ManagedUpdater {
       const stagingDirectory = path.join(this.paths.staging, sha + "-" + crypto.randomUUID());
       await fs.mkdir(stagingDirectory, { recursive: false });
       try {
-        await this.source.stage({ sha, directory: stagingDirectory, channel });
+        await this.source.stage({ sha, directory: stagingDirectory, channel, currentSha: check.currentSha });
         const verification = await this.verifier({ sha, directory: stagingDirectory, channel });
         if (!verification?.ok) {
           const reason = reasonOf(verification, "candidate verification failed");
