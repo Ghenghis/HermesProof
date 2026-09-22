@@ -18,7 +18,7 @@ test("production gate set covers every required row and uses exact argv", async 
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, "package-lock.json"), "{}\n", "utf8");
   await fs.mkdir(path.join(directory, ".serena"), { recursive: true });
-  await fs.writeFile(path.join(directory, ".serena", "project.yml"), "languages:\n- typescript\nread_only: true\n", "utf8");
+  await fs.writeFile(path.join(directory, ".serena", "project.yml"), "language_servers:\n- typescript\nread_only: true\n", "utf8");
   const calls = [];
   const runner = async (input) => {
     calls.push(input);
@@ -55,7 +55,7 @@ test("source, dependency, Serena, and MCP gates fail closed on drift", async (t)
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, "package-lock.json"), "{}\n", "utf8");
   await fs.mkdir(path.join(directory, ".serena"), { recursive: true });
-  await fs.writeFile(path.join(directory, ".serena", "project.yml"), "languages:\n- python\nread_only: false\n", "utf8");
+  await fs.writeFile(path.join(directory, ".serena", "project.yml"), "language_servers:\n- python\nread_only: false\n", "utf8");
   const gates = createProductionCandidateGates({
     runner: async ({ args }) => {
       if (args.includes("rev-parse")) return { exitCode: 0, stdout: "f".repeat(40) + "\n", stderr: "" };
@@ -66,6 +66,25 @@ test("source, dependency, Serena, and MCP gates fail closed on drift", async (t)
   assert.equal((await gates["source-integrity"]({ sha: SHA, directory })).ok, false);
   assert.equal((await gates["serena-config"]({ sha: SHA, directory })).ok, false);
   assert.equal((await gates["mcp-hermes3d-locks"]({ sha: SHA, directory })).ok, false);
+});
+
+test("serena-config gate accepts this repository's own real .serena/project.yml", async (t) => {
+  // Regression test for a real drift found via a live OTA run against the
+  // actual GitLab repo (2026-09-22): this gate's regex and the hand-written
+  // fixtures above had both drifted to check for a `languages:` field, while
+  // the real schema (commit 8030188) renamed it to `language_servers:`. The
+  // synthetic fixtures passed even though the gate would have quarantined
+  // every real candidate. Reading the repository's own file directly closes
+  // that blind spot -- this test fails the moment the two drift apart again.
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..");
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "hp-production-gates-real-serena-"));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.mkdir(path.join(directory, ".serena"), { recursive: true });
+  const realProjectYml = await fs.readFile(path.join(repoRoot, ".serena", "project.yml"), "utf8");
+  await fs.writeFile(path.join(directory, ".serena", "project.yml"), realProjectYml, "utf8");
+  const gates = createProductionCandidateGates({ runner: async () => ({ exitCode: 0, stdout: "", stderr: "" }) });
+  const result = await gates["serena-config"]({ sha: SHA, directory });
+  assert.equal(result.ok, true, JSON.stringify(result));
 });
 
 test("release-pointer-signature gate fails closed when not configured, and reads trust from outside the candidate directory", async (t) => {

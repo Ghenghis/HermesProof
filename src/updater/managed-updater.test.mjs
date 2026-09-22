@@ -4,10 +4,66 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { ManagedUpdater, MANAGED_UPDATER_SCHEMA } from "./managed-updater.mjs";
+import { ManagedUpdater, MANAGED_UPDATER_SCHEMA, renameWithRetry } from "./managed-updater.mjs";
 
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
+
+test("renameWithRetry retries transient EBUSY (Windows lingering-handle case) and succeeds", async (t) => {
+  const original = fs.rename;
+  let calls = 0;
+  fs.rename = async (source, destination) => {
+    calls++;
+    if (calls < 3) {
+      const error = new Error("resource busy or locked");
+      error.code = "EBUSY";
+      throw error;
+    }
+    return original(source, destination);
+  };
+  t.after(() => { fs.rename = original; });
+
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "hp-rename-retry-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const source = path.join(root, "source");
+  const destination = path.join(root, "destination");
+  await fs.mkdir(source);
+
+  await renameWithRetry(source, destination, { attempts: 5, delayMs: 1 });
+  assert.equal(calls, 3);
+  assert.equal((await fs.lstat(destination)).isDirectory(), true);
+});
+
+test("renameWithRetry gives up after the attempt cap and never retries a non-EBUSY error", async (t) => {
+  const original = fs.rename;
+  let ebusyCalls = 0;
+  fs.rename = async () => {
+    ebusyCalls++;
+    const error = new Error("resource busy or locked");
+    error.code = "EBUSY";
+    throw error;
+  };
+  t.after(() => { fs.rename = original; });
+  await assert.rejects(
+    renameWithRetry("/does/not/matter/a", "/does/not/matter/b", { attempts: 3, delayMs: 1 }),
+    (error) => error.code === "EBUSY"
+  );
+  assert.equal(ebusyCalls, 3);
+
+  fs.rename = async () => {
+    const error = new Error("no such file");
+    error.code = "ENOENT";
+    throw error;
+  };
+  let nonEbusyCalls = 0;
+  const wrappedOriginal = fs.rename;
+  fs.rename = async (...args) => { nonEbusyCalls++; return wrappedOriginal(...args); };
+  await assert.rejects(
+    renameWithRetry("/does/not/matter/a", "/does/not/matter/b", { attempts: 5, delayMs: 1 }),
+    (error) => error.code === "ENOENT"
+  );
+  assert.equal(nonEbusyCalls, 1, "must not retry a non-EBUSY error");
+});
 const SHA_C = "c".repeat(40);
 
 function fixtureSource() {

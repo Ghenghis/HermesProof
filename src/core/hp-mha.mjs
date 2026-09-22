@@ -1405,6 +1405,34 @@ export function assertLockFilesRespectHoldoutIsolation({ files, role, task_set_m
   };
 }
 
+// Task-claim analog of assertLockFilesRespectHoldoutIsolation, above: the
+// same HP-MHA-006 policy (only HOLDOUT_AWARE_ROLES may act on a holdout-tagged
+// task set), applied at the moment a queue manager claims a task rather than
+// when it locks files. Unlike the files version there is no "nothing
+// requested" early-exit -- a claim attempt always names exactly one task, so
+// every claim against a holdout-tagged task set is checked.
+export function assertTaskClaimRespectsHoldoutIsolation({ role, task_set_manifest } = {}) {
+  const tagCheck = validateTaskSetTagUniqueness(task_set_manifest || {});
+  if (!tagCheck.ok && tagCheck.reason_codes.includes("HP-MHA-006")) {
+    // A mixed-tag task set is ambiguous by construction, not a role
+    // violation -- flagged with its own, more specific code so a caller
+    // (or a human reading an evidence-ledger entry) doesn't confuse "this
+    // task set contradicts itself" with "this role isn't allowed here."
+    return { ok: false, reason_codes: ["HP-MHA-006-mixed-tags"], reason: tagCheck.reason };
+  }
+  if (tagCheck.tag !== HOLDOUT_TAG) {
+    return { ok: true, reason_codes: [], reason: "task set is not holdout-scoped" };
+  }
+  if (HOLDOUT_AWARE_ROLES.has(role)) {
+    return { ok: true, reason_codes: [], reason: `role '${role}' is allow-listed for holdout task claims` };
+  }
+  return {
+    ok: false,
+    reason_codes: ["HP-MHA-006"],
+    reason: `role '${role}' may not claim a task on a holdout task set (${HOLDOUT_TAG}). Allowed roles: ${[...HOLDOUT_AWARE_ROLES].join(", ")}.`
+  };
+}
+
 // --- v2: experiment-level aggregator ----------------------------------------
 //
 // Collapses every ev_* entry tied to one experiment_id into a single record
@@ -1497,6 +1525,7 @@ export const __test__ = {
   classifyTaskSetTag,
   validateTaskSetTagUniqueness,
   assertLockFilesRespectHoldoutIsolation,
+  assertTaskClaimRespectsHoldoutIsolation,
   buildTraceIndexRows,
   searchTraceIndex,
   traceIndexPath,

@@ -32,6 +32,30 @@ function reasonOf(value, fallback) {
   return typeof value?.reason === "string" && value.reason ? value.reason : fallback;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Windows can transiently hold a file handle open inside a directory whose
+// process tree just exited (an npm-spawned child, a native addon DLL, a
+// short-lived antivirus scan) for a brief window after the process appears
+// gone, which makes `fs.rename()` on the containing directory fail with
+// EBUSY even though nothing is actually still using it. Found live
+// (2026-09-22): quarantining a real staged candidate -- whose gates had just
+// run `npm ci` and spawned real MCP-server child processes inside it -- hit
+// exactly this. POSIX doesn't have this failure mode for renames, so this
+// only ever retries on Windows-style EBUSY, not on a genuine ENOENT/EEXIST.
+async function renameWithRetry(source, destination, { attempts = 5, delayMs = 200 } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fs.rename(source, destination);
+    } catch (error) {
+      if (error?.code !== "EBUSY" || attempt >= attempts) throw error;
+      await sleep(delayMs * attempt);
+    }
+  }
+}
+
 export class ManagedUpdater {
   constructor({
     managedRoot,
@@ -234,7 +258,7 @@ export class ManagedUpdater {
       sha + "-" + this.clock().toISOString().replace(/[:.]/g, "-")
     );
     try {
-      await fs.rename(directory, destination);
+      await renameWithRetry(directory, destination);
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
     }
@@ -274,7 +298,7 @@ export class ManagedUpdater {
 
         const releaseDirectory = path.join(this.paths.releases, sha);
         try {
-          await fs.rename(stagingDirectory, releaseDirectory);
+          await renameWithRetry(stagingDirectory, releaseDirectory);
         } catch (error) {
           if (error?.code !== "EEXIST") throw error;
           await fs.rm(stagingDirectory, { recursive: true, force: true });
@@ -436,4 +460,4 @@ export class ManagedUpdater {
   }
 }
 
-export { SCHEMA as MANAGED_UPDATER_SCHEMA, SERVERS as MANAGED_SERVER_NAMES };
+export { SCHEMA as MANAGED_UPDATER_SCHEMA, SERVERS as MANAGED_SERVER_NAMES, renameWithRetry };

@@ -100,8 +100,14 @@ export function createProductionCandidateGates({
     "serena-config": async ({ directory }) => {
       try {
         const raw = await fs.readFile(path.join(directory, ".serena", "project.yml"), "utf8");
-        if (!/^languages:\s*$/m.test(raw) || !/^\s*-\s*typescript\s*$/m.test(raw)) {
-          return { ok: false, reason: "Serena languages must include typescript" };
+        // Schema note (commit 8030188, "align project schema with pinned runtime"):
+        // the field is `language_servers:`, not the older `languages:` this check
+        // used to look for. A live OTA run against the real repo (2026-09-22)
+        // found this gate had drifted from the real schema and would quarantine
+        // every real candidate -- caught because the local test fixture had
+        // (independently) also drifted to match the old field name, masking it.
+        if (!/^language_servers:\s*$/m.test(raw) || !/^\s*-\s*typescript\s*$/m.test(raw)) {
+          return { ok: false, reason: "Serena language_servers must include typescript" };
         }
         if (!/^read_only:\s*true\s*$/m.test(raw)) {
           return { ok: false, reason: "Serena project must be read_only" };
