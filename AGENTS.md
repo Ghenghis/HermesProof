@@ -2,6 +2,23 @@
 
 When using the HermesProof MCP server (deployed name `hermes3d-locks`) you **must** follow these rules. They prevent Claude, Codex, Windsurf, and review agents from editing the same files at the same time. The rules are project-agnostic — they apply to any repository that wires the orchestrator into its MCP clients.
 
+## Secrets & credentials
+
+Before handling any API key, token, PAT, or secret, **read**
+[`docs/security/AGENT_SECRET_ARCHITECTURE.md`](docs/security/AGENT_SECRET_ARCHITECTURE.md)
+and [`docs/security/OIDC_INTEGRATION.md`](docs/security/OIDC_INTEGRATION.md).
+Those documents are the canonical reference for how agents obtain and use
+provider credentials — agents must never request, display, copy, log,
+commit, or persist plaintext credentials when a brokered, OIDC,
+vault-backed, or encrypted alternative is available.
+
+## Repository locations
+
+Before opening a PR, claiming work, or merging, read
+[`docs/REPO_MANIFEST.md`](docs/REPO_MANIFEST.md) to confirm you are
+editing the canonical main repo (`G:\Github\HermesProof`) and not a
+working copy or frozen snapshot.
+
 ## Mandatory before every edit
 
 1. Call `hermes_get_state`.
@@ -33,3 +50,4 @@ Use stable, specific owner names:
 - Never use raw shell execution through MCP; use the allowlisted gate runner.
 - Never commit directly to main/master.
 - Never hide lock conflicts. Add evidence.
+- Never request, display, copy, log, commit, or persist a plaintext provider credential when a brokered, OIDC, vault-backed, or encrypted alternative is available. See `docs/security/AGENT_SECRET_ARCHITECTURE.md`.

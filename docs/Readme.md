@@ -1883,3 +1883,4 @@ Fugu = orchestration/update/ledger reference
 Sakana-Fugu = lightweight Thinker/Worker/Verifier concept
 
 But keep them as research-backed patterns, not shipped code. The immediate stable KiloCode release should stay clean, small, and proven.
+

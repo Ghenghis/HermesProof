@@ -1,0 +1,6 @@
+[submodule "external/gitlab-daveai1"]
+	path = external/gitlab-daveai1
+	url = https://gitlab.com/daveai1/HermesProof.git
+[submodule "external/github-ghenghis"]
+	path = external/github-ghenghis
+	url = https://github.com/Ghenghis/HermesProof.git
