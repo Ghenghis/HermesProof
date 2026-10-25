@@ -1364,7 +1364,7 @@ export function validateTaskSetTagUniqueness(taskSet) {
   if (present.length > 1) {
     return {
       ok: false,
-      reason_codes: ["HP-MHA-006"],
+      reason_codes: ["HP-MHA-006", "HP-MHA-006-mixed-tags"],
       reason: `task_set may not carry both ${HOLDOUT_TAG} and ${OPTIMIZATION_TAG}; found ${present.join(",")}`
     };
   }

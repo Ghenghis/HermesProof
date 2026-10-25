@@ -6,6 +6,7 @@
 // fresh temp workspace so re-running is deterministic.
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -15,6 +16,23 @@ import { setTimeout as sleep } from "node:timers/promises";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
 const serverEntry = join(repoRoot, "src", "server.mjs");
+
+function merkleRoot(leaves) {
+  if (!Array.isArray(leaves) || leaves.length === 0) {
+    throw new Error("Merkle tree requires at least one leaf");
+  }
+  let layer = leaves.slice();
+  while (layer.length > 1) {
+    const next = [];
+    for (let index = 0; index < layer.length; index += 2) {
+      const left = layer[index];
+      const right = index + 1 < layer.length ? layer[index + 1] : left;
+      next.push(createHash("sha256").update(left + right, "utf8").digest("hex"));
+    }
+    layer = next;
+  }
+  return layer[0];
+}
 
 class JsonRpc {
   constructor(proc) {
@@ -162,6 +180,9 @@ async function run() {
     step(`experiment_plan_lock plan = ${planOut.experiment_id}`);
 
     // Step 3 — attest a run binding to the plan locks.
+    const traceChunks = [{ sha256: "a".repeat(64) }, { sha256: "b".repeat(64) }];
+    const verifiedTraceRoot = merkleRoot(traceChunks.map((chunk) => chunk.sha256));
+    const tamperTrace = process.env.HP_MHA_SMOKE_TAMPER_TRACE === "1";
     const runArgs = {
       run_id: "run_smoke_1",
       experiment_id: planId,
@@ -170,7 +191,7 @@ async function run() {
       task_set_manifest_sha256: planOut.task_set_manifest_sha256,
       evaluator_manifest_sha256: planOut.evaluator_manifest_sha256,
       environment_manifest_sha256: planOut.environment_manifest_sha256,
-      trace_root_sha256: "d".repeat(64),
+      trace_root_sha256: verifiedTraceRoot,
       outcome: "passed",
       latency_ms: 1234, tokens: 50000, cost_usd: 0.42
     };
@@ -183,18 +204,15 @@ async function run() {
     const traceArgs = {
       bundle_id: "bundle_smoke_1",
       retention: "release_pinned",
-      chunks: [{ sha256: "a".repeat(64) }, { sha256: "b".repeat(64) }],
-      root_sha256: (() => {
-        const left = "a".repeat(64); const right = "b".repeat(64);
-        const c = (str) => str; // we can't sha256 in this scope cheaply
-        // Use deterministic non-Merkle value: duplicate the left chunk's hash so verification FAILS without complex crypto
-        return left;
-      })()
+      chunks: traceChunks,
+      root_sha256: tamperTrace ? "0".repeat(64) : verifiedTraceRoot
     };
     const traceOut = await expectToolCall(rpc, "hermes_hp_mha_trace_bundle_verify", traceArgs,
-      (r) => r.bundle_id === "bundle_smoke_1",
+      (r) => r.bundle_id === "bundle_smoke_1"
+        && r.verification_ok === true
+        && r.computed_merkle_root === verifiedTraceRoot,
       "trace_bundle_verify");
-    step(`trace_bundle_verify ok = ${traceOut.verification_ok} (Merkle mismatch expected since root_sha is a placeholder)`);
+    step(`trace_bundle_verify ok = ${traceOut.verification_ok}`);
 
     // Step 5 — compute trace-level metrics on the just-recorded trace.
     const metricsArgs = {
@@ -218,10 +236,10 @@ async function run() {
     // Step 6 — record attribution.
     const attrArgs = {
       experiment_id: planId,
-      matrix: { s11: 0.5, s12: 0.6, s21: 0.7, s22: 0.8 }
+      matrix: { s11: 0.2, s12: 0.2, s21: 0.1, s22: 0.8 }
     };
     const attrOut = await expectToolCall(rpc, "hermes_hp_mha_model_harness_attribution", attrArgs,
-      (r) => Math.abs(r.harness_effect_pp - 0.10) < 1e-9,
+      (r) => Math.abs(r.harness_effect_pp - 0.35) < 1e-9,
       "model_harness_attribution");
     step(`model_harness_attribution harness = ${attrOut.harness_effect_pp} model = ${attrOut.model_effect_pp} interaction = ${attrOut.interaction_pp}`);
 
@@ -229,7 +247,7 @@ async function run() {
     const promoArgs = {
       kind: "smoke",
       evidence_ids: [harnessOut.evidence_id, planOut.evidence_id, runOut.evidence_id, traceOut.evidence_id, attrOut.evidence_id],
-      run_attestations: [{ outcome: "passed", trace_root_sha256: "d".repeat(64) }],
+      run_attestations: [{ outcome: "passed", trace_root_sha256: verifiedTraceRoot }],
       plan: {
         ...planArgs,
         model_manifest_sha256: planOut.model_manifest_sha256,
@@ -237,10 +255,14 @@ async function run() {
         task_set_manifest_sha256: planOut.task_set_manifest_sha256,
         evaluator_manifest_sha256: planOut.evaluator_manifest_sha256,
         environment_manifest_sha256: planOut.environment_manifest_sha256,
-        trace_root_sha256: "d".repeat(64),
+        trace_root_sha256: verifiedTraceRoot,
         execution_real: true
       },
-      attribution: { harness_effect_pp: 0.1, model_effect_pp: 0.2, interaction_pp: 0 },
+      attribution: {
+        harness_effect_pp: attrOut.harness_effect_pp,
+        model_effect_pp: attrOut.model_effect_pp,
+        interaction_pp: attrOut.interaction_pp
+      },
       execution_real: true
     };
     const promoOut = await expectToolCall(rpc, "hermes_hp_mha_promotion_evaluate", promoArgs,
@@ -262,7 +284,7 @@ async function run() {
       harness_card: cardArgs,
       experiment_plan: { experiment_id: "smoke_sub", design: "factorial_2x2", held_constant: { model: true, inference_settings: true, task_set: true, environment: true, evaluator: true, permissions: true, budgets: true, stopping_rules: true }, model_manifest_sha256: "a".repeat(64), harness_manifest_sha256: "b".repeat(64), task_set_manifest_sha256: "c".repeat(64), evaluator_manifest_sha256: "d".repeat(64), environment_manifest_sha256: "e".repeat(64), trace_root_sha256: "f".repeat(64), execution_real: true },
       run_attestations: [{ outcome: "passed", trace_root_sha256: "f".repeat(64) }, { outcome: "failed", trace_root_sha256: "f".repeat(64) }, { outcome: "timed_out", trace_root_sha256: "f".repeat(64) }],
-      matrix: { s11: 0.5, s12: 0.6, s21: 0.7, s22: 0.8 },
+      matrix: { s11: 0.2, s12: 0.2, s21: 0.1, s22: 0.8 },
       holdout_visible_to_optimizer: false,
       execution_real: true,
       fake_signals: [],
@@ -274,18 +296,19 @@ async function run() {
     step(`sub_gate verdict = ${subGateOut.verdict}`);
 
     // Step 10 — v4 trace-search index: ingest a bundle, then range-search.
+    const indexChunks = [
+      { sha256: "1".repeat(64), bytes: 100, kind: "tool_ok", signals: ["artifact_path"] },
+      { sha256: "2".repeat(64), bytes: 200, kind: "test_passed" },
+      { sha256: "3".repeat(64), bytes: 150, kind: "tool_ok", signals: ["artifact_path"] }
+    ];
     const indexArgs = {
       bundle_id: "tb_smoke_index",
       retention: "release_pinned",
-      chunks: [
-        { sha256: "1".repeat(64), bytes: 100, kind: "tool_ok", signals: ["artifact_path"] },
-        { sha256: "2".repeat(64), bytes: 200, kind: "test_passed" },
-        { sha256: "3".repeat(64), bytes: 150, kind: "tool_ok", signals: ["artifact_path"] }
-      ],
-      root_sha256: "f".repeat(64)
+      chunks: indexChunks,
+      root_sha256: merkleRoot(indexChunks.map((chunk) => chunk.sha256))
     };
     const indexOut = await expectToolCall(rpc, "hermes_hp_mha_trace_index_record", indexArgs,
-      (r) => r.row_count === 3,
+      (r) => r.row_count === 3 && r.merkle_ok === true,
       "trace_index_record");
     step(`trace_index_record row_count = ${indexOut.row_count} merkle_ok = ${indexOut.merkle_ok}`);
 

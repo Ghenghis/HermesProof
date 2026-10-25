@@ -273,7 +273,13 @@ async function upsertCodexToml(file, { servers, dryRun }) {
 
 function upsertTomlSection(raw, section, block) {
   const escaped = section.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp("(^|\\n)\\[" + escaped + "\\][\\s\\S]*?(?=\\n\\[[^\\n]+\\]|$)");
+  // Replace the complete table tree. Codex configurations may contain a
+  // parent table followed by descendant tables such as
+  // [mcp_servers.<name>.env]. Stopping at the first descendant leaves the old
+  // table behind and makes the inline env emitted above a duplicate TOML key.
+  const pattern = new RegExp(
+    "(^|\\n)\\[" + escaped + "\\][\\s\\S]*?(?=\\n\\[(?!" + escaped + "(?:\\.|\\]))[^\\n]+\\]|$)"
+  );
   if (pattern.test(raw)) return raw.replace(pattern, (match, prefix) => prefix + block + "\n");
   const separator = raw && !raw.endsWith("\n") ? "\n\n" : raw ? "\n" : "";
   return raw + separator + block + "\n";

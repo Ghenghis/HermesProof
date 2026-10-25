@@ -81,6 +81,7 @@ export class EventManager {
     this.workspaceRoot = path.resolve(workspaceRoot);
     this.paths = statePaths(this.workspaceRoot, stateDirName);
     this._branchCache = null; // { value, expiresAt }
+    this._lastEventCreatedMs = 0;
     // Serialize concurrent markEventHandled / failEvent — each does
     // read + atomic-rename + write + ledger-append in sequence; without
     // the mutex two concurrent calls for the same event_id can both pass
@@ -107,45 +108,52 @@ export class EventManager {
     recommended_action = "none",
     payload = {}
   }) {
-    await this.init();
-    validateEventType(event_type);
-    validateEnum(next_actor, NEXT_ACTORS, "next_actor");
-    validateEnum(recommended_action, RECOMMENDED_ACTIONS, "recommended_action");
-    const created_utc = utcNow();
-    const normalizedFiles = Array.isArray(files)
-      ? [...new Set(files.map((file) => normalizeWorkspacePath(this.workspaceRoot, file)))].sort()
-      : [];
-    const nonce = crypto.randomBytes(8).toString("hex");
-    const event = {
-      event_schema_version: EVENT_SCHEMA_VERSION,
-      event_id: makeEventId(created_utc, {
+    return this._eventMutex(async () => {
+      await this.init();
+      validateEventType(event_type);
+      validateEnum(next_actor, NEXT_ACTORS, "next_actor");
+      validateEnum(recommended_action, RECOMMENDED_ACTIONS, "recommended_action");
+      // A cursor is the event id, whose leading component is this timestamp.
+      // Force strictly increasing logical milliseconds inside the single MCP
+      // server process so a later event can never sort behind a same-ms cursor.
+      const createdMs = Math.max(Date.now(), this._lastEventCreatedMs + 1);
+      this._lastEventCreatedMs = createdMs;
+      const created_utc = new Date(createdMs).toISOString();
+      const normalizedFiles = Array.isArray(files)
+        ? [...new Set(files.map((file) => normalizeWorkspacePath(this.workspaceRoot, file)))].sort()
+        : [];
+      const nonce = crypto.randomBytes(8).toString("hex");
+      const event = {
+        event_schema_version: EVENT_SCHEMA_VERSION,
+        event_id: makeEventId(created_utc, {
+          event_type,
+          task_id,
+          owner,
+          summary,
+          payload,
+          nonce
+        }),
         event_type,
-        task_id,
-        owner,
+        created_utc,
+        workspace_root: this.workspaceRoot,
+        task_id: task_id || null,
+        owner: owner || null,
+        branch: branch || await this.currentBranch(),
+        files: normalizedFiles,
         summary,
-        payload,
-        nonce
-      }),
-      event_type,
-      created_utc,
-      workspace_root: this.workspaceRoot,
-      task_id: task_id || null,
-      owner: owner || null,
-      branch: branch || await this.currentBranch(),
-      files: normalizedFiles,
-      summary,
-      evidence_ids: task_id ? await this.evidenceIdsForTask(task_id) : [],
-      next_actor,
-      recommended_action,
-      payload: payload || {}
-    };
-    const outboxPath = this.eventPath("outbox", event.event_id);
-    await writeJsonAtomic(outboxPath, event);
-    await this.appendBookkeepingEvidence(event);
-    return { ok: true, status: "emitted", event, path: outboxPath };
+        evidence_ids: task_id ? await this.evidenceIdsForTask(task_id) : [],
+        next_actor,
+        recommended_action,
+        payload: payload || {}
+      };
+      const outboxPath = this.eventPath("outbox", event.event_id);
+      await writeJsonAtomic(outboxPath, event);
+      await this.appendBookkeepingEvidence(event);
+      return { ok: true, status: "emitted", event, path: outboxPath };
+    });
   }
 
-  async listEvents({ status = "outbox", limit = 50 } = {}) {
+  async listEvents({ status = "outbox", limit = 50, afterEventId = "" } = {}) {
     await this.init();
     const statuses = status === "all" ? ["outbox", "handled", "failed"] : [status];
     for (const value of statuses) validateStatus(value);
@@ -165,11 +173,22 @@ export class EventManager {
       a.name.localeCompare(b.name) ||
       a.status.localeCompare(b.status)
     );
-    for (const item of allFiles.slice(0, bounded)) {
+    const cursorName = afterEventId ? `${afterEventId}.json` : "";
+    const selectedFiles = cursorName
+      ? allFiles.filter((item) => item.name.localeCompare(cursorName) > 0)
+      : allFiles;
+    for (const item of selectedFiles.slice(0, bounded)) {
       const event = await readJson(item.path, null);
       if (event) events.push({ status: item.status, ...event });
     }
-    return { ok: true, status, count: allFiles.length, events };
+    return {
+      ok: true,
+      status,
+      count: allFiles.length,
+      matched_count: selectedFiles.length,
+      after_event_id: afterEventId || null,
+      events
+    };
   }
 
   async markEventHandled({ event_id, handled_by, note = "" }) {

@@ -21,7 +21,8 @@ test("Windows-first install writes both HermesProof servers to the supported cli
     HOME: homeDir,
     USERPROFILE: homeDir,
     APPDATA: path.join(homeDir, "AppData", "Roaming"),
-    HERMESPROOF_TEST_HOME: homeDir
+    HERMESPROOF_TEST_HOME: homeDir,
+    HERMESPROOF_MANAGED_ROOT: path.join(homeDir, ".hermesproof-managed")
   };
 
   const targets = ["kilocode", "lm-studio", "ollama", "codex", "windsurf", "vscode", "cursor", "devin"];
@@ -132,6 +133,46 @@ test("Codex TOML is byte-idempotent across repair-style rewrites", async (t) => 
   assert.equal(secondResult.results.codex.status, "skipped");
 });
 
+test("Codex TOML replaces legacy descendant env tables without duplicate keys", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-codex-env-tree-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const homeDir = path.join(root, "home");
+  const workspaceRoot = path.join(root, "workspace");
+  const configDir = path.join(homeDir, ".codex");
+  await fs.mkdir(workspaceRoot, { recursive: true });
+  await fs.mkdir(configDir, { recursive: true });
+  await fs.writeFile(path.join(configDir, "config.toml"), [
+    "model = \"test\"",
+    "",
+    "[mcp_servers.hermes3d-locks]",
+    "command = \"node\"",
+    "args = [\"old.mjs\"]",
+    "env = { MCP_LOCK_WORKSPACE = \"old\" }",
+    "",
+    "[mcp_servers.hermes3d-locks.env]",
+    "MCP_LOCK_WORKSPACE = 'legacy'",
+    "",
+    "[mcp_servers.unrelated]",
+    "command = \"keep\"",
+    ""
+  ].join("\n"), "utf8");
+  const env = {
+    ...process.env,
+    HOME: homeDir,
+    USERPROFILE: homeDir,
+    APPDATA: path.join(homeDir, "AppData", "Roaming"),
+    HERMESPROOF_TEST_HOME: homeDir
+  };
+
+  await writeClients({ clients: ["codex"], workspaceRoot, repoRoot, env, homeDir });
+  const result = await fs.readFile(path.join(configDir, "config.toml"), "utf8");
+
+  assert.equal((result.match(/^env = /gm) || []).length, 2);
+  assert.equal(result.includes("[mcp_servers.hermes3d-locks.env]"), false);
+  assert.equal(result.includes("MCP_LOCK_WORKSPACE = 'legacy'"), false);
+  assert.match(result, /\[mcp_servers\.unrelated\]\ncommand = \"keep\"/);
+});
+
 test("managed install pins every client entry to the stable launcher and returns a restorable allowlist", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermesproof-managed-clients-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -144,7 +185,8 @@ test("managed install pins every client entry to the stable launcher and returns
     HOME: homeDir,
     USERPROFILE: homeDir,
     APPDATA: path.join(homeDir, "AppData", "Roaming"),
-    HERMESPROOF_TEST_HOME: homeDir
+    HERMESPROOF_TEST_HOME: homeDir,
+    HERMESPROOF_MANAGED_ROOT: path.join(homeDir, ".hermesproof-managed")
   };
 
   const result = await writeClients({

@@ -3528,6 +3528,8 @@ async function requestAssistance({
   };
 }
 
+let lastInboxCreatedMs = 0;
+
 async function sendInboxMessage({
   sender,
   recipients,
@@ -3541,7 +3543,12 @@ async function sendInboxMessage({
   metadata = {}
 } = {}) {
   const normalizedFiles = Array.isArray(files) && files.length ? manager.normalizeFiles(files) : [];
-  const now = utcNow();
+  // Message cursors use (created_utc,id). Keep the timestamp strictly
+  // increasing in the single server process so a later send cannot hide
+  // behind an earlier same-millisecond cursor.
+  const createdMs = Math.max(Date.now(), lastInboxCreatedMs + 1);
+  lastInboxCreatedMs = createdMs;
+  const now = new Date(createdMs).toISOString();
   const written = [];
   for (const recipient of [...new Set(recipients)]) {
     const messageId = `msg_${shaId(`${sender}:${recipient}:${subject}:${now}:${Math.random()}`, 16)}`;
@@ -3586,7 +3593,14 @@ async function sendInboxMessage({
   return { ok: true, status: "sent", count: written.length, messages: written };
 }
 
-async function readInbox({ owner, includeAcked = false, type = "", limit = 50 } = {}) {
+async function readInbox({
+  owner,
+  includeAcked = false,
+  type = "",
+  limit = 50,
+  afterMessageId = "",
+  afterCreatedUtc = ""
+} = {}) {
   await ensureDir(inboxDir(owner));
   const names = await fs.readdir(inboxDir(owner)).catch(() => []);
   const messages = [];
@@ -3597,9 +3611,39 @@ async function readInbox({ owner, includeAcked = false, type = "", limit = 50 } 
     if (type && message.type !== type) continue;
     messages.push(message);
   }
-  messages.sort((a, b) => String(b.created_utc).localeCompare(String(a.created_utc)));
+  messages.sort((a, b) =>
+    String(b.created_utc).localeCompare(String(a.created_utc)) ||
+    String(b.id).localeCompare(String(a.id))
+  );
+  let cursorCreatedUtc = String(afterCreatedUtc || "");
+  let cursorMessageId = "";
+  if (afterMessageId) {
+    const cursor = messages.find((message) => message.id === afterMessageId) ||
+      await readJson(inboxMessagePath(owner, afterMessageId), null);
+    if (cursor?.created_utc) {
+      cursorCreatedUtc = String(cursor.created_utc);
+      cursorMessageId = String(cursor.id || afterMessageId);
+    }
+  }
+  const filtered = cursorCreatedUtc
+    ? messages.filter((message) =>
+        String(message.created_utc || "").localeCompare(cursorCreatedUtc) > 0 ||
+        (cursorMessageId &&
+          String(message.created_utc || "") === cursorCreatedUtc &&
+          String(message.id).localeCompare(cursorMessageId) > 0))
+    : messages;
   const bounded = clampNumber(limit, { min: 1, max: 500, fallback: 50 });
-  return { ok: true, owner, count: messages.length, messages: messages.slice(0, bounded) };
+  return {
+    ok: true,
+    owner,
+    count: filtered.length,
+    total_count: messages.length,
+    after_message_id: afterMessageId || null,
+    after_created_utc: cursorCreatedUtc || null,
+    latest_message_id: messages[0]?.id || null,
+    latest_created_utc: messages[0]?.created_utc || null,
+    messages: filtered.slice(0, bounded)
+  };
 }
 
 async function waitForInbox({
@@ -3608,16 +3652,28 @@ async function waitForInbox({
   includeAcked = false,
   timeoutMs = 25_000,
   pollMs = 500,
-  limit = 50
+  limit = 50,
+  afterMessageId = "",
+  afterCreatedUtc = "",
+  newOnly = false
 } = {}) {
   const start = Date.now();
   const boundedTimeout = clampNumber(timeoutMs, { min: 0, max: 120_000, fallback: 25_000 });
   const deadline = start + boundedTimeout;
   const sleepMs = clampNumber(pollMs, { min: 100, max: 5_000, fallback: 500 });
-  let inbox = await readInbox({ owner, includeAcked, type, limit });
+  if (newOnly && !afterMessageId && !afterCreatedUtc) {
+    const baseline = await readInbox({ owner, includeAcked, type, limit: 1 });
+    afterMessageId = baseline.latest_message_id || "";
+    afterCreatedUtc = baseline.latest_created_utc || "";
+  }
+  let inbox = await readInbox({
+    owner, includeAcked, type, limit, afterMessageId, afterCreatedUtc
+  });
   while (inbox.count === 0 && Date.now() < deadline) {
     await sleep(Math.min(sleepMs, Math.max(0, deadline - Date.now())));
-    inbox = await readInbox({ owner, includeAcked, type, limit });
+    inbox = await readInbox({
+      owner, includeAcked, type, limit, afterMessageId, afterCreatedUtc
+    });
   }
   return {
     ok: true,
@@ -3625,6 +3681,8 @@ async function waitForInbox({
     owner,
     waited_ms: Math.max(0, Date.now() - start),
     type: type || null,
+    after_message_id: afterMessageId || null,
+    after_created_utc: afterCreatedUtc || null,
     count: inbox.count,
     messages: inbox.messages
   };
@@ -5323,6 +5381,9 @@ registerTool(
       owner: Owner,
       type: z.union([MessageType, z.literal("")]).default(""),
       includeAcked: z.boolean().default(false),
+      afterMessageId: LegacyPathId.or(z.literal("")).default(""),
+      afterCreatedUtc: z.string().default(""),
+      newOnly: z.boolean().default(false),
       timeoutMs: z.number().int().min(0).max(120_000).default(25_000),
       pollMs: z.number().int().min(100).max(5_000).default(500),
       limit: z.number().int().min(1).max(500).default(50)
@@ -5854,14 +5915,8 @@ registerTool(
       let events = [];
 
       do {
-        listed = await manager.listEvents({ status, limit: 500 });
+        listed = await manager.listEvents({ status, limit, afterEventId });
         events = listed.events || [];
-        if (afterEventId) {
-          const index = events.findIndex((event) => event.event_id === afterEventId);
-          events = index >= 0
-            ? events.slice(index + 1)
-            : events.filter((event) => String(event.event_id || "") > afterEventId);
-        }
         if (events.length || Date.now() >= deadline) break;
         await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
       } while (Date.now() <= deadline);

@@ -384,6 +384,33 @@ test("realtime stdio round-trip: live status and event wait observe workspace ev
     assert.equal(waited.status, "events", `wait should observe emitted event: ${JSON.stringify(waited)}`);
     assert.ok(waited.events.some((event) => event.event_id === emitted.event.event_id));
 
+    // Exercise the MCP waiter with an outbox larger than its 500-item page.
+    // The cursor is deliberately near the newest end; the implementation
+    // must filter before limiting or these events disappear forever.
+    const seededIds = [];
+    const outboxDir = path.join(tmp, ".hermes3d_orchestrator", "events", "outbox");
+    await fs.mkdir(outboxDir, { recursive: true });
+    for (let index = 0; index < 525; index += 1) {
+      const id = `evt_99990101T${String(index).padStart(6, "0")}Z_abcdef`;
+      seededIds.push(id);
+      await fs.writeFile(
+        path.join(outboxDir, `${id}.json`),
+        JSON.stringify({ event_id: id, event_type: "message.sent", created_utc: "9999-01-01T00:00:00.000Z" }),
+        "utf8"
+      );
+    }
+    const afterFiveHundred = parseToolResult(await s.call("hermes_wait_for_events", {
+      status: "outbox",
+      afterEventId: seededIds[500],
+      timeoutMs: 0,
+      limit: 50,
+    }));
+    assert.equal(afterFiveHundred.status, "events");
+    assert.deepEqual(
+      afterFiveHundred.events.map((event) => event.event_id),
+      seededIds.slice(501)
+    );
+
     const live = parseToolResult(await s.call("hermes_live_status", {
       includeEvents: true,
       includeAgents: false,
@@ -588,6 +615,38 @@ test("agent workflow stdio round-trip: presence, skills, inbox, wait, complete r
     assert.equal(waitedInbox.ok, true);
     assert.equal(waitedInbox.status, "ready");
     assert.equal(waitedInbox.messages[0].id, messageId);
+
+    // A historical unread message must not make a new-only wait return
+    // immediately. The waiter establishes its cursor, then observes only the
+    // subsequently delivered message over the real stdio MCP transport.
+    const newOnlyBaseline = parseToolResult(await s.call("hermes_wait_for_inbox", {
+      owner: "rt-agent-b",
+      type: "ping",
+      newOnly: true,
+      timeoutMs: 150,
+      pollMs: 100,
+    }));
+    assert.equal(newOnlyBaseline.status, "timeout");
+    const sentAfterCursor = parseToolResult(await s.call("hermes_send_message", {
+      sender: "rt-agent-a",
+      recipients: ["rt-agent-b"],
+      type: "ping",
+      subject: "New-only delivery",
+      body: "This message was sent after the waiter cursor.",
+      requiresAck: false,
+    }));
+    const waitedNewOnly = parseToolResult(await s.call("hermes_wait_for_inbox", {
+      owner: "rt-agent-b",
+      type: "ping",
+      afterMessageId: newOnlyBaseline.after_message_id,
+      timeoutMs: 500,
+      pollMs: 100,
+    }));
+    assert.equal(waitedNewOnly.status, "ready");
+    assert.deepEqual(
+      waitedNewOnly.messages.map((message) => message.id),
+      [sentAfterCursor.messages[0].id]
+    );
 
     const inbox = parseToolResult(await s.call("hermes_get_inbox", {
       owner: "rt-agent-b",
