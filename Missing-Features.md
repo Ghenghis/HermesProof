@@ -69,13 +69,18 @@ Per-Kleppmann monotonic counter at `.hermes3d_orchestrator/fence.json`, stamped 
 
 **Revisit when:** anyone proposes running multiple HermesProof instances against a shared workspace (e.g., over NFS or with multiple host machines coordinating).
 
-### 1.6 Tighten `cosign verify-blob` step from `continue-on-error`
+### 1.6 ~~Tighten `cosign verify-blob` step from `continue-on-error`~~ — STALE, 2026-09-22
 
-[`.github/workflows/truth-gates.yml`](.github/workflows/truth-gates.yml) currently has the verify step as `continue-on-error: true` to avoid red-CI on first-run OIDC trust setup. The first push to `main` (`8d07c04`) confirmed the trust path works. The flag can now be removed.
+~~[`.github/workflows/truth-gates.yml`](.github/workflows/truth-gates.yml) currently has the verify step as `continue-on-error: true` to avoid red-CI on first-run OIDC trust setup. The first push to `main` (`8d07c04`) confirmed the trust path works. The flag can now be removed.~~
 
-**Why deferred:** trivial (single line edit) but holds value as a safety net during identity-policy changes.
-
-**Revisit:** any next workflow PR. Drop `continue-on-error` and treat verify failure as fail-closed.
+**Correction (found during an OTA security pass, 2026-09-22):** this item no longer applies. There is
+no `.github/workflows/` directory in this repository — `CHANGELOG.md` (v0.9.0) confirms the project
+deliberately replaced the GitHub-hosted Sigstore/cosign CI step with an offline Ed25519-signed archive
+as its authoritative release boundary. The real, then-undiscovered gap was that the git-based managed
+updater (`src/updater/managed-updater.mjs`) never called that Ed25519 verifier at all — see
+[`docs/RELEASE_POINTER.md`](docs/RELEASE_POINTER.md) for the fix (anti-rollback check, always on; an
+opt-in signed release-pointer gate, built and tested but not yet enabled pending one manual signing
+step).
 
 ### 1.7 Redraw `truth-gates-animated.svg` from 3×3 to 4×3 / 3×4
 

@@ -20,6 +20,7 @@ test("generated release documentation matches the canonical facts", async () => 
 });
 
 test("README and Pages site publish the stable dual-remote release and current diagrams", async () => {
+  const currentReleaseTag = (await renderReleaseDocs({ root })).json.releaseTag;
   const [readme, page, styles, currentStatus] = await Promise.all([
     readFile(path.join(root, "README.md"), "utf8"),
     readFile(path.join(root, "site", "index.html"), "utf8"),
@@ -33,7 +34,7 @@ test("README and Pages site publish the stable dual-remote release and current d
     assert.match(content, /ecosystem-e2e\.svg/);
     assert.match(content, /updater-lifecycle-animated\.svg/);
   }
-  assert.match(page, /v0\.9\.0/);
+  assert.equal(page.includes(currentReleaseTag), true);
   assert.doesNotMatch(page, /0\.9\.0-rc\.1/);
   assert.match(page, /121/);
   assert.match(page, /34/);

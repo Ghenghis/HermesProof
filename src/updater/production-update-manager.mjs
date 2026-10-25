@@ -85,7 +85,10 @@ export async function createProductionUpdateManager({
       workspaceRoot: workspace,
       server
     }));
-  const gates = createProductionCandidateGates();
+  const gates = createProductionCandidateGates({
+    trustRoot: path.join(root, "trust"),
+    pointerPublicKeyFile: path.join(repository, "config", "hermesproof-release-ed25519-public.pem")
+  });
   const actualVerifier = verifier || createReleaseVerifier({
     gates,
     evidenceRoot: path.join(root, "evidence"),

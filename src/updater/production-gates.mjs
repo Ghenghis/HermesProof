@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { verifyReleasePointer } from "../core/release-pointer.mjs";
 import { runProcess } from "./process-runner.mjs";
 
 function outputDigest(result) {
@@ -40,7 +41,16 @@ async function defaultProbe(options) {
 
 export function createProductionCandidateGates({
   runner = runProcess,
-  probe = defaultProbe
+  probe = defaultProbe,
+  // Trust anchor for the optional "release-pointer-signature" gate (see
+  // src/core/release-pointer.mjs). Deliberately NOT read from the candidate
+  // directory passed into each gate call -- both must come from the RUNNING
+  // instance's own trusted files, which the untrusted candidate cannot
+  // influence. Neither has a default: the gate throws if it's added to a
+  // verifier's required-gate list without both being supplied explicitly,
+  // rather than silently trusting an unspecified path.
+  trustRoot = null,
+  pointerPublicKeyFile = null
 } = {}) {
   if (typeof runner !== "function" || typeof probe !== "function") {
     throw new Error("production gate dependencies are invalid");
@@ -90,8 +100,14 @@ export function createProductionCandidateGates({
     "serena-config": async ({ directory }) => {
       try {
         const raw = await fs.readFile(path.join(directory, ".serena", "project.yml"), "utf8");
-        if (!/^languages:\s*$/m.test(raw) || !/^\s*-\s*typescript\s*$/m.test(raw)) {
-          return { ok: false, reason: "Serena languages must include typescript" };
+        // Schema note (commit 8030188, "align project schema with pinned runtime"):
+        // the field is `language_servers:`, not the older `languages:` this check
+        // used to look for. A live OTA run against the real repo (2026-09-22)
+        // found this gate had drifted from the real schema and would quarantine
+        // every real candidate -- caught because the local test fixture had
+        // (independently) also drifted to match the old field name, masking it.
+        if (!/^language_servers:\s*$/m.test(raw) || !/^\s*-\s*typescript\s*$/m.test(raw)) {
+          return { ok: false, reason: "Serena language_servers must include typescript" };
         }
         if (!/^read_only:\s*true\s*$/m.test(raw)) {
           return { ok: false, reason: "Serena project must be read_only" };
@@ -181,6 +197,26 @@ export function createProductionCandidateGates({
       return scan.ok
         ? { ok: true, details: { sbom: sbom.details, scans: scan.details } }
         : scan;
+    },
+    // Not (yet) in CANDIDATE_REQUIRED_GATES by default -- see
+    // docs/RELEASE_POINTER.md before adding "release-pointer-signature" to a
+    // verifier's required list. Turning it on with no pointer ever signed for
+    // the active channel makes every future `apply()` fail closed, by design:
+    // an unsigned/unblessed candidate must never silently auto-activate.
+    "release-pointer-signature": async ({ sha, channel }) => {
+      if (!trustRoot || !pointerPublicKeyFile) {
+        return { ok: false, reason: "release-pointer-signature gate is enabled but trustRoot/pointerPublicKeyFile were not configured" };
+      }
+      const pointerFile = path.join(trustRoot, "release-pointer-" + channel + ".json");
+      const result = await verifyReleasePointer({
+        pointerFile,
+        publicKeyFile: pointerPublicKeyFile,
+        expectedSha: sha,
+        expectedChannel: channel
+      });
+      return result.ok
+        ? { ok: true, details: { sha: result.sha, channel: result.channel, issuedUtc: result.issuedUtc, keyFingerprint: result.keyFingerprint } }
+        : { ok: false, reason: result.reason, details: result.detail ? { detail: result.detail } : null };
     }
   };
 }

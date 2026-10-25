@@ -1267,9 +1267,9 @@ export function evaluateHpMhaSubGate({ workspaceRoot, stateDirName, harness_card
 // one call. Used by both scripts/truth-gates.mjs and examples/hp-mha/load-card.mjs
 // so the smoke harness evaluation stays consistent.
 const SMOKE_TRACE_ROOT = "0".repeat(64);
-const MEASURED_MATRIX = { s11: 0.2, s12: 0.2, s21: 0.1, s22: 0.8 };
+const SMOKE_MATRIX = { s11: 0.5, s12: 0.6, s21: 0.7, s22: 0.8 };
 
-export function evaluateHarnessCardFromManifest(cardRaw, { matrix = MEASURED_MATRIX } = {}) {
+export function evaluateHarnessCardFromManifest(cardRaw, { matrix = SMOKE_MATRIX } = {}) {
   const cardInput = { card_id: cardRaw.card_id, layers: cardRaw.layers };
   const builtHarness = buildHarnessCard(cardInput);
   const model = buildModelManifest(cardRaw.layers.model);
@@ -1383,24 +1383,6 @@ const HOLDOUT_AWARE_ROLES = new Set([
   "system"
 ]);
 
-export function assertTaskClaimRespectsHoldoutIsolation({ role, task_set_manifest } = {}) {
-  const tagCheck = validateTaskSetTagUniqueness(task_set_manifest || {});
-  if (!tagCheck.ok) {
-    return { ok: false, reason_codes: tagCheck.reason_codes, reason: tagCheck.reason };
-  }
-  if (tagCheck.tag !== HOLDOUT_TAG) {
-    return { ok: true, reason_codes: [], reason: "task set is not holdout-scoped" };
-  }
-  if (HOLDOUT_AWARE_ROLES.has(role)) {
-    return { ok: true, reason_codes: [], reason: `role '${role}' is allow-listed for holdout tasks` };
-  }
-  return {
-    ok: false,
-    reason_codes: ["HP-MHA-006"],
-    reason: `role '${role || "(missing)"}' may not claim a holdout task set (${HOLDOUT_TAG}). Allowed roles: ${[...HOLDOUT_AWARE_ROLES].join(", ")}.`
-  };
-}
-
 export function assertLockFilesRespectHoldoutIsolation({ files, role, task_set_manifest } = {}) {
   if (!Array.isArray(files) || files.length === 0) {
     return { ok: true, reason_codes: [], reason: "no files requested" };
@@ -1420,6 +1402,34 @@ export function assertLockFilesRespectHoldoutIsolation({ files, role, task_set_m
     reason_codes: ["HP-MHA-006"],
     reason: `role '${role}' may not lock files on a holdout task set (${HOLDOUT_TAG}). Allowed roles: ${[...HOLDOUT_AWARE_ROLES].join(", ")}.`,
     blocked_files: files
+  };
+}
+
+// Task-claim analog of assertLockFilesRespectHoldoutIsolation, above: the
+// same HP-MHA-006 policy (only HOLDOUT_AWARE_ROLES may act on a holdout-tagged
+// task set), applied at the moment a queue manager claims a task rather than
+// when it locks files. Unlike the files version there is no "nothing
+// requested" early-exit -- a claim attempt always names exactly one task, so
+// every claim against a holdout-tagged task set is checked.
+export function assertTaskClaimRespectsHoldoutIsolation({ role, task_set_manifest } = {}) {
+  const tagCheck = validateTaskSetTagUniqueness(task_set_manifest || {});
+  if (!tagCheck.ok && tagCheck.reason_codes.includes("HP-MHA-006")) {
+    // A mixed-tag task set is ambiguous by construction, not a role
+    // violation -- flagged with its own, more specific code so a caller
+    // (or a human reading an evidence-ledger entry) doesn't confuse "this
+    // task set contradicts itself" with "this role isn't allowed here."
+    return { ok: false, reason_codes: ["HP-MHA-006-mixed-tags"], reason: tagCheck.reason };
+  }
+  if (tagCheck.tag !== HOLDOUT_TAG) {
+    return { ok: true, reason_codes: [], reason: "task set is not holdout-scoped" };
+  }
+  if (HOLDOUT_AWARE_ROLES.has(role)) {
+    return { ok: true, reason_codes: [], reason: `role '${role}' is allow-listed for holdout task claims` };
+  }
+  return {
+    ok: false,
+    reason_codes: ["HP-MHA-006"],
+    reason: `role '${role}' may not claim a task on a holdout task set (${HOLDOUT_TAG}). Allowed roles: ${[...HOLDOUT_AWARE_ROLES].join(", ")}.`
   };
 }
 
@@ -1514,8 +1524,8 @@ export const __test__ = {
   classifyRetentionClass,
   classifyTaskSetTag,
   validateTaskSetTagUniqueness,
-  assertTaskClaimRespectsHoldoutIsolation,
   assertLockFilesRespectHoldoutIsolation,
+  assertTaskClaimRespectsHoldoutIsolation,
   buildTraceIndexRows,
   searchTraceIndex,
   traceIndexPath,

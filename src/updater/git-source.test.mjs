@@ -30,7 +30,7 @@ async function createBareFixture(t) {
   await runProcess({ command: "git", args: ["-C", working, "remote", "add", "origin", bare] });
   await runProcess({ command: "git", args: ["-C", working, "push", "-u", "origin", "main"] });
   const sha = (await runProcess({ command: "git", args: ["-C", working, "rev-parse", "HEAD"] })).stdout.trim();
-  return { fixture, bare, sha };
+  return { fixture, bare, working, sha };
 }
 
 test("Git source resolves and stages an exact immutable SHA from an allowlisted channel", async (t) => {
@@ -73,6 +73,53 @@ test("Git source rejects channel drift, unknown channels, and unallowlisted remo
   assert.throws(
     () => createGitSource({ remoteUrl: path.join(fixture, "other.git"), allowedRemotes: [bare], allowLocalForTests: true }),
     /remote is not allowlisted/
+  );
+});
+
+test("Git source accepts a fast-forward candidate but rejects a rollback to an earlier SHA", async (t) => {
+  const { fixture, bare, working, sha: firstSha } = await createBareFixture(t);
+  await fs.writeFile(path.join(working, "package.json"), "{\"name\":\"fixture\",\"version\":2}\n", "utf8");
+  await runProcess({ command: "git", args: ["-C", working, "add", "package.json"] });
+  await runProcess({
+    command: "git",
+    args: [
+      "-C", working,
+      "-c", "user.name=HermesProof Test",
+      "-c", "user.email=test@example.invalid",
+      "commit", "-m", "second commit"
+    ]
+  });
+  await runProcess({ command: "git", args: ["-C", working, "push", "origin", "main"] });
+  const secondSha = (await runProcess({ command: "git", args: ["-C", working, "rev-parse", "HEAD"] })).stdout.trim();
+
+  const source = createGitSource({
+    remoteUrl: bare,
+    allowedRemotes: [bare],
+    allowLocalForTests: true,
+    channels: { stable: "refs/heads/main" }
+  });
+
+  const forwardDirectory = path.join(fixture, "forward");
+  await fs.mkdir(forwardDirectory);
+  const staged = await source.stage({
+    sha: secondSha,
+    directory: forwardDirectory,
+    channel: "stable",
+    currentSha: firstSha
+  });
+  assert.equal(staged.sha, secondSha);
+
+  // Simulate a rollback attempt: the channel's HEAD is (still) the newer
+  // commit, so pin the resolve target at the OLDER sha by asking the updater
+  // to accept it as if it were the live candidate -- this exercises the
+  // ancestry check directly rather than only the "channel drift" guard.
+  await runProcess({ command: "git", args: ["-C", working, "reset", "--hard", firstSha] });
+  await runProcess({ command: "git", args: ["-C", working, "push", "--force", "origin", "main"] });
+  const rollbackDirectory = path.join(fixture, "rollback");
+  await fs.mkdir(rollbackDirectory);
+  await assert.rejects(
+    source.stage({ sha: firstSha, directory: rollbackDirectory, channel: "stable", currentSha: secondSha }),
+    /not a fast-forward descendant|possible rollback/
   );
 });
 

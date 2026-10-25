@@ -1,10 +1,25 @@
 # HermesProof — Security Policy
 
-> v0.9.0 adds a fail-closed managed updater, hash-guarded client snapshots,
+> v0.9.1 includes a fail-closed managed updater, hash-guarded client snapshots,
 > signed/pinned capability-pack policy, and a second governed MCP server. See
 > [UPDATER_RUNBOOK.md](UPDATER_RUNBOOK.md) for the activation contract.
 
 This MCP is intentionally narrow. Everything the server is allowed to do is enumerated in this document.
+
+## Related
+
+- **[AGENT_SECRET_ARCHITECTURE.md](security/AGENT_SECRET_ARCHITECTURE.md)** —
+  canonical reference for how agents (Claude, Codex, ChatGPT, MCP servers,
+  HermesProof-controlled agents) obtain and use provider credentials
+  (OIDC + credential broker + secret vault). This document governs the
+  HermesProof MCP surface itself; that document governs the *outer*
+  secret-handling layer above it.
+- **[OIDC_INTEGRATION.md](security/OIDC_INTEGRATION.md)** — how OpenID
+  Connect workload identity plugs into the HermesProof credential broker
+  (GitHub Actions, GitLab CI, SPIFFE).
+- **[REPO_MANIFEST.md](REPO_MANIFEST.md)** — canonical locations for
+  every HermesProof repo, working copy, frozen release, and research
+  artifact.
 
 <div align="center">
 <img src="./diagrams/architecture.svg" alt="HermesProof architecture: clients, server, state directory, and allowlisted gate runner" width="100%"/>

@@ -6,7 +6,32 @@ adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+- Anti-rollback protection in the managed updater: `git-source.mjs`'s `stage()` now rejects any
+  candidate SHA that is not a fast-forward descendant of the currently-active release
+  (`git merge-base --is-ancestor`), closing a rollback/downgrade gap where a channel ref resolving
+  back to an older, previously-good SHA would have been silently re-activated.
+- `src/core/release-pointer.mjs` + a new, opt-in `"release-pointer-signature"` gate in
+  `production-gates.mjs`: an explicit, offline Ed25519-signed statement that a specific commit SHA is
+  blessed for OTA auto-activation on a given channel, verified against the same key already used for
+  packaged-release signing (`release-signing.mjs`), read only from the running instance's own trusted
+  files, never from the untrusted candidate checkout. New CLI: `scripts/sign-release-pointer.mjs`. Not
+  yet added to `CANDIDATE_REQUIRED_GATES` — see `docs/RELEASE_POINTER.md` for the one manual signing
+  step required before enabling it. Full test coverage: `src/core/release-pointer.test.mjs` (8 tests)
+  plus new gate-level tests in `production-gates.test.mjs`.
+
+### Fixed
+- `Missing-Features.md` §1.6 corrected: it referenced a `.github/workflows/truth-gates.yml` file that
+  no longer exists (superseded by the offline Ed25519 signing model in v0.9.0). The real, previously
+  undocumented gap was that the git-based managed updater never called the existing Ed25519 verifier
+  at all — see the release-pointer entry above.
+
+## [0.9.1] — 2026-08-12
+
+### Fixed
+- The managed Windows OTA updater now runs npm and npx candidate gates through the active Node runtime instead of asking Node to spawn `.cmd` shims with `shell: false`. This removes the `spawn EINVAL` quarantine failure while preserving exact argv handling, command-shell isolation, fail-closed gates, rollback, and signed candidate verification.
+- Added a real Windows regression test that executes `npm.cmd --version` through the production updater process runner and fails if the shell-free translation is removed.
+- The Windows installer now validates the archive manifest version against bundled canonical release facts instead of hardcoding v0.9.0, so signed patch releases install while internal version/tag mismatches still fail closed.
 
 ## [0.9.0] — 2026-08-12
 
